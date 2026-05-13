@@ -146,26 +146,50 @@ async def add_page_to_db(
     create_upload_res = await create_upload_img(session, file_path)
     send_upload_res = await send_upload_img(session, create_upload_res["id"], file_path)
 
+    payload: dict[str, Any] = {
+        "parent": {"database_id": db_id},
+        "properties": {
+            "Name": {"title": [{"text": {"content": file_name}}]},
+            "Image": {
+                "files": [
+                    {
+                        "type": "file_upload",
+                        "file_upload": {"id": send_upload_res["id"]},
+                    }
+                ]
+            },
+            "Prompt": {"rich_text": []},
+            "Model": {"select": {"name": model}},
+            "Face": {"select": {"name": face}},
+        },
+    }
+    prompt = str(prompt).strip()
+
+    if 0 > len(prompt) < 2000:
+        payload["properties"]["Prompt"]["rich_text"].append(
+            {"text": {"content": prompt}}
+        )
+    elif len(prompt) >= 2000:
+        payload["properties"]["Prompt"]["rich_text"].append(
+            {"text": {"content": "refer body"}}
+        )
+        payload["markdown"] = f"""
+**Prompt:**
+
+```
+{prompt}
+```
+
+""".strip()
+    else:
+        payload["properties"]["Prompt"]["rich_text"].append(
+            {"text": {"content": "N/A"}}
+        )
+
     async with session.post(
         f"{BASE_URL}/v1/pages",
         headers=get_headers(),
-        json={
-            "parent": {"database_id": db_id},
-            "properties": {
-                "Name": {"title": [{"text": {"content": file_name}}]},
-                "Image": {
-                    "files": [
-                        {
-                            "type": "file_upload",
-                            "file_upload": {"id": send_upload_res["id"]},
-                        }
-                    ]
-                },
-                "Prompt": {"rich_text": [{"text": {"content": prompt or "N/A"}}]},
-                "Model": {"select": {"name": model}},
-                "Face": {"select": {"name": face}},
-            },
-        },
+        json=payload,
     ) as response:
         response.raise_for_status()
         _db_page_cache.add(file_name)
