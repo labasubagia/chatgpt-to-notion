@@ -636,11 +636,23 @@ class TestChatGPTUploadToNotionComprehensive:
     async def test_upload_to_notion_with_remove(self, monkeypatch, tmp_path):
         """Should remove conversations when remove_in_chatgpt=True."""
         from unittest.mock import patch, AsyncMock
+        from models import ChatGPTImageGeneration
         
         image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                conversation_id="conv_abc",
+                message_id="msg_def",
+                asset_pointer="asset_ghi",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
         
         with patch("chatgpt.fetch_image_generations", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = []
+            mock_fetch.return_value = generations
             
             with patch("chatgpt.download_all_images", new_callable=AsyncMock):
                 with patch("chatgpt.add_prompt_to_images"):
@@ -657,11 +669,23 @@ class TestChatGPTUploadToNotionComprehensive:
     async def test_upload_to_notion_skip_optional_steps(self, monkeypatch, tmp_path):
         """Should skip optional steps when flags are False."""
         from unittest.mock import patch, AsyncMock
+        from models import ChatGPTImageGeneration
         
         image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                conversation_id="conv_abc",
+                message_id="msg_def",
+                asset_pointer="asset_ghi",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
         
         with patch("chatgpt.fetch_image_generations", new_callable=AsyncMock) as mock_fetch:
-            mock_fetch.return_value = []
+            mock_fetch.return_value = generations
             
             with patch("chatgpt.download_all_images", new_callable=AsyncMock) as mock_download:
                 with patch("chatgpt.add_prompt_to_images") as mock_add_prompt:

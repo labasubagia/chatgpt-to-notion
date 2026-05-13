@@ -273,14 +273,24 @@ class TestSoraUploadToNotion:
     async def test_upload_to_notion_trash_in_sora(self, monkeypatch, tmp_path):
         """Should trash generations in Sora after upload."""
         from unittest.mock import patch, AsyncMock
+        from models import SoraImageGeneration
         
         image_folder = str(tmp_path / "images")
+        generations = [
+            SoraImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                task_id="task_xyz",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
         
         with patch("sora.fetch_recent_tasks", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = {"task_responses": []}
             
             with patch("sora.get_generations_from_tasks") as mock_gen:
-                mock_gen.return_value = []
+                mock_gen.return_value = generations
                 
                 with patch("sora.download_all_images", new_callable=AsyncMock):
                     with patch("sora.add_prompt_to_images"):
@@ -569,14 +579,24 @@ class TestSoraUploadToNotionValidation:
     async def test_upload_to_notion_with_dataset(self, monkeypatch, tmp_path):
         """Should save to dataset when provided."""
         from unittest.mock import patch, AsyncMock
+        from models import SoraImageGeneration
         
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        generations = [
+            SoraImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                task_id="task_xyz",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
         
         with patch("sora.fetch_recent_tasks", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = {"task_responses": []}
             
             with patch("sora.get_generations_from_tasks") as mock_gen:
-                mock_gen.return_value = []
+                mock_gen.return_value = generations
                 
                 with patch("sora.download_all_images", new_callable=AsyncMock):
                     with patch("sora.add_prompt_to_images"):
