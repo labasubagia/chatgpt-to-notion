@@ -1,6 +1,7 @@
 import asyncio
 import os
 from base64 import b64decode
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -258,6 +259,10 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
     pbar = tqdm(total=total, desc="Deleting conversations")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
+    conversation_map = defaultdict(set)
+    for gen in generations:
+        conversation_map[gen.conversation_id].add(gen.id)
+
     async with aiohttp.ClientSession(
         headers=get_headers(), timeout=get_http_timeout()
     ) as session:
@@ -271,6 +276,14 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                     exists = await is_page_exists_in_db(session, db_id, file_name)
                     if not exists:
                         pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
+                        pbar.update(1)
+                        return
+
+                    conversation_map[conversation_id].discard(row.id)
+                    if conversation_map[conversation_id]:
+                        pbar.write(
+                            f"⏭️  Conversation ID {conversation_id} skipped, still has pending images"  # noqa: E501
+                        )
                         pbar.update(1)
                         return
 
