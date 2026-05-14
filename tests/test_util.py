@@ -273,7 +273,7 @@ class TestAccountActivityStatus:
         rows = get_account_activity_statuses(timezone_name="UTC")
 
         assert rows[0]["Next Wait"] != "Ready"
-        assert rows[0]["Ready Generate?"] == "(1/1 to wait) ❌"
+        assert rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
 
     def test_old_activity_is_ready(self, tmp_path, monkeypatch):
         history_dir = tmp_path / "output" / "history"
