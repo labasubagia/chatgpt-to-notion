@@ -7,19 +7,19 @@ endif
 
 IMAGE_CHATGPT = debug_chatgpt_images
 
-.PHONY: help chatgpt_upload_to_notion chatgpt_upload_to_notion_remove clean-output-path
+.PHONY: help upload_to_notion upload_to_notion_remove clean-output-path
 
 help:
 	@echo "Available targets:"
-	@echo "  chatgpt_upload_to_notion           Run chatgpt-upload-to-notion (no-remove)"
-	@echo "  chatgpt_upload_to_notion_remove    Run chatgpt-upload-to-notion (remove)"
+	@echo "  upload_to_notion                   Run upload-to-notion (no-remove)"
+	@echo "  upload_to_notion_remove            Run upload-to-notion (remove)"
 	@echo "  clean-output-path                  Run clean-output-path (module)"
 
-chatgpt_upload_to_notion:
-	$(PY) main.py chatgpt-upload-to-notion --image-folder $(IMAGE_CHATGPT) --no-remove-in-chatgpt
+upload_to_notion:
+	$(PY) main.py upload-to-notion --image-folder $(IMAGE_CHATGPT) --no-remove
 
-chatgpt_upload_to_notion_remove:
-	$(PY) main.py chatgpt-upload-to-notion --image-folder $(IMAGE_CHATGPT) --remove-in-chatgpt
+upload_to_notion_remove:
+	$(PY) main.py upload-to-notion --image-folder $(IMAGE_CHATGPT) --remove
 
 clean-output-path:
 	$(PY) -m main clean-output-path

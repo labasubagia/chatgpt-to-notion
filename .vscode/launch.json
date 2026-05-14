@@ -4,30 +4,30 @@
         // ChatGPT debug configurations
         {
             "args": [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--image-folder",
                 "debug_chatgpt_images",
-                "--no-remove-in-chatgpt"
+                "--no-remove"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
-            "name": "Debug: chatgpt_upload_to_notion",
+            "name": "Debug: upload_to_notion",
             "program": "${workspaceFolder}/main.py",
             "request": "launch",
             "type": "debugpy"
         },
         {
             "args": [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--image-folder",
                 "debug_chatgpt_images",
-                "--remove-in-chatgpt"
+                "--remove"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
-            "name": "Debug: chatgpt_upload_to_notion --remove-in-chatgpt",
+            "name": "Debug: upload_to_notion --remove",
             "program": "${workspaceFolder}/main.py",
             "request": "launch",
             "type": "debugpy"

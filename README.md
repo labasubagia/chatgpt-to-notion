@@ -52,10 +52,10 @@ Show CLI help:
 python main.py --help
 ```
 
-Upload recent ChatGPT generations:
+Upload recent generations:
 
 ```bash
-python main.py chatgpt-upload-to-notion \
+python main.py upload-to-notion \
   --account personal \
   --image-folder images \
   --limit 100
@@ -64,19 +64,19 @@ python main.py chatgpt-upload-to-notion \
 Run every configured account in sequence:
 
 ```bash
-python main.py chatgpt-upload-to-notion
+python main.py upload-to-notion
 ```
 
 Replay from saved history instead of fetching live data:
 
 ```bash
-python main.py chatgpt-upload-to-notion --from-history
+python main.py upload-to-notion --from-history
 ```
 
 Verify saved history against Notion directly:
 
 ```bash
-python main.py chatgpt-upload-to-notion --verify-history
+python main.py upload-to-notion --verify-history
 ```
 
 Check which accounts are ready:
@@ -96,13 +96,13 @@ python main.py clean-output-path
 - History is stored at `output/history/<account>_chatgpt.csv`
 - `uploaded_at` is used to skip repeated Notion uploads
 - `--check-notion-api` bypasses the CSV shortcut and checks Notion directly
-- `--remove-in-chatgpt` deletes uploaded conversations after verification
+- `--remove` deletes uploaded conversations after verification
 
 ## Make Targets
 
 ```bash
-make chatgpt_upload_to_notion
-make chatgpt_upload_to_notion_remove
+make upload_to_notion
+make upload_to_notion_remove
 make clean-output-path
 ```
 

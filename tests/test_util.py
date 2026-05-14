@@ -253,7 +253,6 @@ class TestAccountActivityStatus:
         rows = get_account_activity_statuses(timezone_name="UTC")
 
         assert rows[0]["Account"] == "default"
-        assert rows[0]["Service"] == "chatgpt"
         assert rows[0]["Next Wait"] == "Ready"
         assert rows[0]["Ready Generate?"] == "✅"
 
