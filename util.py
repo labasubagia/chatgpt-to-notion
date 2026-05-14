@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import pandas as pd
 from pydantic import BaseModel
+from rich.console import Console
+from rich.rule import Rule
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from models import (
@@ -30,6 +32,7 @@ OUTPUT_PATH = "./output"
 
 logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = "config.toml"
+console = Console()
 
 
 def save_to_dataset(
@@ -330,11 +333,10 @@ def print_account_log_header(
     position: int,
     total: int,
 ) -> None:
-    print()
-    print("=" * 72)
-    print(f"[{position}/{total}] {action}")
-    print(f"Account: {account_name}")
-    print("=" * 72)
+    console.print()
+    console.print(Rule(title=f"[{position}/{total}] {action}"))
+    console.print(f"Account: {account_name}")
+    console.print(Rule())
 
 
 def print_account_log_footer(
@@ -344,8 +346,8 @@ def print_account_log_footer(
     position: int,
     total: int,
 ) -> None:
-    print(f"Finished [{position}/{total}] {action} for {account_name}")
-    print("-" * 72)
+    console.print(f"Finished [{position}/{total}] {action} for {account_name}")
+    console.print(Rule())
 
 
 def _format_duration(total_seconds: float) -> str:
