@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
+import pandas as pd
 from tqdm.asyncio import tqdm
 
 from img import add_prompt_to_images
@@ -209,6 +210,42 @@ async def fetch_image_generations(
         return sorted(valid_generations, key=lambda x: x.created_at)
 
 
+def load_image_generations_from_dataset(
+    dataset: str,
+    include_uploaded: bool = False,
+) -> list[ChatGPTImageGeneration]:
+    file_path = get_output_path(dataset)
+    if not file_path.exists():
+        print(f"No history dataset found at {file_path}.")
+        return []
+
+    df = pd.read_csv(file_path)
+    if df.empty:
+        return []
+    if "uploaded_at" not in df.columns:
+        df["uploaded_at"] = ""
+    if not include_uploaded:
+        df = df[df["uploaded_at"].fillna("").astype(str).str.strip() == ""]
+
+    generations: list[ChatGPTImageGeneration] = []
+    for row in df.fillna("").to_dict(orient="records"):
+        try:
+            generations.append(
+                ChatGPTImageGeneration(
+                    created_at=str(row.get("created_at", "")),
+                    id=str(row.get("id", "")),
+                    conversation_id=str(row.get("conversation_id", "")),
+                    message_id=str(row.get("message_id", "")),
+                    asset_pointer=str(row.get("asset_pointer", "")),
+                    url=str(row.get("url", "")),
+                    prompt=str(row.get("prompt", "")),
+                )
+            )
+        except Exception as e:
+            print(f"⚠️  Skipped invalid history row: {e}")
+    return generations
+
+
 async def download_all_images(
     generations: list[ChatGPTImageGeneration],
     download_folder: str,
@@ -311,16 +348,25 @@ async def upload_to_notion(
     add_prompt_to_image: bool = True,
     dataset: str | None = None,
     check_notion_api: bool = False,
+    from_history: bool = False,
     limit: int = 100,
     options: RuntimeOptions | None = None,
 ) -> None:
-    generations = await fetch_image_generations(limit=limit, options=options)
+    if from_history:
+        if not dataset:
+            raise ValueError("dataset is required when from_history=True")
+        generations = load_image_generations_from_dataset(
+            dataset=dataset,
+            include_uploaded=check_notion_api,
+        )
+    else:
+        generations = await fetch_image_generations(limit=limit, options=options)
 
     if not generations:
         print("No generations found.")
         return
 
-    if dataset:
+    if dataset and not from_history:
         save_to_dataset(dataset=dataset, data=generations)
 
     await download_all_images(

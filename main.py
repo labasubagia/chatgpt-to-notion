@@ -249,6 +249,14 @@ def chatgpt_upload_to_notion(
             help="Check Notion API even when uploaded_at is already set in CSV"
         ),
     ] = False,
+    from_history: Annotated[
+        bool,
+        typer.Option(help="Use the per-account history CSV as the generation source"),
+    ] = False,
+    verify_history: Annotated[
+        bool,
+        typer.Option(help="Shortcut for --from-history --check-notion-api"),
+    ] = False,
     limit: Annotated[
         int, typer.Option(help="Limit number of image generations to process")
     ] = 100,
@@ -281,6 +289,8 @@ def chatgpt_upload_to_notion(
         effective_db_id = db_id or resolved.notion.database_id
         assert effective_db_id is not None, "db_id must be provided"
         account_dataset = _account_dataset(resolved.account_name, "chatgpt")
+        effective_from_history = from_history or verify_history
+        effective_check_notion_api = check_notion_api or verify_history
         asyncio.run(
             chatgpt.upload_to_notion(
                 image_folder=image_folder,
@@ -288,7 +298,8 @@ def chatgpt_upload_to_notion(
                 upload_to_notion=upload_to_notion,
                 remove_in_chatgpt=remove_in_chatgpt,
                 dataset=account_dataset,
-                check_notion_api=check_notion_api,
+                check_notion_api=effective_check_notion_api,
+                from_history=effective_from_history,
                 limit=limit,
                 options=options,
             )

@@ -209,6 +209,44 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
+    @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
+    def test_chatgpt_upload_to_notion_from_history_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass from_history flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "chatgpt-upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--from-history",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["from_history"] is True
+        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+
+    @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
+    def test_chatgpt_upload_to_notion_verify_history_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should make verify_history imply history source and Notion verification."""
+        result = runner.invoke(
+            app,
+            [
+                "chatgpt-upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--verify-history",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["from_history"] is True
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
+
     @patch("sora.cleanup_trash", new_callable=AsyncMock)
     def test_sora_cleanup_trash(self, mock_cleanup, mock_config_toml):
         """Should call sora.cleanup_trash."""

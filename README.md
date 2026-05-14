@@ -139,12 +139,28 @@ CSV state:
 python main.py chatgpt-upload-to-notion --check-notion-api
 ```
 
+If ChatGPT data has already been deleted, upload from the saved CSV instead of
+fetching live ChatGPT generations:
+
+```bash
+python main.py chatgpt-upload-to-notion --from-history
+```
+
+For recovery/verification, use the shortcut that reads history and checks
+Notion directly:
+
+```bash
+python main.py chatgpt-upload-to-notion --verify-history
+```
+
 **Options:**
 - `--image-folder`: Folder under `output/` to store downloaded images (default: `images`)
 - `--db-id`: Notion database ID
 - `--config`: Path to `config.toml` if not using `./config.toml`
 - `--account`: Named account inside `config.toml`; if omitted, all accounts run sequentially
 - `--check-notion-api`: Check Notion directly even when `uploaded_at` is already set
+- `--from-history`: Use `output/history/<account>_chatgpt.csv` as the generation source
+- `--verify-history`: Shortcut for `--from-history --check-notion-api`
 - `--limit`: Maximum number of generations to process (default: `100`)
 - `--remove-in-chatgpt`: Delete conversations after upload (default: `false`)
 
