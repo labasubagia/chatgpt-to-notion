@@ -172,7 +172,6 @@ class TestTomlConfig:
                     "[accounts.work]",
                     'authorization_token = "token_work"',
                     'user_agent = "Agent/1.0"',
-                    'cookie_string_base64 = "dGVzdF9jb29raWU="',
                     'notion_database_id = "db_work_1234567890"',
                 ]
             )
@@ -197,7 +196,6 @@ class TestTomlConfig:
                     "[accounts.personal]",
                     'authorization_token = "token_personal"',
                     'user_agent = "Agent/2.0"',
-                    'cookie_string_base64 = "dGVzdF9jb29raWU="',
                 ]
             )
         )
@@ -207,7 +205,6 @@ class TestTomlConfig:
         notion = get_notion_context(RuntimeOptions(account="personal"))
 
         assert provider.headers["Authorization"] == "Bearer token_personal"
-        assert provider.headers["Cookie"] == "test_cookie"
         assert notion.headers["Authorization"] == "Bearer notion_key"
 
     def test_shared_defaults_applied_to_account(self, tmp_path, monkeypatch):
@@ -217,7 +214,6 @@ class TestTomlConfig:
                 [
                     "[shared]",
                     'user_agent = "SharedAgent/1.0"',
-                    'cookie_string_base64 = "dGVzdF9jb29raWU="',
                     "",
                     "[accounts.personal]",
                     'authorization_token = "token_personal"',
@@ -229,7 +225,6 @@ class TestTomlConfig:
         provider = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
 
         assert provider.headers["User-Agent"] == "SharedAgent/1.0"
-        assert provider.headers["Cookie"] == "test_cookie"
 
     def test_get_account_names_from_toml(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"

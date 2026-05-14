@@ -31,7 +31,6 @@ Edit `config.toml` with your Notion credentials and one or more ChatGPT accounts
 ```toml
 [shared]
 user_agent = "your_user_agent"
-cookie_string_base64 = "base64_encoded_cookie_string"
 
 [notion]
 api_key = "your_notion_integration_token"
@@ -44,8 +43,6 @@ authorization_token = "your_auth_token"
 authorization_token = "your_other_auth_token"
 notion_database_id = "optional_override_database_id"
 ```
-
-`cookie_string_base64` is still required for the current ChatGPT history endpoints used by this CLI.
 
 ## Usage
 
@@ -128,8 +125,7 @@ sora/
 1. Open browser developer tools.
 2. Visit `https://chatgpt.com`.
 3. Inspect authenticated network requests.
-4. Copy the bearer token, user agent, and cookie string.
-5. Base64-encode the cookie string for `cookie_string_base64`.
+4. Copy the bearer token and user agent.
 
 ## Testing
 

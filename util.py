@@ -214,7 +214,7 @@ def retry_http():
 def http_retryable(status_code: int | None) -> bool:
     if status_code is None:
         return False
-    return status_code == 429 or status_code >= 500
+    return status_code == 429 or status_code == 403 or status_code >= 500
 
 
 def get_http_timeout() -> aiohttp.ClientTimeout:
@@ -255,10 +255,6 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
         account=account.model_copy(
             update={
                 "user_agent": account.user_agent or app_config.shared.user_agent,
-                "cookie_string_base64": (
-                    account.cookie_string_base64
-                    or app_config.shared.cookie_string_base64
-                ),
             }
         ),
         notion=notion,
@@ -269,17 +265,12 @@ def get_provider_context(
     provider: Literal["chatgpt"],
     options: RuntimeOptions | None = None,
 ) -> ProviderContext:
-    from base64 import b64decode
-
     resolved = resolve_config(options)
     headers = {
         "Authorization": f"Bearer {resolved.account.authorization_token.strip()}",
         "User-Agent": (resolved.account.user_agent or "").strip(),
         "Content-Type": "application/json",
     }
-    cookie_base64 = (resolved.account.cookie_string_base64 or "").strip()
-    if cookie_base64:
-        headers["Cookie"] = b64decode(cookie_base64).decode("utf-8").strip()
     return ProviderContext(
         provider=provider,
         headers=headers,
@@ -320,9 +311,6 @@ def validate_runtime_config(
                     missing.append(key)
             case "CHATGPT_USER_AGENT":
                 if not (resolved.account.user_agent or "").strip():
-                    missing.append(key)
-            case "CHATGPT_COOKIE_STRING_BASE64":
-                if not (resolved.account.cookie_string_base64 or "").strip():
                     missing.append(key)
     if missing:
         raise ValueError(f"Missing required configuration values: {', '.join(missing)}")

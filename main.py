@@ -130,7 +130,6 @@ def chatgpt_upload_to_notion(
             "NOTION_API_KEY",
             "CHATGPT_AUTHORIZATION_TOKEN",
             "CHATGPT_USER_AGENT",
-            "CHATGPT_COOKIE_STRING_BASE64",
         ]
         if db_id is None:
             required_vars.append("NOTION_DATABASE_ID")

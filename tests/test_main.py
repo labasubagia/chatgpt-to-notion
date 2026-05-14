@@ -126,7 +126,6 @@ class TestCLICommands:
                 account=AccountConfig(
                     authorization_token="token1",
                     user_agent="ua",
-                    cookie_string_base64="dGVzdA==",
                 ),
                 notion=NotionConfig(api_key="key", database_id="db"),
             ),
@@ -135,7 +134,6 @@ class TestCLICommands:
                 account=AccountConfig(
                     authorization_token="token2",
                     user_agent="ua",
-                    cookie_string_base64="dGVzdA==",
                 ),
                 notion=NotionConfig(api_key="key", database_id="db"),
             ),
@@ -253,7 +251,7 @@ class TestCLIConfigValidation:
     def test_missing_config_values_chatgpt(self):
         """Should fail if required TOML config values are missing."""
         with patch("util.validate_runtime_config") as mock_validate:
-            mock_validate.side_effect = ValueError("Missing CHATGPT_COOKIE")
+            mock_validate.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
             result = runner.invoke(
                 app,
                 [

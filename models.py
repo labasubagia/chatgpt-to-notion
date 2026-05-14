@@ -43,7 +43,6 @@ class AccountConfig(BaseModel):
 
     authorization_token: str
     user_agent: str | None = None
-    cookie_string_base64: str | None = None
     notion_database_id: str | None = None
 
 
@@ -53,7 +52,6 @@ class SharedAccountConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_agent: str | None = None
-    cookie_string_base64: str | None = None
 
 
 class AppConfig(BaseModel):
