@@ -2,6 +2,7 @@ import asyncio
 from typing import Annotated
 
 import typer
+from rich.table import Table
 
 import chatgpt
 import util
@@ -37,55 +38,44 @@ def _account_dataset(account_name: str, service: str) -> str:
 
 def _print_activity_table(rows: list[dict[str, str]]) -> None:
     if not rows:
-        typer.echo("No accounts found in config.")
+        util.console.print("No accounts found in config.")
         return
 
     columns = [
         "Account",
-        "Service",
         "Next Wait",
         "Next Cooldown",
         "Fully Ready In",
         "Total Wait",
         "Ready Generate?",
     ]
-    widths = {
-        column: max(len(column), *(len(row[column]) for row in rows))
-        for column in columns
-    }
-    header = "  ".join(column.ljust(widths[column]) for column in columns)
-    divider = "  ".join("-" * widths[column] for column in columns)
-    typer.echo(header)
-    typer.echo(divider)
+
+    table = Table(show_header=True, header_style="bold")
+    for column in columns:
+        table.add_column(column, no_wrap=True)
     for row in rows:
-        typer.echo("  ".join(row[column].ljust(widths[column]) for column in columns))
+        table.add_row(*(row[column] for column in columns))
+    util.console.print(table)
 
 
 @app.command()
 def account_status(
     config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
-    service: Annotated[
-        str,
-        typer.Option(help="Service to inspect: chatgpt"),
-    ] = "chatgpt",
     timezone: Annotated[
         str | None,
         typer.Option(help="IANA timezone name, e.g. Asia/Singapore"),
     ] = None,
 ) -> None:
     """Show which accounts are ready to generate new data."""
-    if service != "chatgpt":
-        raise typer.BadParameter("Service must be chatgpt.")
     rows = util.get_account_activity_statuses(
         config_path=config,
-        service=service,
         timezone_name=timezone,
     )
     _print_activity_table(rows)
 
 
-@app.command()
-def chatgpt_upload_to_notion(
+@app.command("upload-to-notion")
+def upload_to_notion(
     image_folder: Annotated[
         str, typer.Option(help="Path to the folder containing images")
     ] = "images",
@@ -96,8 +86,8 @@ def chatgpt_upload_to_notion(
     upload_to_notion: Annotated[
         bool, typer.Option(help="Whether to upload to Notion")
     ] = True,
-    remove_in_chatgpt: Annotated[
-        bool, typer.Option(help="Whether to remove uploaded items in ChatGPT")
+    remove: Annotated[
+        bool, typer.Option(help="Whether to remove uploaded items after upload")
     ] = False,
     check_notion_api: Annotated[
         bool,
@@ -121,7 +111,7 @@ def chatgpt_upload_to_notion(
         str | None, typer.Option(help="Named account from TOML config")
     ] = None,
 ):
-    """Upload ChatGPT image generations to Notion"""
+    """Upload image generations to Notion"""
     target_accounts = _resolve_target_accounts(account, config)
     total_accounts = len(target_accounts)
     for index, target_account in enumerate(target_accounts, start=1):
@@ -136,7 +126,7 @@ def chatgpt_upload_to_notion(
         util.validate_runtime_config(required_vars, options=options)
         resolved = util.resolve_config(options)
         util.print_account_log_header(
-            action="ChatGPT Upload To Notion",
+            action="Upload To Notion",
             account_name=resolved.account_name,
             position=index,
             total=total_accounts,
@@ -151,7 +141,7 @@ def chatgpt_upload_to_notion(
                 image_folder=image_folder,
                 db_id=effective_db_id,
                 upload_to_notion=upload_to_notion,
-                remove_in_chatgpt=remove_in_chatgpt,
+                remove_in_chatgpt=remove,
                 dataset=account_dataset,
                 check_notion_api=effective_check_notion_api,
                 from_history=effective_from_history,
@@ -160,7 +150,7 @@ def chatgpt_upload_to_notion(
             )
         )
         util.print_account_log_footer(
-            action="ChatGPT Upload To Notion",
+            action="Upload To Notion",
             account_name=resolved.account_name,
             position=index,
             total=total_accounts,

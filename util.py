@@ -32,7 +32,7 @@ OUTPUT_PATH = "./output"
 
 logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = "config.toml"
-console = Console()
+console = Console(width=120)
 
 
 def save_to_dataset(
@@ -380,14 +380,11 @@ def _activity_csv_path(
 def get_account_activity_statuses(
     *,
     config_path: str | None = None,
-    service: str = "chatgpt",
     timezone_name: str | None = None,
 ) -> list[dict[str, str]]:
     account_names = get_account_names(config_path)
     if not account_names:
         return []
-
-    services = [service]
 
     tz = (
         ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
@@ -397,18 +394,17 @@ def get_account_activity_statuses(
     sortable_rows: list[tuple[datetime, dict[str, str]]] = []
 
     for account_name in account_names:
-        for service_name in services:
-            csv_path = _activity_csv_path(
-                account_name=account_name,
-                service=service_name,
-            )
-            sort_key, row = _get_activity_status_for_csv(
-                account_name=account_name,
-                service=service_name,
-                csv_path=csv_path,
-                now=now,
-            )
-            sortable_rows.append((sort_key, row))
+        csv_path = _activity_csv_path(
+            account_name=account_name,
+            service="chatgpt",
+        )
+        sort_key, row = _get_activity_status_for_csv(
+            account_name=account_name,
+            service="chatgpt",
+            csv_path=csv_path,
+            now=now,
+        )
+        sortable_rows.append((sort_key, row))
 
     for _, row in sorted(sortable_rows, key=lambda item: item[0]):
         rows.append(row)
@@ -424,7 +420,6 @@ def _get_activity_status_for_csv(
 ) -> tuple[datetime, dict[str, str]]:
     ready_row = {
         "Account": account_name,
-        "Service": service,
         "Next Wait": "Ready",
         "Next Cooldown": "0s",
         "Fully Ready In": "0s",
@@ -462,7 +457,7 @@ def _get_activity_status_for_csv(
     count_waiting = len(active_items)
     status_msg = f"{count_waiting}/{total_count} to wait"
     ready_generate = (
-        f"({status_msg}) ❌" if count_waiting >= total_count else f"({status_msg}) ⚠️"
+        f"❌  ({status_msg})" if count_waiting >= total_count else f"⚠️  ({status_msg})"
     )
     total_wait = (last_active - first_active).total_seconds()
 

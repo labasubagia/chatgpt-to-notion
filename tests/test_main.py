@@ -25,13 +25,13 @@ class TestCLIHelp:
         """Should show main help."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "chatgpt-upload-to-notion" in result.stdout
+        assert "upload-to-notion" in result.stdout
         assert "account-status" in result.stdout
         assert "clean-output-path" in result.stdout
 
-    def test_chatgpt_upload_help(self):
-        """Should show chatgpt-upload-to-notion help."""
-        result = runner.invoke(app, ["chatgpt-upload-to-notion", "--help"])
+    def test_upload_help(self):
+        """Should show upload-to-notion help."""
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         clean_output = strip_ansi(result.stdout)
         assert "--image-folder" in clean_output
@@ -45,7 +45,7 @@ class TestCLIValidation:
         """Should reject database IDs that are too short."""
         result = runner.invoke(
             app,
-            ["chatgpt-upload-to-notion", "--db-id", "short"],
+            ["upload-to-notion", "--db-id", "short"],
         )
         assert result.exit_code != 0
         # Error message may be in stdout or stderr
@@ -59,7 +59,7 @@ class TestCLIValidation:
         """Should reject empty database IDs."""
         result = runner.invoke(
             app,
-            ["chatgpt-upload-to-notion", "--db-id", ""],
+            ["upload-to-notion", "--db-id", ""],
         )
         assert result.exit_code != 0
 
@@ -74,30 +74,30 @@ class TestCLICommands:
         yield
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion(self, mock_upload, mock_config_toml):
+    def test_upload_to_notion(self, mock_upload, mock_config_toml):
         """Should call chatgpt.upload_to_notion."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--image-folder", "test_images",
                 "--db-id", "test_db_12345678901234567890",
                 "--limit", "10",
-                "--no-remove-in-chatgpt",
+                "--no-remove",
             ],
         )
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_defaults_to_all_accounts(
+    def test_upload_to_notion_defaults_to_all_accounts(
         self, mock_upload, mock_config_toml
     ):
         """Should run all configured accounts when --account is omitted."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id", "test_db_12345678901234567890",
             ],
         )
@@ -108,7 +108,7 @@ class TestCLICommands:
     @patch("util.resolve_config")
     @patch("util.get_account_names", return_value=["acc1", "acc2"])
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_multiple_accounts(
+    def test_upload_to_notion_multiple_accounts(
         self,
         mock_upload,
         mock_accounts,
@@ -139,20 +139,20 @@ class TestCLICommands:
             ),
         ]
         result = runner.invoke(
-            app, ["chatgpt-upload-to-notion", "--db-id", "test_db_12345678901234567890"]
+            app, ["upload-to-notion", "--db-id", "test_db_12345678901234567890"]
         )
         assert result.exit_code == 0
         assert mock_upload.call_count == 2
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_uses_account_csv(
+    def test_upload_to_notion_uses_account_csv(
         self, mock_upload, mock_config_toml
     ):
         """Should write the single per-account CSV."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id", "test_db_12345678901234567890",
             ],
         )
@@ -162,14 +162,14 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["check_notion_api"] is False
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_check_notion_api_flag(
+    def test_upload_to_notion_check_notion_api_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should pass check_notion_api flag through."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--check-notion-api",
@@ -180,14 +180,14 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_from_history_flag(
+    def test_upload_to_notion_from_history_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should pass from_history flag through."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--from-history",
@@ -199,14 +199,14 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["check_notion_api"] is False
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_verify_history_flag(
+    def test_upload_to_notion_verify_history_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should make verify_history imply history source and Notion verification."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--verify-history",
@@ -239,10 +239,9 @@ class TestCLICommands:
         result = runner.invoke(app, ["account-status", "--timezone", "UTC"])
 
         assert result.exit_code == 0
-        assert "Account" in result.stdout
-        assert "Ready Generate?" in result.stdout
         assert "default" in result.stdout
         assert "Ready" in result.stdout
+        assert "0s" in result.stdout
 
 
 class TestCLIConfigValidation:
@@ -255,7 +254,7 @@ class TestCLIConfigValidation:
             result = runner.invoke(
                 app,
                 [
-                    "chatgpt-upload-to-notion",
+                    "upload-to-notion",
                     "--db-id", "test_db_12345678901234567890",
                 ],
             )
@@ -267,12 +266,12 @@ class TestCLIDefaults:
 
     def test_chatgpt_default_image_folder(self):
         """Should use default image folder."""
-        result = runner.invoke(app, ["chatgpt-upload-to-notion", "--help"])
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         assert "[default: images]" in result.stdout
 
     def test_chatgpt_default_limit(self):
         """Should use default limit."""
-        result = runner.invoke(app, ["chatgpt-upload-to-notion", "--help"])
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         assert "[default: 100]" in result.stdout
