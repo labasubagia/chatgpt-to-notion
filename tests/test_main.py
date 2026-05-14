@@ -25,21 +25,9 @@ class TestCLIHelp:
         """Should show main help."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "sora-upload-to-notion" in result.stdout
         assert "chatgpt-upload-to-notion" in result.stdout
         assert "account-status" in result.stdout
-        assert "sora-cleanup-trash" in result.stdout
-        assert "sora-cleanup-tasks" in result.stdout
         assert "clean-output-path" in result.stdout
-
-    def test_sora_upload_help(self):
-        """Should show sora-upload-to-notion help."""
-        result = runner.invoke(app, ["sora-upload-to-notion", "--help"])
-        assert result.exit_code == 0
-        clean_output = strip_ansi(result.stdout)
-        assert "--image-folder" in clean_output
-        assert "--db-id" in clean_output
-        assert "--trash-in-sora" in clean_output
 
     def test_chatgpt_upload_help(self):
         """Should show chatgpt-upload-to-notion help."""
@@ -57,7 +45,7 @@ class TestCLIValidation:
         """Should reject database IDs that are too short."""
         result = runner.invoke(
             app,
-            ["sora-upload-to-notion", "--db-id", "short"],
+            ["chatgpt-upload-to-notion", "--db-id", "short"],
         )
         assert result.exit_code != 0
         # Error message may be in stdout or stderr
@@ -71,7 +59,7 @@ class TestCLIValidation:
         """Should reject empty database IDs."""
         result = runner.invoke(
             app,
-            ["sora-upload-to-notion", "--db-id", ""],
+            ["chatgpt-upload-to-notion", "--db-id", ""],
         )
         assert result.exit_code != 0
 
@@ -84,22 +72,6 @@ class TestCLICommands:
         """Setup test environment."""
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
         yield
-
-    @patch("sora.upload_to_notion", new_callable=AsyncMock)
-    def test_sora_upload_to_notion(self, mock_upload, mock_config_toml):
-        """Should call sora.upload_to_notion."""
-        result = runner.invoke(
-            app,
-            [
-                "sora-upload-to-notion",
-                "--image-folder", "test_images",
-                "--db-id", "test_db_12345678901234567890",
-                "--no-trash-in-sora",
-                "--no-remove-in-sora",
-            ],
-        )
-        assert result.exit_code == 0
-        mock_upload.assert_called_once()
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
     def test_chatgpt_upload_to_notion(self, mock_upload, mock_config_toml):
@@ -247,20 +219,6 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["from_history"] is True
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
-    @patch("sora.cleanup_trash", new_callable=AsyncMock)
-    def test_sora_cleanup_trash(self, mock_cleanup, mock_config_toml):
-        """Should call sora.cleanup_trash."""
-        result = runner.invoke(app, ["sora-cleanup-trash"])
-        assert result.exit_code == 0
-        mock_cleanup.assert_called_once()
-
-    @patch("sora.cleanup_tasks", new_callable=AsyncMock)
-    def test_sora_cleanup_tasks(self, mock_cleanup, mock_config_toml):
-        """Should call sora.cleanup_tasks."""
-        result = runner.invoke(app, ["sora-cleanup-tasks"])
-        assert result.exit_code == 0
-        mock_cleanup.assert_called_once()
-
     def test_clean_output_path(self, tmp_output_dir, monkeypatch):
         """Should clean output path."""
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
@@ -292,17 +250,6 @@ class TestCLICommands:
 class TestCLIConfigValidation:
     """Tests for TOML configuration validation."""
 
-    def test_missing_config_values_sora(self):
-        """Should fail if required TOML config values are missing."""
-        with patch("util.validate_runtime_config") as mock_validate:
-            mock_validate.side_effect = ValueError("Missing NOTION_API_KEY")
-            result = runner.invoke(
-                app,
-                ["sora-upload-to-notion", "--db-id", "test_db_12345678901234567890"],
-            )
-            assert result.exit_code != 0
-            assert "Missing" in result.stdout or result.exception is not None
-
     def test_missing_config_values_chatgpt(self):
         """Should fail if required TOML config values are missing."""
         with patch("util.validate_runtime_config") as mock_validate:
@@ -319,12 +266,6 @@ class TestCLIConfigValidation:
 
 class TestCLIDefaults:
     """Tests for CLI default values."""
-
-    def test_sora_default_image_folder(self):
-        """Should use default image folder."""
-        result = runner.invoke(app, ["sora-upload-to-notion", "--help"])
-        assert result.exit_code == 0
-        assert "[default: images]" in result.stdout
 
     def test_chatgpt_default_image_folder(self):
         """Should use default image folder."""

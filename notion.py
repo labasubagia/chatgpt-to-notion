@@ -146,7 +146,7 @@ async def add_page_to_db(
     db_id: str,
     file_path: str,
     prompt: str | None,
-    model: str = "Sora",
+    model: str = "ChatGPT",
     face: str = "_original_",
     options: RuntimeOptions | None = None,
 ) -> dict[str, Any]:
@@ -235,7 +235,7 @@ async def upload_all_images_to_notion(
                             db_id,
                             file_path,
                             prompt,
-                            model="Sora",
+                            model="ChatGPT",
                             options=options,
                         )
                         pbar.write(f"✅ {file_name} uploaded")

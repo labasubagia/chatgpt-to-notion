@@ -4,7 +4,6 @@ from typing import Annotated
 import typer
 
 import chatgpt
-import sora
 import util
 from models import RuntimeOptions
 
@@ -67,7 +66,7 @@ def account_status(
     config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
     service: Annotated[
         str,
-        typer.Option(help="Service to inspect: chatgpt, sora, or all"),
+        typer.Option(help="Service to inspect: chatgpt"),
     ] = "chatgpt",
     timezone: Annotated[
         str | None,
@@ -75,157 +74,14 @@ def account_status(
     ] = None,
 ) -> None:
     """Show which accounts are ready to generate new data."""
-    if service not in {"chatgpt", "sora", "all"}:
-        raise typer.BadParameter("Service must be chatgpt, sora, or all.")
+    if service != "chatgpt":
+        raise typer.BadParameter("Service must be chatgpt.")
     rows = util.get_account_activity_statuses(
         config_path=config,
         service=service,
         timezone_name=timezone,
     )
     _print_activity_table(rows)
-
-
-@app.command()
-def sora_upload_to_notion(
-    image_folder: Annotated[
-        str, typer.Option(help="Path to the folder containing images")
-    ] = "images",
-    db_id: Annotated[
-        str | None,
-        typer.Option(help="Notion Database ID", callback=validate_db_id),
-    ] = None,
-    upload_to_notion: Annotated[
-        bool, typer.Option(help="Whether to upload to Notion")
-    ] = True,
-    trash_in_sora: Annotated[
-        bool, typer.Option(help="Whether to trash uploaded items in Sora")
-    ] = False,
-    remove_in_sora: Annotated[
-        bool, typer.Option(help="Whether to remove uploaded items in Sora")
-    ] = False,
-    check_notion_api: Annotated[
-        bool,
-        typer.Option(
-            help="Check Notion API even when uploaded_at is already set in CSV"
-        ),
-    ] = False,
-    config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
-    account: Annotated[
-        str | None, typer.Option(help="Named account from TOML config")
-    ] = None,
-):
-    """Upload Sora generations to Notion"""
-    target_accounts = _resolve_target_accounts(account, config)
-    total_accounts = len(target_accounts)
-    for index, target_account in enumerate(target_accounts, start=1):
-        options = RuntimeOptions(config_path=config, account=target_account)
-        required_vars = [
-            "NOTION_API_KEY",
-            "CHATGPT_AUTHORIZATION_TOKEN",
-            "CHATGPT_USER_AGENT",
-        ]
-        if db_id is None:
-            required_vars.append("NOTION_DATABASE_ID")
-        util.validate_runtime_config(required_vars, options=options)
-        resolved = util.resolve_config(options)
-        util.print_account_log_header(
-            action="Sora Upload To Notion",
-            account_name=resolved.account_name,
-            position=index,
-            total=total_accounts,
-        )
-        effective_db_id = db_id or resolved.notion.database_id
-        assert effective_db_id is not None, "db_id must be provided"
-        account_dataset = _account_dataset(resolved.account_name, "sora")
-        asyncio.run(
-            sora.upload_to_notion(
-                image_folder,
-                effective_db_id,
-                upload_to_notion=upload_to_notion,
-                trash_in_sora=trash_in_sora,
-                remove_in_sora=remove_in_sora,
-                dataset=account_dataset,
-                check_notion_api=check_notion_api,
-                options=options,
-            )
-        )
-        util.print_account_log_footer(
-            action="Sora Upload To Notion",
-            account_name=resolved.account_name,
-            position=index,
-            total=total_accounts,
-        )
-
-
-@app.command()
-def sora_cleanup_trash(
-    config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
-    account: Annotated[
-        str | None, typer.Option(help="Named account from TOML config")
-    ] = None,
-):
-    """Clean up trashed Sora generations"""
-    target_accounts = _resolve_target_accounts(account, config)
-    total_accounts = len(target_accounts)
-    for index, target_account in enumerate(target_accounts, start=1):
-        options = RuntimeOptions(config_path=config, account=target_account)
-        util.validate_runtime_config(
-            [
-                "CHATGPT_AUTHORIZATION_TOKEN",
-                "CHATGPT_USER_AGENT",
-            ],
-            options=options,
-        )
-        resolved = util.resolve_config(options)
-        account_dataset = _account_dataset(resolved.account_name, "sora_trash")
-        util.print_account_log_header(
-            action="Sora Cleanup Trash",
-            account_name=resolved.account_name,
-            position=index,
-            total=total_accounts,
-        )
-        asyncio.run(sora.cleanup_trash(dataset=account_dataset, options=options))
-        util.print_account_log_footer(
-            action="Sora Cleanup Trash",
-            account_name=resolved.account_name,
-            position=index,
-            total=total_accounts,
-        )
-
-
-@app.command()
-def sora_cleanup_tasks(
-    config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
-    account: Annotated[
-        str | None, typer.Option(help="Named account from TOML config")
-    ] = None,
-):
-    """Clean up empty Sora tasks"""
-    target_accounts = _resolve_target_accounts(account, config)
-    total_accounts = len(target_accounts)
-    for index, target_account in enumerate(target_accounts, start=1):
-        options = RuntimeOptions(config_path=config, account=target_account)
-        util.validate_runtime_config(
-            [
-                "CHATGPT_AUTHORIZATION_TOKEN",
-                "CHATGPT_USER_AGENT",
-            ],
-            options=options,
-        )
-        resolved = util.resolve_config(options)
-        util.print_account_log_header(
-            action="Sora Cleanup Tasks",
-            account_name=resolved.account_name,
-            position=index,
-            total=total_accounts,
-        )
-        asyncio.run(sora.cleanup_tasks(options=options))
-        util.print_account_log_footer(
-            action="Sora Cleanup Tasks",
-            account_name=resolved.account_name,
-            position=index,
-            total=total_accounts,
-        )
 
 
 @app.command()

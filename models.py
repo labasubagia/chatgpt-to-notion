@@ -26,18 +26,6 @@ class ChatGPTImageGeneration(BaseModel):
     prompt: str = ""
 
 
-class SoraImageGeneration(BaseModel):
-    """Image generation from Sora."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    created_at: str | None = None
-    id: str
-    task_id: str | None = None
-    url: str | None = None
-    prompt: str = ""
-
-
 class NotionConfig(BaseModel):
     """Notion credentials and defaults."""
 
@@ -49,7 +37,7 @@ class NotionConfig(BaseModel):
 
 
 class AccountConfig(BaseModel):
-    """Per-account ChatGPT/Sora credentials."""
+    """Per-account ChatGPT credentials."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -102,7 +90,7 @@ class ProviderContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["chatgpt", "sora"]
+    provider: Literal["chatgpt"]
     headers: dict[str, str]
     notion: NotionConfig
     account_name: str

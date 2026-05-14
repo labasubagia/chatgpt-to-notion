@@ -1,12 +1,10 @@
-"""
-Pytest configuration and shared fixtures for Sora CLI tests.
-"""
+"""Pytest configuration and shared fixtures for ChatGPT CLI tests."""
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from models import ChatGPTImageGeneration, SoraImageGeneration
+from models import ChatGPTImageGeneration
 
 
 @pytest.fixture
@@ -18,11 +16,10 @@ def tmp_output_dir():
 
 @pytest.fixture
 def sample_generation():
-    """Sample Sora/ChatGPT generation data as dict (for flexibility)."""
+    """Sample ChatGPT generation data as dict (for flexibility)."""
     return {
         "created_at": "2024-01-15T10:30:00.000000+00:00",
         "id": "gen_test123abc",
-        "task_id": "task_xyz789",
         "conversation_id": "conv_abc123",
         "message_id": "msg_def456",
         "asset_pointer": "asset_ghi789",
@@ -44,19 +41,6 @@ def sample_chatgpt_generation():
         prompt="A beautiful sunset over mountains, photorealistic, 4K",
     )
 
-
-@pytest.fixture
-def sample_sora_generation():
-    """Sample Sora generation as Pydantic model."""
-    return SoraImageGeneration(
-        created_at="2024-01-15T10:30:00.000000+00:00",
-        id="gen_test123abc",
-        task_id="task_xyz789",
-        url="https://example.com/image.png",
-        prompt="A beautiful sunset over mountains, photorealistic, 4K",
-    )
-
-
 @pytest.fixture
 def sample_generations(sample_generation):
     """List of sample generations as dicts (for flexibility)."""
@@ -67,12 +51,6 @@ def sample_generations(sample_generation):
 def sample_chatgpt_generations(sample_chatgpt_generation):
     """List of sample ChatGPT generations as Pydantic models."""
     return [sample_chatgpt_generation] * 3
-
-
-@pytest.fixture
-def sample_sora_generations(sample_sora_generation):
-    """List of sample Sora generations as Pydantic models."""
-    return [sample_sora_generation] * 3
 
 
 @pytest.fixture
@@ -96,7 +74,7 @@ def sample_notion_response():
             "Prompt": {
                 "rich_text": [{"text": {"content": "Test prompt"}}]
             },
-            "Model": {"select": {"name": "Sora"}},
+            "Model": {"select": {"name": "ChatGPT"}},
             "Face": {"select": {"name": "_original_"}},
         },
     }

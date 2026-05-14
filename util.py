@@ -266,7 +266,7 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
 
 
 def get_provider_context(
-    provider: Literal["chatgpt", "sora"],
+    provider: Literal["chatgpt"],
     options: RuntimeOptions | None = None,
 ) -> ProviderContext:
     from base64 import b64decode
@@ -397,10 +397,7 @@ def get_account_activity_statuses(
     if not account_names:
         return []
 
-    if service == "all":
-        services = ["chatgpt", "sora"]
-    else:
-        services = [service]
+    services = [service]
 
     tz = (
         ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
