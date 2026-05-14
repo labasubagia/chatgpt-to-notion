@@ -102,14 +102,26 @@ def sample_notion_response():
     }
 
 
-@pytest.fixture
-def mock_env_vars(monkeypatch):
-    """Mock environment variables for testing."""
-    monkeypatch.setenv("NOTION_API_KEY", "secret_test_notion_key")
-    monkeypatch.setenv("NOTION_DATABASE_ID", "test_database_123")
-    monkeypatch.setenv("CHATGPT_AUTHORIZATION_TOKEN", "test_token_abc")
-    monkeypatch.setenv("CHATGPT_USER_AGENT", "TestAgent/1.0")
-    monkeypatch.setenv("CHATGPT_COOKIE_STRING_BASE64", "dGVzdF9jb29raWU=")
+@pytest.fixture(autouse=True)
+def mock_config_toml(tmp_path, monkeypatch):
+    """Create a TOML config and run tests from that directory."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        """
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "dGVzdF9jb29raWU="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+[accounts.default]
+authorization_token = "test_token_abc"
+""".strip()
+    )
+    monkeypatch.chdir(tmp_path)
+    return config_file
 
 
 @pytest.fixture
@@ -172,20 +184,6 @@ def make_mock_response(json_data, status=200):
             pass
     
     return MockResp(json_data, status)
-
-
-@pytest.fixture
-def tmp_env_file(tmp_path):
-    """Create a temporary .env file for testing."""
-    env_file = tmp_path / ".env"
-    env_file.write_text("""
-NOTION_API_KEY=test_notion_key_123
-NOTION_DATABASE_ID=test_db_456
-CHATGPT_AUTHORIZATION_TOKEN=test_token_abc
-CHATGPT_USER_AGENT=TestAgent/1.0
-CHATGPT_COOKIE_STRING_BASE64=dGVzdF9jb29raWU=
-""")
-    return env_file
 
 
 @pytest.fixture(autouse=True)

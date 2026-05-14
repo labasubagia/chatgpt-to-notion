@@ -28,19 +28,19 @@ from notion import (
 class TestNotionHeaders:
     """Tests for Notion headers generation."""
 
-    def test_headers_contain_auth(self, mock_env_vars):
+    def test_headers_contain_auth(self, mock_config_toml):
         """Headers should contain Authorization."""
         headers = get_headers()
         assert "Authorization" in headers
         assert headers["Authorization"].startswith("Bearer ")
 
-    def test_headers_contain_notion_version(self, mock_env_vars):
+    def test_headers_contain_notion_version(self, mock_config_toml):
         """Headers should contain Notion-Version."""
         headers = get_headers()
         assert "Notion-Version" in headers
         assert headers["Notion-Version"] == "2025-09-03"
 
-    def test_headers_contain_content_type(self, mock_env_vars):
+    def test_headers_contain_content_type(self, mock_config_toml):
         """Headers should contain Content-Type."""
         headers = get_headers()
         assert "Content-Type" in headers
@@ -201,14 +201,14 @@ class TestNotionUpload:
 class TestNotionCaching:
     """Tests for Notion caching behavior."""
 
-    def test_data_sources_cache_populated(self, mock_env_vars):
+    def test_data_sources_cache_populated(self, mock_config_toml):
         """Data sources cache should be populated."""
         _db_data_sources_cache.clear()
         _db_data_sources_cache["test_db"] = [{"id": "ds_123"}]
 
         assert "test_db" in _db_data_sources_cache
 
-    def test_page_cache_populated(self, mock_env_vars):
+    def test_page_cache_populated(self, mock_config_toml):
         """Page cache should be populated."""
         _db_page_cache.clear()
         _db_page_cache.add("test_image.png")

@@ -1,0 +1,14 @@
+[shared]
+user_agent = "Mozilla/5.0 ..."
+cookie_string_base64 = "YmFzZTY0LWVuY29kZWQtY29va2llcw=="
+
+[notion]
+api_key = "secret_xxx"
+database_id = "your_default_database_id"
+
+[accounts.account_a]
+authorization_token = "eyJhbGciOi..."
+notion_database_id = "optional_account_specific_db_id"
+
+[accounts.account_b]
+authorization_token = "eyJhbGciOi..."

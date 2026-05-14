@@ -26,27 +26,27 @@ from chatgpt import (
 class TestChatGPTHeaders:
     """Tests for ChatGPT headers generation."""
 
-    def test_headers_contain_auth(self, mock_env_vars):
+    def test_headers_contain_auth(self, mock_config_toml):
         """Headers should contain Authorization."""
         headers = get_headers()
         assert "Authorization" in headers
         assert headers["Authorization"].startswith("Bearer ")
 
-    def test_headers_contain_user_agent(self, mock_env_vars):
+    def test_headers_contain_user_agent(self, mock_config_toml):
         """Headers should contain User-Agent."""
         headers = get_headers()
         assert "User-Agent" in headers
 
-    def test_headers_contain_content_type(self, mock_env_vars):
+    def test_headers_contain_content_type(self, mock_config_toml):
         """Headers should contain Content-Type."""
         headers = get_headers()
         assert "Content-Type" in headers
         assert headers["Content-Type"] == "application/json"
 
-    def test_headers_decode_cookie(self):
+    def test_headers_decode_cookie(self, mock_config_toml):
         """Should decode base64 cookie - tested via direct base64 verification."""
         # This test verifies the base64 decoding logic works correctly
-        # Actual cookie values come from .env and vary by environment
+        # Actual cookie values come from config.toml and vary by environment
         from base64 import b64decode
         
         # Test the decoding logic directly

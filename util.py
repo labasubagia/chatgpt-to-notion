@@ -1,13 +1,25 @@
 import asyncio
 import logging
 import shutil
+import tomllib
 from collections.abc import Sequence
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Literal
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import pandas as pd
 from pydantic import BaseModel
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+from models import (
+    AppConfig,
+    NotionContext,
+    ProviderContext,
+    ResolvedConfig,
+    RuntimeOptions,
+)
 
 MAX_RETRIES = 5
 MAX_CONCURRENT_DOWNLOADS = 10
@@ -17,9 +29,14 @@ HTTP_TIMEOUT_SECONDS = 30
 OUTPUT_PATH = "./output"
 
 logger = logging.getLogger(__name__)
+DEFAULT_CONFIG_PATH = "config.toml"
 
 
-def save_to_dataset(dataset: str, data: Sequence[dict] | Sequence[BaseModel]):
+def save_to_dataset(
+    dataset: str,
+    data: Sequence[dict] | Sequence[BaseModel],
+    keep_days: int = 2,
+) -> None:
     if dataset is None:
         return
     if len(data) == 0:
@@ -33,10 +50,43 @@ def save_to_dataset(dataset: str, data: Sequence[dict] | Sequence[BaseModel]):
     else:
         dict_data = list(data)  # type: ignore[arg-type]
 
-    df = pd.DataFrame(dict_data)
     file_path = get_output_path(dataset)
-    df.to_csv(file_path, index=False)
-    print(f"✅ Saved dataset to {file_path}\n")
+    df_new = pd.DataFrame(dict_data)
+    df_final = _merge_recent_rows_by_id(
+        target_path=file_path,
+        df_new=df_new,
+        keep_days=keep_days,
+    )
+    df_final.to_csv(file_path, index=False)
+    print(f"✅ Saved dataset to {file_path} (Total: {len(df_final)})\n")
+
+
+def _merge_recent_rows_by_id(
+    *,
+    target_path: Path,
+    df_new: pd.DataFrame,
+    keep_days: int,
+) -> pd.DataFrame:
+    if target_path.exists():
+        df_existing = pd.read_csv(target_path)
+        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+    else:
+        df_combined = df_new
+
+    if "id" in df_combined.columns:
+        df_combined = df_combined.dropna(subset=["id"]).copy()
+        df_combined = df_combined.drop_duplicates(subset=["id"], keep="last")
+
+    if "created_at" in df_combined.columns:
+        df_combined["created_at"] = pd.to_datetime(
+            df_combined["created_at"], utc=True, format="ISO8601", errors="coerce"
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+        df_combined = df_combined.dropna(subset=["created_at"]).copy()
+        df_combined = df_combined[df_combined["created_at"] >= cutoff]
+        df_combined = df_combined.sort_values(by="created_at", ascending=False)
+
+    return df_combined
 
 
 def get_output_path(input_path_str: str, is_dir=False) -> Path:
@@ -110,23 +160,274 @@ def get_http_timeout() -> aiohttp.ClientTimeout:
     return aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
 
 
-def validate_env_vars(required_vars: list[str]) -> None:
-    """Validate that required environment variables are set"""
-    from dotenv import dotenv_values
+def _load_toml_config(config_path: str | None = None) -> AppConfig | None:
+    path = Path(config_path or DEFAULT_CONFIG_PATH)
+    if not path.exists():
+        return None
+    with path.open("rb") as f:
+        return AppConfig.model_validate(tomllib.load(f))
 
-    config = dotenv_values()
-    missing = [var for var in required_vars if not (config.get(var) or "").strip()]
-    if missing:
+
+def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
+    options = options or RuntimeOptions()
+    app_config = _load_toml_config(options.config_path)
+
+    if not app_config or not app_config.accounts:
         raise ValueError(
-            f"Missing required environment variables: {', '.join(missing)}"
+            "Missing configuration. Create config.toml with at least one account."
         )
 
+    account_name = options.account
+    if not account_name and len(app_config.accounts) == 1:
+        account_name = next(iter(app_config.accounts))
+    if not account_name:
+        raise ValueError("No account selected. Pass --account.")
+    account = app_config.accounts.get(account_name)
+    if account is None:
+        raise ValueError(f"Unknown account: {account_name}")
+    notion = app_config.notion.model_copy(deep=True)
+    if account.notion_database_id:
+        notion.database_id = account.notion_database_id
+    return ResolvedConfig(
+        account_name=account_name,
+        account=account.model_copy(
+            update={
+                "user_agent": account.user_agent or app_config.shared.user_agent,
+                "cookie_string_base64": (
+                    account.cookie_string_base64
+                    or app_config.shared.cookie_string_base64
+                ),
+            }
+        ),
+        notion=notion,
+    )
 
-def get_config() -> dict[str, str | None]:
-    """Load configuration from .env file"""
-    from dotenv import dotenv_values
 
-    return dotenv_values()
+def get_provider_context(
+    provider: Literal["chatgpt", "sora"],
+    options: RuntimeOptions | None = None,
+) -> ProviderContext:
+    from base64 import b64decode
+
+    resolved = resolve_config(options)
+    headers = {
+        "Authorization": f"Bearer {resolved.account.authorization_token.strip()}",
+        "User-Agent": (resolved.account.user_agent or "").strip(),
+        "Content-Type": "application/json",
+    }
+    cookie_base64 = (resolved.account.cookie_string_base64 or "").strip()
+    if cookie_base64:
+        headers["Cookie"] = b64decode(cookie_base64).decode("utf-8").strip()
+    return ProviderContext(
+        provider=provider,
+        headers=headers,
+        notion=resolved.notion,
+        account_name=resolved.account_name,
+    )
+
+
+def get_notion_context(options: RuntimeOptions | None = None) -> NotionContext:
+    resolved = resolve_config(options)
+    notion = resolved.notion
+    return NotionContext(
+        headers={
+            "Authorization": f"Bearer {(notion.api_key or '').strip()}",
+            "Notion-Version": notion.version,
+            "Content-Type": "application/json",
+        },
+        database_id=notion.database_id,
+        account_name=resolved.account_name,
+    )
+
+
+def validate_runtime_config(
+    required_vars: list[str], options: RuntimeOptions | None = None
+) -> None:
+    resolved = resolve_config(options)
+    missing: list[str] = []
+    for key in required_vars:
+        match key:
+            case "NOTION_API_KEY":
+                if not (resolved.notion.api_key or "").strip():
+                    missing.append(key)
+            case "NOTION_DATABASE_ID":
+                if not (resolved.notion.database_id or "").strip():
+                    missing.append(key)
+            case "CHATGPT_AUTHORIZATION_TOKEN":
+                if not resolved.account.authorization_token.strip():
+                    missing.append(key)
+            case "CHATGPT_USER_AGENT":
+                if not (resolved.account.user_agent or "").strip():
+                    missing.append(key)
+            case "CHATGPT_COOKIE_STRING_BASE64":
+                if not (resolved.account.cookie_string_base64 or "").strip():
+                    missing.append(key)
+    if missing:
+        raise ValueError(f"Missing required configuration values: {', '.join(missing)}")
+
+
+def get_account_names(config_path: str | None = None) -> list[str]:
+    app_config = _load_toml_config(config_path)
+    if not app_config or not app_config.accounts:
+        return []
+    return list(app_config.accounts.keys())
+
+
+def print_account_log_header(
+    *,
+    action: str,
+    account_name: str,
+    position: int,
+    total: int,
+) -> None:
+    print()
+    print("=" * 72)
+    print(f"[{position}/{total}] {action}")
+    print(f"Account: {account_name}")
+    print("=" * 72)
+
+
+def print_account_log_footer(
+    *,
+    action: str,
+    account_name: str,
+    position: int,
+    total: int,
+) -> None:
+    print(f"Finished [{position}/{total}] {action} for {account_name}")
+    print("-" * 72)
+
+
+def _format_duration(total_seconds: float) -> str:
+    total_seconds_int = max(0, int(total_seconds))
+    hours = total_seconds_int // 3600
+    minutes = (total_seconds_int % 3600) // 60
+    seconds = total_seconds_int % 60
+
+    parts: list[str] = []
+    if hours:
+        parts.append(f"{hours}h")
+        if minutes:
+            parts.append(f"{minutes}m")
+    else:
+        if minutes:
+            parts.append(f"{minutes}m")
+        if seconds or not parts:
+            parts.append(f"{seconds}s")
+    return " ".join(parts)
+
+
+def _activity_csv_path(
+    *,
+    account_name: str,
+    service: str,
+) -> Path:
+    return Path(OUTPUT_PATH).resolve() / "history" / f"{account_name}_{service}.csv"
+
+
+def get_account_activity_statuses(
+    *,
+    config_path: str | None = None,
+    service: str = "chatgpt",
+    timezone_name: str | None = None,
+) -> list[dict[str, str]]:
+    account_names = get_account_names(config_path)
+    if not account_names:
+        return []
+
+    if service == "all":
+        services = ["chatgpt", "sora"]
+    else:
+        services = [service]
+
+    tz = (
+        ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
+    )
+    now = datetime.now(tz)
+    rows: list[dict[str, str]] = []
+    sortable_rows: list[tuple[datetime, dict[str, str]]] = []
+
+    for account_name in account_names:
+        for service_name in services:
+            csv_path = _activity_csv_path(
+                account_name=account_name,
+                service=service_name,
+            )
+            sort_key, row = _get_activity_status_for_csv(
+                account_name=account_name,
+                service=service_name,
+                csv_path=csv_path,
+                now=now,
+            )
+            sortable_rows.append((sort_key, row))
+
+    for _, row in sorted(sortable_rows, key=lambda item: item[0]):
+        rows.append(row)
+    return rows
+
+
+def _get_activity_status_for_csv(
+    *,
+    account_name: str,
+    service: str,
+    csv_path: Path,
+    now: datetime,
+) -> tuple[datetime, dict[str, str]]:
+    ready_row = {
+        "Account": account_name,
+        "Service": service,
+        "Next Wait": "Ready",
+        "Next Cooldown": "0s",
+        "Fully Ready In": "0s",
+        "Total Wait": "0s",
+        "Ready Generate?": "✅",
+    }
+    if not csv_path.exists():
+        return now - timedelta(days=1), ready_row
+
+    try:
+        df = pd.read_csv(csv_path, usecols=["created_at"])
+    except Exception:
+        return now - timedelta(days=1), ready_row
+
+    if df.empty:
+        return now - timedelta(days=1), ready_row
+
+    created_at = pd.to_datetime(
+        df["created_at"], utc=True, format="ISO8601", errors="coerce"
+    ).dropna()
+    if created_at.empty:
+        return now - timedelta(days=1), ready_row
+
+    created_at = created_at.dt.tz_convert(now.tzinfo)
+    cooldown_threshold = now - timedelta(days=1)
+    active_items = created_at[created_at > cooldown_threshold]
+    total_count = len(created_at)
+
+    if active_items.empty:
+        return now, ready_row
+
+    first_active = active_items.min()
+    last_active = active_items.max()
+    next_wait = first_active + timedelta(days=1)
+    count_waiting = len(active_items)
+    status_msg = f"{count_waiting}/{total_count} to wait"
+    ready_generate = (
+        f"({status_msg}) ❌" if count_waiting >= total_count else f"({status_msg}) ⚠️"
+    )
+    total_wait = (last_active - first_active).total_seconds()
+
+    return next_wait, {
+        "Account": account_name,
+        "Service": service,
+        "Next Wait": next_wait.strftime("%Y-%m-%d %H:%M:%S"),
+        "Next Cooldown": _format_duration((next_wait - now).total_seconds()),
+        "Fully Ready In": _format_duration(
+            (last_active + timedelta(days=1) - now).total_seconds()
+        ),
+        "Total Wait": _format_duration(total_wait),
+        "Ready Generate?": ready_generate,
+    }
 
 
 async def download_image(
@@ -139,4 +440,4 @@ async def download_image(
     async with session.get(url, headers=headers or {}) as response:
         response.raise_for_status()
         content = await response.read()
-        await asyncio.to_thread(lambda: open(file_path, "wb").write(content))
+        Path(file_path).write_bytes(content)

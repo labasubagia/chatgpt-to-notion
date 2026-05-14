@@ -35,18 +35,18 @@ from sora import (
 class TestSoraHeaders:
     """Tests for Sora headers generation."""
 
-    def test_headers_contain_auth(self, mock_env_vars):
+    def test_headers_contain_auth(self, mock_config_toml):
         """Headers should contain Authorization."""
         headers = get_headers()
         assert "Authorization" in headers
         assert headers["Authorization"].startswith("Bearer ")
 
-    def test_headers_contain_user_agent(self, mock_env_vars):
+    def test_headers_contain_user_agent(self, mock_config_toml):
         """Headers should contain User-Agent."""
         headers = get_headers()
         assert "User-Agent" in headers
 
-    def test_headers_contain_content_type(self, mock_env_vars):
+    def test_headers_contain_content_type(self, mock_config_toml):
         """Headers should contain Content-Type."""
         headers = get_headers()
         assert "Content-Type" in headers
