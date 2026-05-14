@@ -4,101 +4,30 @@
         // ChatGPT debug configurations
         {
             "args": [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--image-folder",
                 "debug_chatgpt_images",
-                "--no-remove-in-chatgpt"
+                "--no-remove"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
-            "name": "Debug: chatgpt_upload_to_notion",
+            "name": "Debug: upload_to_notion",
             "program": "${workspaceFolder}/main.py",
             "request": "launch",
             "type": "debugpy"
         },
         {
             "args": [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--image-folder",
                 "debug_chatgpt_images",
-                "--remove-in-chatgpt"
+                "--remove"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
-            "name": "Debug: chatgpt_upload_to_notion --remove-in-chatgpt",
-            "program": "${workspaceFolder}/main.py",
-            "request": "launch",
-            "type": "debugpy"
-        },
-        // 
-        // Sora debug configurations
-        {
-            "args": [
-                "sora-cleanup-trash"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": true,
-            "name": "Debug: sora_cleanup_trash",
-            "program": "${workspaceFolder}/main.py",
-            "request": "launch",
-            "type": "debugpy"
-        },
-        {
-            "args": [
-                "sora-cleanup-tasks"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": true,
-            "name": "Debug: sora_cleanup_tasks",
-            "program": "${workspaceFolder}/main.py",
-            "request": "launch",
-            "type": "debugpy"
-        },
-        {
-            "args": [
-                "sora-upload-to-notion",
-                "--image-folder",
-                "debug_sora_images",
-                "--no-remove-in-sora"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": true,
-            "name": "Debug: sora_upload_to_notion",
-            "program": "${workspaceFolder}/main.py",
-            "request": "launch",
-            "type": "debugpy"
-        },
-        {
-            "args": [
-                "sora-upload-to-notion",
-                "--image-folder",
-                "debug_sora_images",
-                "--trash-in-sora"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": true,
-            "name": "Debug: sora_upload_to_notion --trash-in-sora",
-            "program": "${workspaceFolder}/main.py",
-            "request": "launch",
-            "type": "debugpy"
-        },
-        {
-            "args": [
-                "sora-upload-to-notion",
-                "--image-folder",
-                "debug_sora_images",
-                "--remove-in-sora"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": true,
-            "name": "Debug: sora_upload_to_notion --remove-in-sora",
+            "name": "Debug: upload_to_notion --remove",
             "program": "${workspaceFolder}/main.py",
             "request": "launch",
             "type": "debugpy"

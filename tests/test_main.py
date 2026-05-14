@@ -25,25 +25,13 @@ class TestCLIHelp:
         """Should show main help."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "sora-upload-to-notion" in result.stdout
-        assert "chatgpt-upload-to-notion" in result.stdout
+        assert "upload-to-notion" in result.stdout
         assert "account-status" in result.stdout
-        assert "sora-cleanup-trash" in result.stdout
-        assert "sora-cleanup-tasks" in result.stdout
         assert "clean-output-path" in result.stdout
 
-    def test_sora_upload_help(self):
-        """Should show sora-upload-to-notion help."""
-        result = runner.invoke(app, ["sora-upload-to-notion", "--help"])
-        assert result.exit_code == 0
-        clean_output = strip_ansi(result.stdout)
-        assert "--image-folder" in clean_output
-        assert "--db-id" in clean_output
-        assert "--trash-in-sora" in clean_output
-
-    def test_chatgpt_upload_help(self):
-        """Should show chatgpt-upload-to-notion help."""
-        result = runner.invoke(app, ["chatgpt-upload-to-notion", "--help"])
+    def test_upload_help(self):
+        """Should show upload-to-notion help."""
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         clean_output = strip_ansi(result.stdout)
         assert "--image-folder" in clean_output
@@ -57,7 +45,7 @@ class TestCLIValidation:
         """Should reject database IDs that are too short."""
         result = runner.invoke(
             app,
-            ["sora-upload-to-notion", "--db-id", "short"],
+            ["upload-to-notion", "--db-id", "short"],
         )
         assert result.exit_code != 0
         # Error message may be in stdout or stderr
@@ -71,7 +59,7 @@ class TestCLIValidation:
         """Should reject empty database IDs."""
         result = runner.invoke(
             app,
-            ["sora-upload-to-notion", "--db-id", ""],
+            ["upload-to-notion", "--db-id", ""],
         )
         assert result.exit_code != 0
 
@@ -85,47 +73,31 @@ class TestCLICommands:
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
         yield
 
-    @patch("sora.upload_to_notion", new_callable=AsyncMock)
-    def test_sora_upload_to_notion(self, mock_upload, mock_config_toml):
-        """Should call sora.upload_to_notion."""
-        result = runner.invoke(
-            app,
-            [
-                "sora-upload-to-notion",
-                "--image-folder", "test_images",
-                "--db-id", "test_db_12345678901234567890",
-                "--no-trash-in-sora",
-                "--no-remove-in-sora",
-            ],
-        )
-        assert result.exit_code == 0
-        mock_upload.assert_called_once()
-
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion(self, mock_upload, mock_config_toml):
+    def test_upload_to_notion(self, mock_upload, mock_config_toml):
         """Should call chatgpt.upload_to_notion."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--image-folder", "test_images",
                 "--db-id", "test_db_12345678901234567890",
                 "--limit", "10",
-                "--no-remove-in-chatgpt",
+                "--no-remove",
             ],
         )
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_defaults_to_all_accounts(
+    def test_upload_to_notion_defaults_to_all_accounts(
         self, mock_upload, mock_config_toml
     ):
         """Should run all configured accounts when --account is omitted."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id", "test_db_12345678901234567890",
             ],
         )
@@ -136,7 +108,7 @@ class TestCLICommands:
     @patch("util.resolve_config")
     @patch("util.get_account_names", return_value=["acc1", "acc2"])
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_multiple_accounts(
+    def test_upload_to_notion_multiple_accounts(
         self,
         mock_upload,
         mock_accounts,
@@ -154,7 +126,6 @@ class TestCLICommands:
                 account=AccountConfig(
                     authorization_token="token1",
                     user_agent="ua",
-                    cookie_string_base64="dGVzdA==",
                 ),
                 notion=NotionConfig(api_key="key", database_id="db"),
             ),
@@ -163,26 +134,25 @@ class TestCLICommands:
                 account=AccountConfig(
                     authorization_token="token2",
                     user_agent="ua",
-                    cookie_string_base64="dGVzdA==",
                 ),
                 notion=NotionConfig(api_key="key", database_id="db"),
             ),
         ]
         result = runner.invoke(
-            app, ["chatgpt-upload-to-notion", "--db-id", "test_db_12345678901234567890"]
+            app, ["upload-to-notion", "--db-id", "test_db_12345678901234567890"]
         )
         assert result.exit_code == 0
         assert mock_upload.call_count == 2
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_uses_account_csv(
+    def test_upload_to_notion_uses_account_csv(
         self, mock_upload, mock_config_toml
     ):
         """Should write the single per-account CSV."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id", "test_db_12345678901234567890",
             ],
         )
@@ -192,14 +162,14 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["check_notion_api"] is False
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_check_notion_api_flag(
+    def test_upload_to_notion_check_notion_api_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should pass check_notion_api flag through."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--check-notion-api",
@@ -210,14 +180,14 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_from_history_flag(
+    def test_upload_to_notion_from_history_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should pass from_history flag through."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--from-history",
@@ -229,14 +199,14 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["check_notion_api"] is False
 
     @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
-    def test_chatgpt_upload_to_notion_verify_history_flag(
+    def test_upload_to_notion_verify_history_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should make verify_history imply history source and Notion verification."""
         result = runner.invoke(
             app,
             [
-                "chatgpt-upload-to-notion",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--verify-history",
@@ -246,20 +216,6 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert mock_upload.call_args.kwargs["from_history"] is True
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
-
-    @patch("sora.cleanup_trash", new_callable=AsyncMock)
-    def test_sora_cleanup_trash(self, mock_cleanup, mock_config_toml):
-        """Should call sora.cleanup_trash."""
-        result = runner.invoke(app, ["sora-cleanup-trash"])
-        assert result.exit_code == 0
-        mock_cleanup.assert_called_once()
-
-    @patch("sora.cleanup_tasks", new_callable=AsyncMock)
-    def test_sora_cleanup_tasks(self, mock_cleanup, mock_config_toml):
-        """Should call sora.cleanup_tasks."""
-        result = runner.invoke(app, ["sora-cleanup-tasks"])
-        assert result.exit_code == 0
-        mock_cleanup.assert_called_once()
 
     def test_clean_output_path(self, tmp_output_dir, monkeypatch):
         """Should clean output path."""
@@ -283,34 +239,22 @@ class TestCLICommands:
         result = runner.invoke(app, ["account-status", "--timezone", "UTC"])
 
         assert result.exit_code == 0
-        assert "Account" in result.stdout
-        assert "Ready Generate?" in result.stdout
         assert "default" in result.stdout
         assert "Ready" in result.stdout
+        assert "0s" in result.stdout
 
 
 class TestCLIConfigValidation:
     """Tests for TOML configuration validation."""
 
-    def test_missing_config_values_sora(self):
-        """Should fail if required TOML config values are missing."""
-        with patch("util.validate_runtime_config") as mock_validate:
-            mock_validate.side_effect = ValueError("Missing NOTION_API_KEY")
-            result = runner.invoke(
-                app,
-                ["sora-upload-to-notion", "--db-id", "test_db_12345678901234567890"],
-            )
-            assert result.exit_code != 0
-            assert "Missing" in result.stdout or result.exception is not None
-
     def test_missing_config_values_chatgpt(self):
         """Should fail if required TOML config values are missing."""
         with patch("util.validate_runtime_config") as mock_validate:
-            mock_validate.side_effect = ValueError("Missing CHATGPT_COOKIE")
+            mock_validate.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
             result = runner.invoke(
                 app,
                 [
-                    "chatgpt-upload-to-notion",
+                    "upload-to-notion",
                     "--db-id", "test_db_12345678901234567890",
                 ],
             )
@@ -320,20 +264,14 @@ class TestCLIConfigValidation:
 class TestCLIDefaults:
     """Tests for CLI default values."""
 
-    def test_sora_default_image_folder(self):
-        """Should use default image folder."""
-        result = runner.invoke(app, ["sora-upload-to-notion", "--help"])
-        assert result.exit_code == 0
-        assert "[default: images]" in result.stdout
-
     def test_chatgpt_default_image_folder(self):
         """Should use default image folder."""
-        result = runner.invoke(app, ["chatgpt-upload-to-notion", "--help"])
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         assert "[default: images]" in result.stdout
 
     def test_chatgpt_default_limit(self):
         """Should use default limit."""
-        result = runner.invoke(app, ["chatgpt-upload-to-notion", "--help"])
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         assert "[default: 100]" in result.stdout

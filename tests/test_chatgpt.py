@@ -44,24 +44,14 @@ class TestChatGPTHeaders:
         assert "Content-Type" in headers
         assert headers["Content-Type"] == "application/json"
 
-    def test_headers_decode_cookie(self, mock_config_toml):
-        """Should decode base64 cookie - tested via direct base64 verification."""
-        # This test verifies the base64 decoding logic works correctly
-        # Actual cookie values come from config.toml and vary by environment
-        from base64 import b64decode
-
-        # Test the decoding logic directly
-        test_cookie_b64 = "dGVzdF9jb29raWU="
-        decoded = b64decode(test_cookie_b64).decode("utf-8")
-        assert decoded == "test_cookie"
-
-        # Verify get_headers() returns a dict with required keys
-        # (actual values depend on environment)
+    def test_headers_do_not_require_cookie(self, mock_config_toml):
+        """Headers should not include a Cookie entry."""
         headers = get_headers()
         assert isinstance(headers, dict)
         assert "Authorization" in headers
         assert "User-Agent" in headers
         assert "Content-Type" in headers
+        assert "Cookie" not in headers
 
 
 @pytest.mark.integration

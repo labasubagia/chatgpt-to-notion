@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from models import SoraImageGeneration
+from models import ChatGPTImageGeneration
 from notion import (
     _db_data_sources_cache,
     _db_page_cache,
@@ -204,7 +204,7 @@ class TestNotionUpload:
             "test_db_123",
             str(img_path),
             "Test prompt",
-            model="Sora",
+            model="ChatGPT",
         )
         assert "id" in result
         assert result["id"] == "page_123"
@@ -251,8 +251,6 @@ class TestNotionUploadAllImages:
         """Should upload all images to Notion."""
         from unittest.mock import AsyncMock, patch
 
-        from models import SoraImageGeneration
-
         # Use relative path within tmp_path
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
@@ -264,17 +262,21 @@ class TestNotionUploadAllImages:
         (images_dir / "img_456.png").write_bytes(b"fake png")
 
         generations = [
-            SoraImageGeneration(
+            ChatGPTImageGeneration(
                 created_at="2024-01-01T00:00:00",
                 id="img_123",
-                task_id="task_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
                 url="https://example.com/img1.png",
                 prompt="Test prompt 1",
             ),
-            SoraImageGeneration(
+            ChatGPTImageGeneration(
                 created_at="2024-01-01T00:00:00",
                 id="img_456",
-                task_id="task_2",
+                conversation_id="conv_2",
+                message_id="msg_2",
+                asset_pointer="asset_2",
                 url="https://example.com/img2.png",
                 prompt="Test prompt 2",
             ),
@@ -310,10 +312,12 @@ class TestNotionUploadAllImages:
         (images_dir / "img_123.png").write_bytes(b"fake png")
 
         generations = [
-            SoraImageGeneration(
+            ChatGPTImageGeneration(
                 created_at="2024-01-01T00:00:00",
                 id="img_123",
-                task_id="task_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
                 url="https://example.com/img.png",
                 prompt="Test prompt",
             )
@@ -358,10 +362,12 @@ class TestNotionUploadAllImages:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
 
         generations = [
-            SoraImageGeneration(
+            ChatGPTImageGeneration(
                 created_at="2026-05-14T00:00:00+00:00",
                 id="img_123",
-                task_id="task_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
                 url="https://example.com/img.png",
                 prompt="Test prompt",
             )
@@ -407,10 +413,12 @@ class TestNotionUploadAllImages:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
 
         generations = [
-            SoraImageGeneration(
+            ChatGPTImageGeneration(
                 created_at="2026-05-14T00:00:00+00:00",
                 id="img_123",
-                task_id="task_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
                 url="https://example.com/img.png",
                 prompt="Test prompt",
             )
@@ -459,10 +467,12 @@ class TestNotionUploadAllImages:
         ).to_csv(dataset_path, index=False)
 
         generations = [
-            SoraImageGeneration(
+            ChatGPTImageGeneration(
                 created_at="2026-05-14T00:00:00+00:00",
                 id="img_123",
-                task_id="task_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
                 url="https://example.com/img.png",
                 prompt="Test prompt",
             )

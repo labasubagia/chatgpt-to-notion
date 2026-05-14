@@ -1,7 +1,7 @@
 [project]
-name = "sora"
+name = "chatgpt-image-cli"
 version = "0.1.0"
-description = "CLI tool for managing and backing up AI-generated images from Sora and ChatGPT"
+description = "CLI tool for managing and backing up ChatGPT-generated images"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -9,6 +9,7 @@ dependencies = [
     "pandas>=3.0.0",
     "pillow>=12.1.0",
     "pydantic>=2.12.5",
+    "rich>=14.2.0",
     "requests>=2.32.5",
     "ruff>=0.15.0",
     "tenacity>=9.1.4",
@@ -17,6 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
+chatgpt-image-cli = "main:app"
 sora = "main:app"
 
 [build-system]
@@ -24,7 +26,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["main", "sora", "chatgpt", "notion", "img", "util", "models"]
+py-modules = ["main", "chatgpt", "notion", "img", "util", "models"]
 
 [dependency-groups]
 dev = [

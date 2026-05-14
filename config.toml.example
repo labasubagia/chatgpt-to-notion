@@ -1,6 +1,5 @@
 [shared]
 user_agent = "Mozilla/5.0 ..."
-cookie_string_base64 = "YmFzZTY0LWVuY29kZWQtY29va2llcw=="
 
 [notion]
 api_key = "secret_xxx"

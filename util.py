@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import pandas as pd
 from pydantic import BaseModel
+from rich.console import Console
+from rich.rule import Rule
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from models import (
@@ -30,6 +32,7 @@ OUTPUT_PATH = "./output"
 
 logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = "config.toml"
+console = Console(width=120)
 
 
 def save_to_dataset(
@@ -214,7 +217,7 @@ def retry_http():
 def http_retryable(status_code: int | None) -> bool:
     if status_code is None:
         return False
-    return status_code == 429 or status_code >= 500
+    return status_code == 429 or status_code == 403 or status_code >= 500
 
 
 def get_http_timeout() -> aiohttp.ClientTimeout:
@@ -255,10 +258,6 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
         account=account.model_copy(
             update={
                 "user_agent": account.user_agent or app_config.shared.user_agent,
-                "cookie_string_base64": (
-                    account.cookie_string_base64
-                    or app_config.shared.cookie_string_base64
-                ),
             }
         ),
         notion=notion,
@@ -266,20 +265,15 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
 
 
 def get_provider_context(
-    provider: Literal["chatgpt", "sora"],
+    provider: Literal["chatgpt"],
     options: RuntimeOptions | None = None,
 ) -> ProviderContext:
-    from base64 import b64decode
-
     resolved = resolve_config(options)
     headers = {
         "Authorization": f"Bearer {resolved.account.authorization_token.strip()}",
         "User-Agent": (resolved.account.user_agent or "").strip(),
         "Content-Type": "application/json",
     }
-    cookie_base64 = (resolved.account.cookie_string_base64 or "").strip()
-    if cookie_base64:
-        headers["Cookie"] = b64decode(cookie_base64).decode("utf-8").strip()
     return ProviderContext(
         provider=provider,
         headers=headers,
@@ -321,9 +315,6 @@ def validate_runtime_config(
             case "CHATGPT_USER_AGENT":
                 if not (resolved.account.user_agent or "").strip():
                     missing.append(key)
-            case "CHATGPT_COOKIE_STRING_BASE64":
-                if not (resolved.account.cookie_string_base64 or "").strip():
-                    missing.append(key)
     if missing:
         raise ValueError(f"Missing required configuration values: {', '.join(missing)}")
 
@@ -342,11 +333,10 @@ def print_account_log_header(
     position: int,
     total: int,
 ) -> None:
-    print()
-    print("=" * 72)
-    print(f"[{position}/{total}] {action}")
-    print(f"Account: {account_name}")
-    print("=" * 72)
+    console.print()
+    console.print(Rule(title=f"[{position}/{total}] {action}"))
+    console.print(f"Account: {account_name}")
+    console.print(Rule())
 
 
 def print_account_log_footer(
@@ -356,8 +346,8 @@ def print_account_log_footer(
     position: int,
     total: int,
 ) -> None:
-    print(f"Finished [{position}/{total}] {action} for {account_name}")
-    print("-" * 72)
+    console.print(f"Finished [{position}/{total}] {action} for {account_name}")
+    console.print(Rule())
 
 
 def _format_duration(total_seconds: float) -> str:
@@ -390,17 +380,11 @@ def _activity_csv_path(
 def get_account_activity_statuses(
     *,
     config_path: str | None = None,
-    service: str = "chatgpt",
     timezone_name: str | None = None,
 ) -> list[dict[str, str]]:
     account_names = get_account_names(config_path)
     if not account_names:
         return []
-
-    if service == "all":
-        services = ["chatgpt", "sora"]
-    else:
-        services = [service]
 
     tz = (
         ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
@@ -410,18 +394,17 @@ def get_account_activity_statuses(
     sortable_rows: list[tuple[datetime, dict[str, str]]] = []
 
     for account_name in account_names:
-        for service_name in services:
-            csv_path = _activity_csv_path(
-                account_name=account_name,
-                service=service_name,
-            )
-            sort_key, row = _get_activity_status_for_csv(
-                account_name=account_name,
-                service=service_name,
-                csv_path=csv_path,
-                now=now,
-            )
-            sortable_rows.append((sort_key, row))
+        csv_path = _activity_csv_path(
+            account_name=account_name,
+            service="chatgpt",
+        )
+        sort_key, row = _get_activity_status_for_csv(
+            account_name=account_name,
+            service="chatgpt",
+            csv_path=csv_path,
+            now=now,
+        )
+        sortable_rows.append((sort_key, row))
 
     for _, row in sorted(sortable_rows, key=lambda item: item[0]):
         rows.append(row)
@@ -437,7 +420,6 @@ def _get_activity_status_for_csv(
 ) -> tuple[datetime, dict[str, str]]:
     ready_row = {
         "Account": account_name,
-        "Service": service,
         "Next Wait": "Ready",
         "Next Cooldown": "0s",
         "Fully Ready In": "0s",
@@ -475,7 +457,7 @@ def _get_activity_status_for_csv(
     count_waiting = len(active_items)
     status_msg = f"{count_waiting}/{total_count} to wait"
     ready_generate = (
-        f"({status_msg}) ❌" if count_waiting >= total_count else f"({status_msg}) ⚠️"
+        f"❌  ({status_msg})" if count_waiting >= total_count else f"⚠️  ({status_msg})"
     )
     total_wait = (last_active - first_active).total_seconds()
 
