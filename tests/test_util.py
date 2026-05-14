@@ -1,27 +1,35 @@
 """
 Unit tests for util.py - pure functions, no external dependencies.
 """
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import aiohttp
+import pandas as pd
 import pytest
 
+from models import RuntimeOptions
 from util import (
+    HTTP_TIMEOUT_SECONDS,
     MAX_CONCURRENT_DOWNLOADS,
     MAX_CONCURRENT_REQUESTS,
     MAX_RETRIES,
-    HTTP_TIMEOUT_SECONDS,
     OUTPUT_PATH,
     clean_output_path,
     download_image,
-    get_config,
+    get_account_activity_statuses,
+    get_account_names,
     get_http_timeout,
+    get_notion_context,
     get_output_path,
+    get_provider_context,
+    get_uploaded_generation_ids,
     http_retryable,
+    mark_generations_uploaded,
+    resolve_config,
     retry_http,
     save_to_dataset,
     should_retry_http,
-    validate_env_vars,
 )
 
 
@@ -149,26 +157,148 @@ class TestGetHttpTimeout:
         assert timeout.total == 30
 
 
-class TestValidateEnvVars:
-    """Tests for validate_env_vars function."""
+class TestTomlConfig:
+    """Tests for TOML multi-account configuration."""
 
-    def test_missing_vars_raises_error(self):
-        """Missing variables should raise ValueError."""
-        with patch("dotenv.dotenv_values", return_value={"EXISTING_VAR": "value"}):
-            with pytest.raises(ValueError, match="Missing required"):
-                validate_env_vars(["MISSING_VAR"])
+    def test_resolve_config_from_toml(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[notion]",
+                    'api_key = "notion_key"',
+                    'database_id = "db_default_1234567890"',
+                    "",
+                    "[accounts.work]",
+                    'authorization_token = "token_work"',
+                    'user_agent = "Agent/1.0"',
+                    'cookie_string_base64 = "dGVzdF9jb29raWU="',
+                    'notion_database_id = "db_work_1234567890"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
 
-    def test_all_vars_present(self):
-        """All variables present should pass."""
-        with patch("dotenv.dotenv_values", return_value={"VAR1": "val1", "VAR2": "val2"}):
-            # Should not raise
-            validate_env_vars(["VAR1", "VAR2"])
+        resolved = resolve_config(RuntimeOptions(account="work"))
 
-    def test_empty_var_treated_as_missing(self):
-        """Empty variables should be treated as missing."""
-        with patch("dotenv.dotenv_values", return_value={"VAR1": "", "VAR2": "  "}):
-            with pytest.raises(ValueError, match="Missing required"):
-                validate_env_vars(["VAR1", "VAR2"])
+        assert resolved.account_name == "work"
+        assert resolved.account.authorization_token == "token_work"
+        assert resolved.notion.database_id == "db_work_1234567890"
+
+    def test_provider_and_notion_context_from_toml(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[notion]",
+                    'api_key = "notion_key"',
+                    'database_id = "db_default_1234567890"',
+                    "",
+                    "[accounts.personal]",
+                    'authorization_token = "token_personal"',
+                    'user_agent = "Agent/2.0"',
+                    'cookie_string_base64 = "dGVzdF9jb29raWU="',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        provider = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+        notion = get_notion_context(RuntimeOptions(account="personal"))
+
+        assert provider.headers["Authorization"] == "Bearer token_personal"
+        assert provider.headers["Cookie"] == "test_cookie"
+        assert notion.headers["Authorization"] == "Bearer notion_key"
+
+    def test_shared_defaults_applied_to_account(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[shared]",
+                    'user_agent = "SharedAgent/1.0"',
+                    'cookie_string_base64 = "dGVzdF9jb29raWU="',
+                    "",
+                    "[accounts.personal]",
+                    'authorization_token = "token_personal"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        provider = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+
+        assert provider.headers["User-Agent"] == "SharedAgent/1.0"
+        assert provider.headers["Cookie"] == "test_cookie"
+
+    def test_get_account_names_from_toml(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[accounts.a]",
+                    'authorization_token = "a"',
+                    'user_agent = "ua"',
+                    "",
+                    "[accounts.b]",
+                    'authorization_token = "b"',
+                    'user_agent = "ua"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        assert get_account_names() == ["a", "b"]
+
+
+class TestAccountActivityStatus:
+    """Tests for account readiness status."""
+
+    def test_missing_activity_file_is_ready(self):
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Account"] == "default"
+        assert rows[0]["Service"] == "chatgpt"
+        assert rows[0]["Next Wait"] == "Ready"
+        assert rows[0]["Ready Generate?"] == "✅"
+
+    def test_recent_activity_is_not_ready(self, tmp_path, monkeypatch):
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        pd.DataFrame(
+            [
+                {
+                    "id": "x",
+                    "created_at": (now - timedelta(hours=1)).isoformat(),
+                }
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Next Wait"] != "Ready"
+        assert rows[0]["Ready Generate?"] == "(1/1 to wait) ❌"
+
+    def test_old_activity_is_ready(self, tmp_path, monkeypatch):
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        pd.DataFrame(
+            [
+                {
+                    "id": "x",
+                    "created_at": (now - timedelta(days=2)).isoformat(),
+                }
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Next Wait"] == "Ready"
+        assert rows[0]["Ready Generate?"] == "✅"
 
 
 class TestSaveToDataset:
@@ -191,12 +321,114 @@ class TestSaveToDataset:
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
         data = [{"id": "test123", "prompt": "test prompt"}]
         save_to_dataset("test_dataset.csv", data)
-        
+
         csv_path = tmp_output_dir / "test_dataset.csv"
         assert csv_path.exists()
         content = csv_path.read_text()
         assert "id" in content
         assert "test123" in content
+
+    def test_merges_existing_csv_by_id_and_keeps_recent_rows(
+        self, tmp_output_dir, monkeypatch
+    ):
+        """Should merge new data with old dataset and keep only recent rows."""
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        csv_path = tmp_output_dir / "chatgpt.csv"
+        pd.DataFrame(
+            [
+                {"id": "old", "created_at": now.isoformat(), "prompt": "old"},
+                {
+                    "id": "dupe",
+                    "created_at": (now - timedelta(hours=1)).isoformat(),
+                    "prompt": "before",
+                },
+                {
+                    "id": "expired",
+                    "created_at": (now - timedelta(days=3)).isoformat(),
+                    "prompt": "expired",
+                },
+            ]
+        ).to_csv(csv_path, index=False)
+
+        save_to_dataset(
+            "chatgpt.csv",
+            [
+                {
+                    "id": "dupe",
+                    "created_at": now.isoformat(),
+                    "prompt": "after",
+                },
+                {
+                    "id": "new",
+                    "created_at": now.isoformat(),
+                    "prompt": "new",
+                },
+            ],
+        )
+
+        merged = pd.read_csv(csv_path)
+        assert set(merged["id"]) == {"old", "dupe", "new"}
+        assert merged.loc[merged["id"] == "dupe", "prompt"].item() == "after"
+
+    def test_preserves_uploaded_at_when_merging_existing_rows(
+        self, tmp_output_dir, monkeypatch
+    ):
+        """Should keep uploaded_at when an existing generation is fetched again."""
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        csv_path = tmp_output_dir / "history" / "default_chatgpt.csv"
+        csv_path.parent.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        pd.DataFrame(
+            [
+                {
+                    "id": "dupe",
+                    "created_at": now.isoformat(),
+                    "prompt": "before",
+                    "uploaded_at": "2026-05-14T00:00:00+00:00",
+                }
+            ]
+        ).to_csv(csv_path, index=False)
+
+        save_to_dataset(
+            "history/default_chatgpt.csv",
+            [
+                {
+                    "id": "dupe",
+                    "created_at": now.isoformat(),
+                    "prompt": "after",
+                }
+            ],
+        )
+
+        merged = pd.read_csv(csv_path)
+        assert merged.loc[0, "prompt"] == "after"
+        assert merged.loc[0, "uploaded_at"] == "2026-05-14T00:00:00+00:00"
+
+    def test_uploaded_generation_helpers(self, tmp_output_dir, monkeypatch):
+        """Should read and update uploaded_at in dataset CSV."""
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        csv_path = tmp_output_dir / "history" / "default_chatgpt.csv"
+        csv_path.parent.mkdir(parents=True)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": "2026-05-14T00:00:00+00:00"},
+                {
+                    "id": "b",
+                    "created_at": "2026-05-14T00:00:00+00:00",
+                    "uploaded_at": "2026-05-14T01:00:00+00:00",
+                },
+            ]
+        ).to_csv(csv_path, index=False)
+
+        assert get_uploaded_generation_ids("history/default_chatgpt.csv") == {"b"}
+
+        mark_generations_uploaded("history/default_chatgpt.csv", {"a"})
+
+        assert get_uploaded_generation_ids("history/default_chatgpt.csv") == {
+            "a",
+            "b",
+        }
 
 
 class TestCleanOutputPath:
@@ -205,27 +437,27 @@ class TestCleanOutputPath:
     def test_removes_files(self, tmp_output_dir, monkeypatch):
         """Should remove all files except .gitkeep."""
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
-        
+
         # Create test files
         (tmp_output_dir / "test.txt").write_text("test")
         (tmp_output_dir / ".gitkeep").write_text("keep")
-        
+
         clean_output_path()
-        
+
         assert not (tmp_output_dir / "test.txt").exists()
         assert (tmp_output_dir / ".gitkeep").exists()
 
     def test_removes_directories(self, tmp_output_dir, monkeypatch):
         """Should remove directories."""
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
-        
+
         # Create test directory
         test_dir = tmp_output_dir / "test_dir"
         test_dir.mkdir()
         (test_dir / "file.txt").write_text("test")
-        
+
         clean_output_path()
-        
+
         assert not test_dir.exists()
 
     def test_nonexistent_path(self, tmp_path, monkeypatch):
@@ -267,77 +499,78 @@ class TestRetryHttp:
 class TestDownloadImage:
     """Tests for download_image function."""
 
+    class MockDownloadResponse:
+        def __init__(self, content: bytes = b"data", error: Exception | None = None):
+            self.content = content
+            self.error = error
+
+        def raise_for_status(self):
+            if self.error:
+                raise self.error
+
+        async def read(self):
+            return self.content
+
+    class MockContext:
+        def __init__(self, response):
+            self.response = response
+
+        async def __aenter__(self):
+            return self.response
+
+        async def __aexit__(self, *args):
+            return None
+
     @pytest.mark.asyncio
     async def test_downloads_image(self, tmp_path):
         """Should download image to file."""
-        mock_response = AsyncMock()
-        mock_response.read.return_value = b"image_data"
-        mock_response.raise_for_status = MagicMock()
-
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__.return_value = mock_response
-        mock_ctx.__aexit__.return_value = None
+        mock_response = self.MockDownloadResponse(content=b"image_data")
 
         mock_session = MagicMock()
-        mock_session.get.return_value = mock_ctx
+        mock_session.get.return_value = self.MockContext(mock_response)
 
         file_path = tmp_path / "test.png"
         await download_image(mock_session, "http://example.com/img.png", str(file_path))
 
-        mock_session.get.assert_called_once_with("http://example.com/img.png", headers={})
+        mock_session.get.assert_called_once_with(
+            "http://example.com/img.png", headers={}
+        )
         assert file_path.read_bytes() == b"image_data"
 
     @pytest.mark.asyncio
     async def test_with_custom_headers(self, tmp_path):
         """Should use custom headers."""
-        mock_response = AsyncMock()
-        mock_response.read.return_value = b"data"
-        mock_response.raise_for_status = MagicMock()
-
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__.return_value = mock_response
-        mock_ctx.__aexit__.return_value = None
+        mock_response = self.MockDownloadResponse(content=b"data")
 
         mock_session = MagicMock()
-        mock_session.get.return_value = mock_ctx
+        mock_session.get.return_value = self.MockContext(mock_response)
 
         headers = {"Authorization": "Bearer token"}
         file_path = tmp_path / "test.png"
-        await download_image(mock_session, "http://example.com/img.png", str(file_path), headers)
+        await download_image(
+            mock_session, "http://example.com/img.png", str(file_path), headers
+        )
 
-        mock_session.get.assert_called_once_with("http://example.com/img.png", headers=headers)
+        mock_session.get.assert_called_once_with(
+            "http://example.com/img.png", headers=headers
+        )
 
     @pytest.mark.asyncio
     async def test_http_error_raises(self, tmp_path):
         """Should raise on HTTP error."""
-        def raise_error():
-            raise aiohttp.ClientResponseError(None, None, status=404, message="Not Found")
-
-        mock_response = AsyncMock()
-        mock_response.raise_for_status = raise_error
-        mock_response.read.return_value = b"data"
-
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__.return_value = mock_response
-        mock_ctx.__aexit__.return_value = None
+        error = aiohttp.ClientResponseError(
+            None, None, status=404, message="Not Found"
+        )
+        mock_response = self.MockDownloadResponse(error=error)
 
         mock_session = MagicMock()
-        mock_session.get.return_value = mock_ctx
+        mock_session.get.return_value = self.MockContext(mock_response)
 
         file_path = tmp_path / "test.png"
         with pytest.raises(aiohttp.ClientResponseError):
-            await download_image(mock_session, "http://example.com/img.png", str(file_path))
-
-
-class TestGetConfig:
-    """Tests for get_config function."""
-
-    def test_returns_dict(self):
-        """Should return config dict."""
-        with patch("dotenv.dotenv_values", return_value={"KEY": "value"}):
-            config = get_config()
-            assert isinstance(config, dict)
-            assert config["KEY"] == "value"
+            await download_image(
+                mock_session, "http://example.com/img.png", str(file_path)
+            )
 
 
 class TestConstants:

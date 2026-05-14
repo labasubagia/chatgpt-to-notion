@@ -1,23 +1,23 @@
 import asyncio
 import os
-from base64 import b64decode
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
+import pandas as pd
 from tqdm.asyncio import tqdm
 
 from img import add_prompt_to_images
-from models import ChatGPTImageGeneration
+from models import ChatGPTImageGeneration, RuntimeOptions
 from notion import is_page_exists_in_db, upload_all_images_to_notion
 from util import (
     MAX_CONCURRENT_DOWNLOADS,
     MAX_CONCURRENT_REQUESTS,
     download_image,
-    get_config,
     get_http_timeout,
     get_output_path,
+    get_provider_context,
     retry_http,
     save_to_dataset,
 )
@@ -25,27 +25,15 @@ from util import (
 BASE_URL = "https://chatgpt.com/backend-api"
 
 
-def get_headers() -> dict[str, str]:
+def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
     """Get headers for ChatGPT API requests"""
-    config = get_config()
-    headers = {
-        "Authorization": (
-            f"Bearer {(config.get('CHATGPT_AUTHORIZATION_TOKEN') or '').strip()}"
-        ),
-        "User-Agent": (config.get("CHATGPT_USER_AGENT") or "").strip(),
-        "Content-Type": "application/json",
-    }
-
-    cookie_base64 = (config.get("CHATGPT_COOKIE_STRING_BASE64") or "").strip()
-    if cookie_base64:
-        headers["Cookie"] = b64decode(cookie_base64).decode("utf-8").strip()
-
-    return headers
+    return get_provider_context("chatgpt", options).headers
 
 
 @retry_http()
 async def get_conversations(
     session: aiohttp.ClientSession,
+    headers: dict[str, str] | None = None,
     offset: int = 0,
     limit: int = 100,
     is_archived: bool = False,
@@ -54,7 +42,7 @@ async def get_conversations(
 ) -> dict[str, Any]:
     async with session.get(
         f"{BASE_URL}/conversations",
-        headers=get_headers(),
+        headers=headers or get_headers(),
         params={
             "offset": offset,
             "limit": limit,
@@ -70,11 +58,13 @@ async def get_conversations(
 
 @retry_http()
 async def get_conversation_details(
-    session: aiohttp.ClientSession, conversation_id: str
+    session: aiohttp.ClientSession,
+    conversation_id: str,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     async with session.get(
         f"{BASE_URL}/conversation/{conversation_id}",
-        headers=get_headers(),
+        headers=headers or get_headers(),
     ) as response:
         response.raise_for_status()
         data = await response.json()
@@ -83,11 +73,13 @@ async def get_conversation_details(
 
 @retry_http()
 async def delete_conversation(
-    session: aiohttp.ClientSession, conversation_id: str
+    session: aiohttp.ClientSession,
+    conversation_id: str,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     async with session.patch(
         f"{BASE_URL}/conversation/{conversation_id}",
-        headers=get_headers(),
+        headers=headers or get_headers(),
         json={"is_visible": False},
     ) as response:
         response.raise_for_status()
@@ -97,11 +89,13 @@ async def delete_conversation(
 
 @retry_http()
 async def get_image_generations(
-    session: aiohttp.ClientSession, limit: int = 100
+    session: aiohttp.ClientSession,
+    headers: dict[str, str] | None = None,
+    limit: int = 100,
 ) -> dict[str, Any]:
     async with session.get(
         f"{BASE_URL}/my/recent/image_gen",
-        headers=get_headers(),
+        headers=headers or get_headers(),
         params={"limit": limit},
     ) as response:
         response.raise_for_status()
@@ -156,11 +150,13 @@ def get_prompt_from_image_node_in_conversation(
 
 async def fetch_image_generations(
     limit: int = 100,
+    options: RuntimeOptions | None = None,
 ) -> list[ChatGPTImageGeneration]:
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    headers = get_headers(options)
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
-        data = await get_image_generations(session, limit=limit)
+        data = await get_image_generations(session, headers=headers, limit=limit)
 
         total = len(data.get("items", []))
         pbar = tqdm(total=total, desc="Fetching generation details")
@@ -171,7 +167,7 @@ async def fetch_image_generations(
             async with semaphore:
                 try:
                     detail = await get_conversation_details(
-                        session, img_gen["conversation_id"]
+                        session, img_gen["conversation_id"], headers=headers
                     )
                     prompt = get_prompt_from_image_node_in_conversation(
                         detail, img_gen["message_id"], img_gen["asset_pointer"]
@@ -214,15 +210,53 @@ async def fetch_image_generations(
         return sorted(valid_generations, key=lambda x: x.created_at)
 
 
+def load_image_generations_from_dataset(
+    dataset: str,
+    include_uploaded: bool = False,
+) -> list[ChatGPTImageGeneration]:
+    file_path = get_output_path(dataset)
+    if not file_path.exists():
+        print(f"No history dataset found at {file_path}.")
+        return []
+
+    df = pd.read_csv(file_path)
+    if df.empty:
+        return []
+    if "uploaded_at" not in df.columns:
+        df["uploaded_at"] = ""
+    if not include_uploaded:
+        df = df[df["uploaded_at"].fillna("").astype(str).str.strip() == ""]
+
+    generations: list[ChatGPTImageGeneration] = []
+    for row in df.fillna("").to_dict(orient="records"):
+        try:
+            generations.append(
+                ChatGPTImageGeneration(
+                    created_at=str(row.get("created_at", "")),
+                    id=str(row.get("id", "")),
+                    conversation_id=str(row.get("conversation_id", "")),
+                    message_id=str(row.get("message_id", "")),
+                    asset_pointer=str(row.get("asset_pointer", "")),
+                    url=str(row.get("url", "")),
+                    prompt=str(row.get("prompt", "")),
+                )
+            )
+        except Exception as e:
+            print(f"⚠️  Skipped invalid history row: {e}")
+    return generations
+
+
 async def download_all_images(
-    generations: list[ChatGPTImageGeneration], download_folder: str
+    generations: list[ChatGPTImageGeneration],
+    download_folder: str,
+    options: RuntimeOptions | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Downloading images")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
     async with aiohttp.ClientSession(
-        headers=get_headers(), timeout=get_http_timeout()
+        headers=get_headers(options), timeout=get_http_timeout()
     ) as session:
 
         async def download(row: ChatGPTImageGeneration):
@@ -237,7 +271,7 @@ async def download_all_images(
 
                 try:
                     await download_image(
-                        session, row.url, str(file_path), headers=get_headers()
+                        session, row.url, str(file_path), headers=get_headers(options)
                     )
                     pbar.write(f"✅ {file_name}")
                 except Exception as e:
@@ -252,7 +286,9 @@ async def download_all_images(
 
 
 async def delete_conversation_of_image_generation_uploaded_to_notion(
-    generations: list[ChatGPTImageGeneration], db_id: str
+    generations: list[ChatGPTImageGeneration],
+    db_id: str,
+    options: RuntimeOptions | None = None,
 ) -> None:
     generations = list({gen.conversation_id: gen for gen in generations}.values())
     total = len(generations)
@@ -264,7 +300,7 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
         conversation_map[gen.conversation_id].add(gen.id)
 
     async with aiohttp.ClientSession(
-        headers=get_headers(), timeout=get_http_timeout()
+        headers=get_headers(options), timeout=get_http_timeout()
     ) as session:
 
         async def delete(row: ChatGPTImageGeneration):
@@ -273,7 +309,9 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                 conversation_id = row.conversation_id
 
                 try:
-                    exists = await is_page_exists_in_db(session, db_id, file_name)
+                    exists = await is_page_exists_in_db(
+                        session, db_id, file_name, options=options
+                    )
                     if not exists:
                         pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
                         pbar.update(1)
@@ -287,7 +325,9 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                         pbar.update(1)
                         return
 
-                    await delete_conversation(session, conversation_id)
+                    await delete_conversation(
+                        session, conversation_id, headers=get_headers(options)
+                    )
                     pbar.write(f"✅ Conversation ID {conversation_id}")
                 except Exception as e:
                     pbar.write(f"❌ Conversation ID {conversation_id} failed: {e}")
@@ -307,28 +347,46 @@ async def upload_to_notion(
     remove_in_chatgpt: bool = False,
     add_prompt_to_image: bool = True,
     dataset: str | None = None,
+    check_notion_api: bool = False,
+    from_history: bool = False,
     limit: int = 100,
+    options: RuntimeOptions | None = None,
 ) -> None:
-    generations = await fetch_image_generations(limit=limit)
+    if from_history:
+        if not dataset:
+            raise ValueError("dataset is required when from_history=True")
+        generations = load_image_generations_from_dataset(
+            dataset=dataset,
+            include_uploaded=check_notion_api,
+        )
+    else:
+        generations = await fetch_image_generations(limit=limit, options=options)
 
     if not generations:
         print("No generations found.")
         return
 
-    if dataset:
+    if dataset and not from_history:
         save_to_dataset(dataset=dataset, data=generations)
 
-    await download_all_images(generations=generations, download_folder=image_folder)
+    await download_all_images(
+        generations=generations, download_folder=image_folder, options=options
+    )
 
     if add_prompt_to_image:
         add_prompt_to_images(generations=generations, folder=image_folder)
 
     if upload_to_notion:
         await upload_all_images_to_notion(
-            generations=generations, db_id=db_id, image_folder=image_folder
+            generations=generations,
+            db_id=db_id,
+            image_folder=image_folder,
+            dataset=dataset,
+            check_notion_api=check_notion_api,
+            options=options,
         )
 
     if remove_in_chatgpt:
         await delete_conversation_of_image_generation_uploaded_to_notion(
-            generations=generations, db_id=db_id
+            generations=generations, db_id=db_id, options=options
         )

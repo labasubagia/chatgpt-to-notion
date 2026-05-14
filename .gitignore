@@ -21,3 +21,4 @@ htmlcov/
 *.egg
 tests/.env
 tests/cassettes/*.yaml.newdist/
+*.toml

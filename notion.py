@@ -6,45 +6,42 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from models import ImageGeneration
+from models import ImageGeneration, RuntimeOptions
 from util import (
     MAX_CONCURRENT_REQUESTS,
-    get_config,
     get_http_timeout,
+    get_notion_context,
     get_output_path,
+    get_uploaded_generation_ids,
+    mark_generations_uploaded,
     retry_http,
 )
 
 BASE_URL = "https://api.notion.com"
 
-# Default database ID from config (can be overridden via CLI)
-_config = get_config()
-DB_ID = _config.get("NOTION_DATABASE_ID")
+DB_ID: str | None = None
 
 # Cache for database data sources
 _db_data_sources_cache: dict[str, Any] = {}
 _db_page_cache: set[str] = set()
 
 
-def get_headers() -> dict[str, str]:
+def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
     """Get headers for Notion API requests"""
-    config = get_config()
-    return {
-        "Authorization": f"Bearer {config.get('NOTION_API_KEY')}",
-        "Notion-Version": "2025-09-03",
-        "Content-Type": "application/json",
-    }
+    return get_notion_context(options).headers
 
 
 @retry_http()
 async def get_db_data_sources(
-    session: aiohttp.ClientSession, db_id: str
+    session: aiohttp.ClientSession,
+    db_id: str,
+    headers: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     if db_id in _db_data_sources_cache:
         return _db_data_sources_cache[db_id]
 
     async with session.get(
-        f"{BASE_URL}/v1/databases/{db_id}", headers=get_headers()
+        f"{BASE_URL}/v1/databases/{db_id}", headers=headers or get_headers()
     ) as response:
         response.raise_for_status()
         data = await response.json()
@@ -55,11 +52,14 @@ async def get_db_data_sources(
 
 @retry_http()
 async def query_data_source(
-    session: aiohttp.ClientSession, data_source_id: str, query: str
+    session: aiohttp.ClientSession,
+    data_source_id: str,
+    query: str,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     async with session.post(
         f"{BASE_URL}/v1/data_sources/{data_source_id}/query",
-        headers=get_headers(),
+        headers=headers or get_headers(),
         json={
             "filter": {"and": [{"property": "Name", "rich_text": {"equals": query}}]}
         },
@@ -72,12 +72,16 @@ async def is_page_exists_in_db(
     session: aiohttp.ClientSession,
     db_id: str,
     query: str,
+    options: RuntimeOptions | None = None,
 ) -> bool:
+    headers = get_headers(options)
     if query in _db_page_cache:
         return True
-    data_sources = await get_db_data_sources(session, db_id)
+    data_sources = await get_db_data_sources(session, db_id, headers=headers)
     for data_source in data_sources:
-        data = await query_data_source(session, data_source["id"], query)
+        data = await query_data_source(
+            session, data_source["id"], query, headers=headers
+        )
         for page in data.get("results", []):
             name = page["properties"]["Name"]["title"][0]["text"]["content"]
             if name == query:
@@ -88,7 +92,9 @@ async def is_page_exists_in_db(
 
 @retry_http()
 async def create_upload_img(
-    session: aiohttp.ClientSession, file_path: str
+    session: aiohttp.ClientSession,
+    file_path: str,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -96,7 +102,7 @@ async def create_upload_img(
 
     async with session.post(
         f"{BASE_URL}/v1/file_uploads",
-        headers=get_headers(),
+        headers=headers or get_headers(),
         json={
             "mode": "single_part",
             "filename": file_name,
@@ -109,20 +115,24 @@ async def create_upload_img(
 
 @retry_http()
 async def send_upload_img(
-    session: aiohttp.ClientSession, file_upload_id: str, file_path: str
+    session: aiohttp.ClientSession,
+    file_upload_id: str,
+    file_path: str,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     file_name = os.path.basename(file_path)
 
+    notion_headers = headers or get_headers()
     with open(file_path, "rb") as f:
         data = aiohttp.FormData()
         data.add_field("file", f, filename=file_name, content_type="image/png")
         async with session.post(
             f"{BASE_URL}/v1/file_uploads/{file_upload_id}/send",
             headers={
-                "Authorization": get_headers()["Authorization"],
-                "Notion-Version": get_headers()["Notion-Version"],
+                "Authorization": notion_headers["Authorization"],
+                "Notion-Version": notion_headers["Notion-Version"],
             },
             data=data,
         ) as response:
@@ -138,13 +148,17 @@ async def add_page_to_db(
     prompt: str | None,
     model: str = "Sora",
     face: str = "_original_",
+    options: RuntimeOptions | None = None,
 ) -> dict[str, Any]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     file_name = os.path.basename(file_path)
 
-    create_upload_res = await create_upload_img(session, file_path)
-    send_upload_res = await send_upload_img(session, create_upload_res["id"], file_path)
+    headers = get_headers(options)
+    create_upload_res = await create_upload_img(session, file_path, headers=headers)
+    send_upload_res = await send_upload_img(
+        session, create_upload_res["id"], file_path, headers=headers
+    )
 
     payload: dict[str, Any] = {
         "parent": {"database_id": db_id},
@@ -158,22 +172,10 @@ async def add_page_to_db(
                     }
                 ]
             },
-            "Prompt": {"rich_text": []},
-            "Model": {"select": {"name": model}},
-            "Face": {"select": {"name": face}},
         },
     }
     prompt = str(prompt).strip()
-
-    if 0 > len(prompt) < 2000:
-        payload["properties"]["Prompt"]["rich_text"].append(
-            {"text": {"content": prompt}}
-        )
-    elif len(prompt) >= 2000:
-        payload["properties"]["Prompt"]["rich_text"].append(
-            {"text": {"content": "refer body"}}
-        )
-        payload["markdown"] = f"""
+    payload["markdown"] = f"""
 **Prompt:**
 
 ```
@@ -181,14 +183,10 @@ async def add_page_to_db(
 ```
 
 """.strip()
-    else:
-        payload["properties"]["Prompt"]["rich_text"].append(
-            {"text": {"content": "N/A"}}
-        )
 
     async with session.post(
         f"{BASE_URL}/v1/pages",
-        headers=get_headers(),
+        headers=headers,
         json=payload,
     ) as response:
         response.raise_for_status()
@@ -197,37 +195,64 @@ async def add_page_to_db(
 
 
 async def upload_all_images_to_notion(
-    generations: Sequence[ImageGeneration], db_id: str, image_folder: str
+    generations: Sequence[ImageGeneration],
+    db_id: str,
+    image_folder: str,
+    dataset: str | None = None,
+    check_notion_api: bool = False,
+    options: RuntimeOptions | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    uploaded_generation_ids = get_uploaded_generation_ids(dataset)
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
 
-        async def upload(generation_id: str, prompt: str | None):
+        async def upload(generation_id: str, prompt: str | None) -> str | None:
             async with semaphore:
                 file_name = f"{generation_id}.png"
+                if generation_id in uploaded_generation_ids and not check_notion_api:
+                    pbar.write(f"⏭️  {file_name} skipped, marked uploaded in CSV")
+                    pbar.update(1)
+                    return None
+
                 file_path = get_output_path(os.path.join(image_folder, file_name))
                 if not os.path.exists(file_path):
                     pbar.write(f"⚠️  {file_name} not found, skipped")
                     pbar.update(1)
-                    return
+                    return None
 
                 try:
-                    if await is_page_exists_in_db(session, db_id, file_name):
+                    if await is_page_exists_in_db(
+                        session, db_id, file_name, options=options
+                    ):
                         pbar.write(f"⏭️  {file_name} skipped, already exists")
+                        return generation_id
                     else:
                         await add_page_to_db(
-                            session, db_id, file_path, prompt, model="Sora"
+                            session,
+                            db_id,
+                            file_path,
+                            prompt,
+                            model="Sora",
+                            options=options,
                         )
                         pbar.write(f"✅ {file_name} uploaded")
+                        return generation_id
                 except Exception as e:
                     pbar.write(f"❌ {file_name} failed: {e}")
+                    return None
                 finally:
                     pbar.update(1)
 
-        await asyncio.gather(*[upload(row.id, row.prompt) for row in generations])
+        uploaded_results = await asyncio.gather(
+            *[upload(row.id, row.prompt) for row in generations]
+        )
 
     pbar.close()
+    mark_generations_uploaded(
+        dataset,
+        {generation_id for generation_id in uploaded_results if generation_id},
+    )
     print()  # Add spacing after progress bar

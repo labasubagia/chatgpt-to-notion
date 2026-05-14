@@ -41,28 +41,34 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-3. **Configure environment variables**
+3. **Configure credentials**
 
-Copy the example environment file and fill in your credentials:
+Multi-account setup is now supported through `config.toml` and is the recommended path.
 
 ```bash
-cp .env.example .env
+cp config.toml.example config.toml
 ```
 
-Edit `.env` with your API keys:
+Edit `config.toml` with your Notion credentials and one or more named accounts:
 
-```env
-# Notion API credentials
-NOTION_API_KEY=your_notion_integration_token
-NOTION_DATABASE_ID=your_database_id
+```toml
+[shared]
+user_agent = "your_user_agent"
+cookie_string_base64 = "base64_encoded_cookie_string"
 
-# ChatGPT/Sora credentials (inspect browser network tab)
-CHATGPT_AUTHORIZATION_TOKEN=your_auth_token
-CHATGPT_USER_AGENT=your_user_agent
-CHATGPT_COOKIE_STRING_BASE64=base64_encoded_cookie_string
+[notion]
+api_key = "your_notion_integration_token"
+database_id = "your_database_id"
+
+[accounts.personal]
+authorization_token = "your_auth_token"
+
+[accounts.work]
+authorization_token = "your_other_auth_token"
+notion_database_id = "optional_override_database_id"
 ```
 
-> **Security Note**: Never commit your `.env` file to version control. The `.gitignore` is configured to exclude it.
+> **Security Note**: Never commit your credential files to version control.
 
 ## Usage
 
@@ -78,34 +84,83 @@ python main.py --help
 
 ```bash
 python main.py sora-upload-to-notion \
-  --image-folder sora_images \
-  --db-id YOUR_NOTION_DB_ID \
+  --account personal \
+  --image-folder images \
   --upload-to-notion true \
   --trash-in-sora false \
-  --remove-in-sora false \
-  --dataset sora_backup_2024.csv
+  --remove-in-sora false
 ```
 
 **Options:**
-- `--image-folder`: Folder to store downloaded images (default: `sora_images`)
+- `--image-folder`: Folder under `output/` to store downloaded images (default: `images`)
 - `--db-id`: Notion database ID
 - `--upload-to-notion`: Whether to upload to Notion (default: `true`)
 - `--trash-in-sora`: Move uploaded items to trash (default: `false`)
 - `--remove-in-sora`: Permanently delete uploaded items (default: `false`)
-- `--dataset`: CSV file to save generation metadata
 
 #### Upload ChatGPT Image Generations to Notion
 
 ```bash
 python main.py chatgpt-upload-to-notion \
-  --image-folder chatgpt_images \
-  --db-id YOUR_NOTION_DB_ID \
+  --account work \
+  --image-folder images \
   --limit 100
 ```
 
+To run every configured account in sequence, omit `--account`:
+
+```bash
+python main.py chatgpt-upload-to-notion
+python main.py sora-upload-to-notion
+```
+
+Check which accounts are ready before running uploads:
+
+```bash
+python main.py account-status --timezone Asia/Singapore
+```
+
+`account-status` follows the Colab cooldown logic: rows with `created_at` in the
+last 24 hours are still waiting, and accounts with no recent rows are ready. It
+reads the same single per-account CSV used by uploads:
+`output/history/<account>_chatgpt.csv`.
+
+Upload commands automatically write one merged CSV per account and service:
+`output/history/<account>_chatgpt.csv`, `output/history/<account>_sora.csv`, or
+`output/history/<account>_sora_trash.csv`. Each run merges new and old rows by
+unique `id` and keeps only the last 2 days of data.
+
+After an image is uploaded to Notion, the CSV row gets `uploaded_at`. Future runs
+trust that value and skip the Notion "already exists" API check for that image.
+Use `--check-notion-api` when you want to verify Notion directly and repair the
+CSV state:
+
+```bash
+python main.py chatgpt-upload-to-notion --check-notion-api
+```
+
+If ChatGPT data has already been deleted, upload from the saved CSV instead of
+fetching live ChatGPT generations:
+
+```bash
+python main.py chatgpt-upload-to-notion --from-history
+```
+
+For recovery/verification, use the shortcut that reads history and checks
+Notion directly:
+
+```bash
+python main.py chatgpt-upload-to-notion --verify-history
+```
+
 **Options:**
-- `--image-folder`: Folder to store downloaded images (default: `chatgpt_images`)
+- `--image-folder`: Folder under `output/` to store downloaded images (default: `images`)
 - `--db-id`: Notion database ID
+- `--config`: Path to `config.toml` if not using `./config.toml`
+- `--account`: Named account inside `config.toml`; if omitted, all accounts run sequentially
+- `--check-notion-api`: Check Notion directly even when `uploaded_at` is already set
+- `--from-history`: Use `output/history/<account>_chatgpt.csv` as the generation source
+- `--verify-history`: Shortcut for `--from-history --check-notion-api`
 - `--limit`: Maximum number of generations to process (default: `100`)
 - `--remove-in-chatgpt`: Delete conversations after upload (default: `false`)
 
@@ -113,7 +168,7 @@ python main.py chatgpt-upload-to-notion \
 
 **Clean up trashed Sora generations:**
 ```bash
-python main.py sora-cleanup-trash --dataset sora_trash_backup.csv
+python main.py sora-cleanup-trash
 ```
 
 **Delete empty Sora tasks:**
@@ -136,21 +191,24 @@ sora/
 ├── notion.py        # Notion API client and operations
 ├── img.py           # Image processing (add prompts to PNG metadata)
 ├── util.py          # Shared utilities (retry logic, path handling, etc.)
-├── .env.example     # Environment variable template
+├── config.toml.example  # Multi-account configuration template
 └── output/          # Default output directory for downloads
 ```
 
 ## Configuration
 
-### Environment Variables
+### TOML Config
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NOTION_API_KEY` | Notion integration token | For Notion operations |
-| `NOTION_DATABASE_ID` | Target Notion database ID | For Notion operations |
-| `CHATGPT_AUTHORIZATION_TOKEN` | ChatGPT/Sora auth token | For Sora/ChatGPT operations |
-| `CHATGPT_USER_AGENT` | User-Agent header | For Sora/ChatGPT operations |
-| `CHATGPT_COOKIE_STRING_BASE64` | Base64-encoded cookies | For ChatGPT operations |
+| Key | Description | Required |
+|-----|-------------|----------|
+| `notion.api_key` | Notion integration token | For Notion operations |
+| `notion.database_id` | Default Notion database ID | Optional if each account sets `notion_database_id` or `--db-id` is passed |
+| `shared.user_agent` | Shared User-Agent header | Recommended |
+| `shared.cookie_string_base64` | Shared base64-encoded cookies | Needed for ChatGPT image history |
+| `accounts.<name>.authorization_token` | ChatGPT/Sora auth token | Yes |
+| `accounts.<name>.user_agent` | Account-specific User-Agent override | Optional |
+| `accounts.<name>.cookie_string_base64` | Account-specific cookie override | Optional |
+| `accounts.<name>.notion_database_id` | Per-account Notion DB override | Optional |
 
 ### How to Get ChatGPT/Sora Credentials
 
@@ -182,7 +240,7 @@ Create a Notion database with the following properties:
 After processing, prompts are embedded in PNG files. Use `exiftool` to read them:
 
 ```bash
-exiftool -Prompt output/sora_images/abc123.png
+exiftool -Prompt output/images/abc123.png
 ```
 
 ### Dataset CSV Format
@@ -193,6 +251,7 @@ Generated CSV files contain:
 - `task_id`/`conversation_id`: Parent task/conversation
 - `url`: Original image URL
 - `prompt`: Generation prompt
+- `uploaded_at`: UTC timestamp set after Notion upload or Notion existence check
 
 ## Error Handling
 
@@ -266,9 +325,9 @@ Download `coverage-report.zip` from the workflow run and open `htmlcov/index.htm
 
 ## Troubleshooting
 
-### "Missing required environment variables"
+### "Missing required configuration values"
 
-Ensure your `.env` file is properly configured and all required variables are set.
+Ensure your `config.toml` exists and that the selected account plus shared settings contain all required values.
 
 ### "Notion database ID must be a valid ID"
 
