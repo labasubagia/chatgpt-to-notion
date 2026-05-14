@@ -189,6 +189,25 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
         assert mock_upload.call_args.kwargs["dataset"] == "history/default_chatgpt.csv"
+        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+
+    @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
+    def test_chatgpt_upload_to_notion_check_notion_api_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass check_notion_api flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "chatgpt-upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--check-notion-api",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("sora.cleanup_trash", new_callable=AsyncMock)
     def test_sora_cleanup_trash(self, mock_cleanup, mock_config_toml):

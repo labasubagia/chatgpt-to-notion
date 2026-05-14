@@ -310,6 +310,7 @@ async def upload_to_notion(
     remove_in_chatgpt: bool = False,
     add_prompt_to_image: bool = True,
     dataset: str | None = None,
+    check_notion_api: bool = False,
     limit: int = 100,
     options: RuntimeOptions | None = None,
 ) -> None:
@@ -334,6 +335,8 @@ async def upload_to_notion(
             generations=generations,
             db_id=db_id,
             image_folder=image_folder,
+            dataset=dataset,
+            check_notion_api=check_notion_api,
             options=options,
         )
 

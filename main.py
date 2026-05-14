@@ -103,6 +103,12 @@ def sora_upload_to_notion(
     remove_in_sora: Annotated[
         bool, typer.Option(help="Whether to remove uploaded items in Sora")
     ] = False,
+    check_notion_api: Annotated[
+        bool,
+        typer.Option(
+            help="Check Notion API even when uploaded_at is already set in CSV"
+        ),
+    ] = False,
     config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
     account: Annotated[
         str | None, typer.Option(help="Named account from TOML config")
@@ -139,6 +145,7 @@ def sora_upload_to_notion(
                 trash_in_sora=trash_in_sora,
                 remove_in_sora=remove_in_sora,
                 dataset=account_dataset,
+                check_notion_api=check_notion_api,
                 options=options,
             )
         )
@@ -236,6 +243,12 @@ def chatgpt_upload_to_notion(
     remove_in_chatgpt: Annotated[
         bool, typer.Option(help="Whether to remove uploaded items in ChatGPT")
     ] = False,
+    check_notion_api: Annotated[
+        bool,
+        typer.Option(
+            help="Check Notion API even when uploaded_at is already set in CSV"
+        ),
+    ] = False,
     limit: Annotated[
         int, typer.Option(help="Limit number of image generations to process")
     ] = 100,
@@ -275,6 +288,7 @@ def chatgpt_upload_to_notion(
                 upload_to_notion=upload_to_notion,
                 remove_in_chatgpt=remove_in_chatgpt,
                 dataset=account_dataset,
+                check_notion_api=check_notion_api,
                 limit=limit,
                 options=options,
             )

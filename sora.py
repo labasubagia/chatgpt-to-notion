@@ -403,6 +403,7 @@ async def upload_to_notion(
     add_prompt_to_image: bool = True,
     limit: int = 100,
     dataset: str | None = None,
+    check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
     if trash_in_sora and remove_in_sora:
@@ -435,6 +436,8 @@ async def upload_to_notion(
             generations=generations,
             db_id=db_id,
             image_folder=image_folder,
+            dataset=dataset,
+            check_notion_api=check_notion_api,
             options=options,
         )
 

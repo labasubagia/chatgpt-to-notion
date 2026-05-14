@@ -130,11 +130,21 @@ Upload commands automatically write one merged CSV per account and service:
 `output/history/<account>_sora_trash.csv`. Each run merges new and old rows by
 unique `id` and keeps only the last 2 days of data.
 
+After an image is uploaded to Notion, the CSV row gets `uploaded_at`. Future runs
+trust that value and skip the Notion "already exists" API check for that image.
+Use `--check-notion-api` when you want to verify Notion directly and repair the
+CSV state:
+
+```bash
+python main.py chatgpt-upload-to-notion --check-notion-api
+```
+
 **Options:**
 - `--image-folder`: Folder under `output/` to store downloaded images (default: `images`)
 - `--db-id`: Notion database ID
 - `--config`: Path to `config.toml` if not using `./config.toml`
 - `--account`: Named account inside `config.toml`; if omitted, all accounts run sequentially
+- `--check-notion-api`: Check Notion directly even when `uploaded_at` is already set
 - `--limit`: Maximum number of generations to process (default: `100`)
 - `--remove-in-chatgpt`: Delete conversations after upload (default: `false`)
 
@@ -225,6 +235,7 @@ Generated CSV files contain:
 - `task_id`/`conversation_id`: Parent task/conversation
 - `url`: Original image URL
 - `prompt`: Generation prompt
+- `uploaded_at`: UTC timestamp set after Notion upload or Notion existence check
 
 ## Error Handling
 

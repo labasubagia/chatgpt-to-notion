@@ -31,6 +31,14 @@ def edit_png_info(
         img.save(file_path, pnginfo=metadata)
 
 
+def get_png_prompt(file_path: str) -> str | None:
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    with Image.open(file_path) as img:
+        prompt = img.info.get("Prompt")
+        return prompt if isinstance(prompt, str) else None
+
+
 def add_prompt_to_images(
     generations: Sequence[ImageGeneration], folder: str, max_workers: int = 10
 ) -> None:
@@ -61,6 +69,10 @@ def add_prompt_to_images(
 
         for _ in range(MAX_RETRIES):
             try:
+                if get_png_prompt(str(file_path)) == row.prompt:
+                    pbar.write(f"⏭️  {file_path} skipped, prompt unchanged")
+                    pbar.update(1)
+                    break
                 edit_png_info(
                     str(file_path),
                     payload={"Prompt": row.prompt},

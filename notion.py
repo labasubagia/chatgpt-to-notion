@@ -12,6 +12,8 @@ from util import (
     get_http_timeout,
     get_notion_context,
     get_output_path,
+    get_uploaded_generation_ids,
+    mark_generations_uploaded,
     retry_http,
 )
 
@@ -196,28 +198,37 @@ async def upload_all_images_to_notion(
     generations: Sequence[ImageGeneration],
     db_id: str,
     image_folder: str,
+    dataset: str | None = None,
+    check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    uploaded_generation_ids = get_uploaded_generation_ids(dataset)
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
 
-        async def upload(generation_id: str, prompt: str | None):
+        async def upload(generation_id: str, prompt: str | None) -> str | None:
             async with semaphore:
                 file_name = f"{generation_id}.png"
+                if generation_id in uploaded_generation_ids and not check_notion_api:
+                    pbar.write(f"⏭️  {file_name} skipped, marked uploaded in CSV")
+                    pbar.update(1)
+                    return None
+
                 file_path = get_output_path(os.path.join(image_folder, file_name))
                 if not os.path.exists(file_path):
                     pbar.write(f"⚠️  {file_name} not found, skipped")
                     pbar.update(1)
-                    return
+                    return None
 
                 try:
                     if await is_page_exists_in_db(
                         session, db_id, file_name, options=options
                     ):
                         pbar.write(f"⏭️  {file_name} skipped, already exists")
+                        return generation_id
                     else:
                         await add_page_to_db(
                             session,
@@ -228,12 +239,20 @@ async def upload_all_images_to_notion(
                             options=options,
                         )
                         pbar.write(f"✅ {file_name} uploaded")
+                        return generation_id
                 except Exception as e:
                     pbar.write(f"❌ {file_name} failed: {e}")
+                    return None
                 finally:
                     pbar.update(1)
 
-        await asyncio.gather(*[upload(row.id, row.prompt) for row in generations])
+        uploaded_results = await asyncio.gather(
+            *[upload(row.id, row.prompt) for row in generations]
+        )
 
     pbar.close()
+    mark_generations_uploaded(
+        dataset,
+        {generation_id for generation_id in uploaded_results if generation_id},
+    )
     print()  # Add spacing after progress bar

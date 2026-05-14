@@ -52,6 +52,8 @@ def save_to_dataset(
 
     file_path = get_output_path(dataset)
     df_new = pd.DataFrame(dict_data)
+    if "uploaded_at" not in df_new.columns:
+        df_new["uploaded_at"] = ""
     df_final = _merge_recent_rows_by_id(
         target_path=file_path,
         df_new=df_new,
@@ -67,15 +69,38 @@ def _merge_recent_rows_by_id(
     df_new: pd.DataFrame,
     keep_days: int,
 ) -> pd.DataFrame:
+    uploaded_at_by_id: dict[str, str] = {}
     if target_path.exists():
         df_existing = pd.read_csv(target_path)
+        if "id" in df_existing.columns and "uploaded_at" in df_existing.columns:
+            existing_uploaded = df_existing.dropna(subset=["id", "uploaded_at"])
+            existing_uploaded = existing_uploaded[
+                existing_uploaded["uploaded_at"].astype(str).str.strip() != ""
+            ]
+            uploaded_at_by_id = dict(
+                zip(
+                    existing_uploaded["id"].astype(str),
+                    existing_uploaded["uploaded_at"].astype(str),
+                    strict=False,
+                )
+            )
         df_combined = pd.concat([df_existing, df_new], ignore_index=True)
     else:
         df_combined = df_new
 
+    if "uploaded_at" not in df_combined.columns:
+        df_combined["uploaded_at"] = ""
+
     if "id" in df_combined.columns:
         df_combined = df_combined.dropna(subset=["id"]).copy()
         df_combined = df_combined.drop_duplicates(subset=["id"], keep="last")
+        if uploaded_at_by_id:
+            existing_uploaded_at = df_combined["id"].astype(str).map(uploaded_at_by_id)
+            current_uploaded_at = df_combined["uploaded_at"].fillna("").astype(str)
+            df_combined["uploaded_at"] = current_uploaded_at.mask(
+                current_uploaded_at.str.strip() == "",
+                existing_uploaded_at,
+            ).fillna("")
 
     if "created_at" in df_combined.columns:
         df_combined["created_at"] = pd.to_datetime(
@@ -87,6 +112,43 @@ def _merge_recent_rows_by_id(
         df_combined = df_combined.sort_values(by="created_at", ascending=False)
 
     return df_combined
+
+
+def get_uploaded_generation_ids(dataset: str | None) -> set[str]:
+    if not dataset:
+        return set()
+    file_path = get_output_path(dataset)
+    if not file_path.exists():
+        return set()
+
+    df = pd.read_csv(file_path, usecols=lambda column: column in {"id", "uploaded_at"})
+    if df.empty or "id" not in df.columns or "uploaded_at" not in df.columns:
+        return set()
+
+    uploaded = df.dropna(subset=["id", "uploaded_at"]).copy()
+    uploaded = uploaded[uploaded["uploaded_at"].astype(str).str.strip() != ""]
+    return set(uploaded["id"].astype(str))
+
+
+def mark_generations_uploaded(dataset: str | None, generation_ids: set[str]) -> None:
+    if not dataset or not generation_ids:
+        return
+    file_path = get_output_path(dataset)
+    if not file_path.exists():
+        return
+
+    df = pd.read_csv(file_path)
+    if df.empty or "id" not in df.columns:
+        return
+    if "uploaded_at" not in df.columns:
+        df["uploaded_at"] = ""
+    df["uploaded_at"] = df["uploaded_at"].fillna("").astype(str)
+
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    mask = df["id"].astype(str).isin(generation_ids)
+    df.loc[mask, "uploaded_at"] = uploaded_at
+    df.to_csv(file_path, index=False)
+    print(f"✅ Marked {int(mask.sum())} rows uploaded in {file_path}")
 
 
 def get_output_path(input_path_str: str, is_dir=False) -> Path:

@@ -23,7 +23,9 @@ from util import (
     get_notion_context,
     get_output_path,
     get_provider_context,
+    get_uploaded_generation_ids,
     http_retryable,
+    mark_generations_uploaded,
     resolve_config,
     retry_http,
     save_to_dataset,
@@ -368,6 +370,65 @@ class TestSaveToDataset:
         merged = pd.read_csv(csv_path)
         assert set(merged["id"]) == {"old", "dupe", "new"}
         assert merged.loc[merged["id"] == "dupe", "prompt"].item() == "after"
+
+    def test_preserves_uploaded_at_when_merging_existing_rows(
+        self, tmp_output_dir, monkeypatch
+    ):
+        """Should keep uploaded_at when an existing generation is fetched again."""
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        csv_path = tmp_output_dir / "history" / "default_chatgpt.csv"
+        csv_path.parent.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        pd.DataFrame(
+            [
+                {
+                    "id": "dupe",
+                    "created_at": now.isoformat(),
+                    "prompt": "before",
+                    "uploaded_at": "2026-05-14T00:00:00+00:00",
+                }
+            ]
+        ).to_csv(csv_path, index=False)
+
+        save_to_dataset(
+            "history/default_chatgpt.csv",
+            [
+                {
+                    "id": "dupe",
+                    "created_at": now.isoformat(),
+                    "prompt": "after",
+                }
+            ],
+        )
+
+        merged = pd.read_csv(csv_path)
+        assert merged.loc[0, "prompt"] == "after"
+        assert merged.loc[0, "uploaded_at"] == "2026-05-14T00:00:00+00:00"
+
+    def test_uploaded_generation_helpers(self, tmp_output_dir, monkeypatch):
+        """Should read and update uploaded_at in dataset CSV."""
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        csv_path = tmp_output_dir / "history" / "default_chatgpt.csv"
+        csv_path.parent.mkdir(parents=True)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": "2026-05-14T00:00:00+00:00"},
+                {
+                    "id": "b",
+                    "created_at": "2026-05-14T00:00:00+00:00",
+                    "uploaded_at": "2026-05-14T01:00:00+00:00",
+                },
+            ]
+        ).to_csv(csv_path, index=False)
+
+        assert get_uploaded_generation_ids("history/default_chatgpt.csv") == {"b"}
+
+        mark_generations_uploaded("history/default_chatgpt.csv", {"a"})
+
+        assert get_uploaded_generation_ids("history/default_chatgpt.csv") == {
+            "a",
+            "b",
+        }
 
 
 class TestCleanOutputPath:
