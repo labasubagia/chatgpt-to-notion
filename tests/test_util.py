@@ -249,60 +249,135 @@ class TestTomlConfig:
 class TestAccountActivityStatus:
     """Tests for account readiness status."""
 
-    def test_missing_activity_file_is_ready(self):
+    def test_csv_file_not_exists_is_ready(self):
         rows = get_account_activity_statuses(timezone_name="UTC")
 
         assert rows[0]["Account"] == "default"
         assert rows[0]["Next Wait"] == "Ready"
         assert rows[0]["Ready Generate?"] == "✅"
 
-    def test_recent_activity_is_not_ready(self, tmp_path, monkeypatch):
+    def test_today_all_active_red(self, tmp_path, monkeypatch):
+        """Today has data, all active (<24h) -> red"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        today_start = now.replace(hour=0, minute=0)
         pd.DataFrame(
             [
-                {
-                    "id": "x",
-                    "created_at": (now - timedelta(hours=1)).isoformat(),
-                }
+                {"id": "a", "created_at": (today_start + timedelta(hours=1)).isoformat()},
+                {"id": "b", "created_at": (today_start + timedelta(hours=2)).isoformat()},
+                {"id": "c", "created_at": (today_start + timedelta(hours=3)).isoformat()},
+                {"id": "d", "created_at": (today_start + timedelta(hours=4)).isoformat()},
+                {"id": "e", "created_at": (today_start + timedelta(hours=5)).isoformat()},
+                {"id": "f", "created_at": (today_start + timedelta(hours=6)).isoformat()},
+                {"id": "g", "created_at": (today_start + timedelta(hours=7)).isoformat()},
+                {"id": "h", "created_at": (today_start + timedelta(hours=8)).isoformat()},
             ]
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
         rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Next Wait"] != "Ready"
-        assert rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
+        assert rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
 
-    def test_old_activity_is_ready(self, tmp_path, monkeypatch):
+    def test_fallback_to_yesterday_partial_active(self, tmp_path, monkeypatch):
+        """Today empty, yesterday has partial active -> yellow"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
         pd.DataFrame(
             [
-                {
-                    "id": "x",
-                    "created_at": (now - timedelta(days=2)).isoformat(),
-                }
+                {"id": "a", "created_at": (yesterday_start + timedelta(hours=13)).isoformat()},
+                {"id": "b", "created_at": (yesterday_start + timedelta(hours=14)).isoformat()},
+                {"id": "c", "created_at": (yesterday_start + timedelta(hours=15)).isoformat()},
+                {"id": "d", "created_at": (yesterday_start + timedelta(hours=16)).isoformat()},
+                {"id": "e", "created_at": (yesterday_start + timedelta(hours=17)).isoformat()},
+                {"id": "f", "created_at": (yesterday_start + timedelta(hours=1)).isoformat()},
+                {"id": "g", "created_at": (yesterday_start + timedelta(hours=2)).isoformat()},
+                {"id": "h", "created_at": (yesterday_start + timedelta(hours=3)).isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+
+        assert rows[0]["Ready Generate?"] == "⚠️  (5/8 to wait)"
+
+    def test_fallback_to_yesterday_all_active_red(self, tmp_path, monkeypatch):
+        """Today empty, yesterday has all active -> red"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": (yesterday_start + timedelta(hours=13)).isoformat()},
+                {"id": "b", "created_at": (yesterday_start + timedelta(hours=14)).isoformat()},
+                {"id": "c", "created_at": (yesterday_start + timedelta(hours=15)).isoformat()},
+                {"id": "d", "created_at": (yesterday_start + timedelta(hours=16)).isoformat()},
+                {"id": "e", "created_at": (yesterday_start + timedelta(hours=17)).isoformat()},
+                {"id": "f", "created_at": (yesterday_start + timedelta(hours=18)).isoformat()},
+                {"id": "g", "created_at": (yesterday_start + timedelta(hours=19)).isoformat()},
+                {"id": "h", "created_at": (yesterday_start + timedelta(hours=20)).isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+
+        assert rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
+
+    def test_both_empty_ready(self, tmp_path, monkeypatch):
+        """Both today and yesterday empty -> ready"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": (now - timedelta(days=2)).isoformat()},
+                {"id": "b", "created_at": (now - timedelta(days=3)).isoformat()},
             ]
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
         rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Next Wait"] == "Ready"
         assert rows[0]["Ready Generate?"] == "✅"
 
-    def test_total_count_only_includes_last_24h(self, tmp_path, monkeypatch):
-        """total_count should only count items from last 24h, not older."""
+    def test_selected_file_all_over_24h_ready(self, tmp_path, monkeypatch):
+        """Selected file all > 24h old -> ready"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
         pd.DataFrame(
             [
-                {"id": "x", "created_at": (now - timedelta(hours=1)).isoformat()},
-                {"id": "y", "created_at": (now - timedelta(days=2)).isoformat()},
+                {"id": "a", "created_at": (yesterday_start + timedelta(hours=1)).isoformat()},
+                {"id": "b", "created_at": (yesterday_start + timedelta(hours=2)).isoformat()},
+                {"id": "c", "created_at": (yesterday_start + timedelta(hours=3)).isoformat()},
+                {"id": "d", "created_at": (yesterday_start + timedelta(hours=4)).isoformat()},
+                {"id": "e", "created_at": (yesterday_start + timedelta(hours=5)).isoformat()},
+                {"id": "f", "created_at": (yesterday_start + timedelta(hours=6)).isoformat()},
+                {"id": "g", "created_at": (yesterday_start + timedelta(hours=7)).isoformat()},
+                {"id": "h", "created_at": (yesterday_start + timedelta(hours=8)).isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Ready Generate?"] == "✅"
+
+    def test_yesterday_late_night_still_active(self, tmp_path, monkeypatch):
+        """Yesterday late night entries (23:50) still active at 07:30 -> red"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(hour=7, minute=30, second=0, microsecond=0)
+        yesterday_late = (now - timedelta(days=1)).replace(hour=23, minute=50, second=0)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": yesterday_late.isoformat()},
             ]
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
@@ -310,6 +385,93 @@ class TestAccountActivityStatus:
         rows = get_account_activity_statuses(timezone_name="UTC")
 
         assert rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
+
+    def test_yesterday_partial_ready(self, tmp_path, monkeypatch):
+        """Yesterday has 2 active (<24h), 6 ready (>24h) -> yellow"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(hour=23, minute=40, second=0, microsecond=0)
+        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": (yesterday_start + timedelta(hours=1)).isoformat()},
+                {"id": "b", "created_at": (yesterday_start + timedelta(hours=2)).isoformat()},
+                {"id": "c", "created_at": (yesterday_start + timedelta(hours=3)).isoformat()},
+                {"id": "d", "created_at": (yesterday_start + timedelta(hours=4)).isoformat()},
+                {"id": "e", "created_at": (yesterday_start + timedelta(hours=5)).isoformat()},
+                {"id": "f", "created_at": (yesterday_start + timedelta(hours=6)).isoformat()},
+                {"id": "g", "created_at": (now - timedelta(hours=25)).isoformat()},
+                {"id": "h", "created_at": (now - timedelta(hours=26)).isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Ready Generate?"] == "⚠️  (2/8 to wait)"
+
+    def test_csv_file_empty_ready(self, tmp_path, monkeypatch):
+        """CSV file is empty -> ready"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        pd.DataFrame(columns=["id", "created_at"]).to_csv(
+            history_dir / "default_chatgpt.csv", index=False
+        )
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Ready Generate?"] == "✅"
+
+    def test_csv_no_valid_created_at_ready(self, tmp_path, monkeypatch):
+        """CSV has no valid created_at column -> ready"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": "invalid"},
+                {"id": "b", "created_at": "also_invalid"},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Ready Generate?"] == "✅"
+
+    def test_csv_corrupted_ready(self, tmp_path, monkeypatch):
+        """CSV is corrupted -> ready"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        (history_dir / "default_chatgpt.csv").write_text("not,a,valid,csv,file,at,all")
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Ready Generate?"] == "✅"
+
+    def test_timezone_filter_uses_user_timezone(self, tmp_path, monkeypatch):
+        """Entry is yesterday in Asia/Jakarta but <24h old -> yellow"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        jakarta = timezone(timedelta(hours=7))
+        now_utc = datetime.now(timezone.utc).replace(hour=14, minute=0, second=0, microsecond=0)
+        now_jakarta = now_utc.astimezone(jakarta)
+        yesterday_late_night = now_jakarta.replace(hour=23, minute=0, second=0) - timedelta(days=1)
+        yesterday_early = now_jakarta.replace(hour=2, minute=0, second=0) - timedelta(days=1)
+        entry_utc_new = yesterday_late_night.astimezone(timezone.utc)
+        entry_utc_old = yesterday_early.astimezone(timezone.utc)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": entry_utc_new.isoformat()},
+                {"id": "b", "created_at": entry_utc_old.isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="Asia/Jakarta")
+
+        assert rows[0]["Ready Generate?"] == "⚠️  (1/2 to wait)"
 
 
 class TestSaveToDataset:

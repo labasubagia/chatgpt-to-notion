@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import pandas as pd
@@ -216,6 +217,7 @@ def load_image_generations_from_dataset(
     dataset: str,
     include_uploaded: bool = False,
     keep_days: int | None = None,
+    timezone_name: str | None = None,
 ) -> list[ChatGPTImageGeneration]:
     file_path = get_output_path(dataset)
     if not file_path.exists():
@@ -234,7 +236,12 @@ def load_image_generations_from_dataset(
         df["created_at"] = pd.to_datetime(
             df["created_at"], utc=True, format="ISO8601", errors="coerce"
         )
-        cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+        tz = (
+            ZoneInfo(timezone_name)
+            if timezone_name
+            else datetime.now().astimezone().tzinfo
+        )
+        cutoff = datetime.now(tz) - timedelta(days=keep_days)
         df = df.dropna(subset=["created_at"])
         df = df[df["created_at"] >= cutoff]
 
@@ -366,6 +373,7 @@ async def upload_to_notion(
     from_history: bool = False,
     limit: int = 100,
     keep_days: int | None = None,
+    timezone_name: str | None = None,
     options: RuntimeOptions | None = None,
 ) -> None:
     if Path(image_folder).is_absolute():
@@ -380,6 +388,7 @@ async def upload_to_notion(
             dataset=dataset,
             include_uploaded=check_notion_api,
             keep_days=keep_days,
+            timezone_name=timezone_name,
         )
     else:
         generations = await fetch_image_generations(limit=limit, options=options)

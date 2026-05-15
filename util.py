@@ -466,6 +466,7 @@ def get_account_activity_statuses(
     *,
     config_path: str | None = None,
     timezone_name: str | None = None,
+    now: datetime | None = None,
 ) -> list[dict[str, str]]:
     account_names = get_account_names(config_path)
     if not account_names:
@@ -474,7 +475,8 @@ def get_account_activity_statuses(
     tz = (
         ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
     )
-    now = datetime.now(tz)
+    if now is None:
+        now = datetime.now(tz)
     rows: list[dict[str, str]] = []
     sortable_rows: list[tuple[datetime, dict[str, str]]] = []
 
@@ -529,20 +531,37 @@ def _get_activity_status_for_csv(
         return now - timedelta(days=1), ready_row
 
     created_at = created_at.dt.tz_convert(now.tzinfo)
-    cooldown_threshold = now - timedelta(days=1)
-    active_items = created_at[created_at > cooldown_threshold]
-    total_count = len(active_items)
+    today_date = now.date()
+    yesterday_date = (now - timedelta(days=1)).date()
 
-    if active_items.empty:
+    today_mask = created_at.dt.date == today_date
+    yesterday_mask = created_at.dt.date == yesterday_date
+    relevant_mask = today_mask | yesterday_mask
+
+    if not relevant_mask.any():
+        return now, ready_row
+
+    relevant_df = created_at[relevant_mask]
+    today_df = relevant_df[today_mask]
+    selected_df = today_df if not today_df.empty else relevant_df[yesterday_mask]
+
+    if selected_df.empty:
+        return now, ready_row
+
+    total_count = len(selected_df)
+    cooldown_threshold = now - timedelta(days=1)
+    active_items = selected_df[selected_df > cooldown_threshold]
+    active_count = len(active_items)
+
+    if active_count == 0:
         return now, ready_row
 
     first_active = active_items.min()
     last_active = active_items.max()
     next_wait = first_active + timedelta(days=1)
-    count_waiting = len(active_items)
-    status_msg = f"{count_waiting}/{total_count} to wait"
+    status_msg = f"{active_count}/{total_count} to wait"
     ready_generate = (
-        f"❌  ({status_msg})" if count_waiting >= total_count else f"⚠️  ({status_msg})"
+        f"❌  ({status_msg})" if active_count == total_count else f"⚠️  ({status_msg})"
     )
     total_wait = (last_active - first_active).total_seconds()
 

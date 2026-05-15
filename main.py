@@ -122,6 +122,10 @@ def upload_to_notion(
     limit: Annotated[
         int, typer.Option(help="Limit number of image generations to process")
     ] = 100,
+    timezone: Annotated[
+        str | None,
+        typer.Option(help="IANA timezone name, e.g. Asia/Jakarta"),
+    ] = None,
     config: Annotated[str | None, typer.Option(help="Path to TOML config file")] = None,
     account: Annotated[
         str | None, typer.Option(help="Named account from TOML config")
@@ -174,6 +178,7 @@ def upload_to_notion(
                 from_history=effective_from_history,
                 limit=limit,
                 keep_days=effective_keep_days,
+                timezone_name=timezone,
                 options=options,
             )
         )
