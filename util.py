@@ -180,7 +180,6 @@ def mark_generations_uploaded(
     mask = df["id"].astype(str).isin(generation_ids)
     df.loc[mask, "uploaded_at"] = uploaded_at
     df.to_csv(file_path, index=False)
-    print(f"✅ Marked {int(mask.sum())} rows uploaded in {file_path}")
 
 
 def get_output_path(input_path_str: str, is_dir=False) -> Path:

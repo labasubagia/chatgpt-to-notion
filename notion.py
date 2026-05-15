@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -175,7 +176,14 @@ async def add_page_to_db(
             },
         },
     }
+
     prompt = str(prompt).strip()
+
+    # Normalize broken / mixed line endings
+    prompt = prompt.replace("\r \n", "\n")
+    prompt = prompt.replace("\r\n", "\n")
+    prompt = prompt.replace("\r", "\n")
+
     payload["markdown"] = f"""
 **Prompt:**
 
@@ -190,6 +198,16 @@ async def add_page_to_db(
         headers=headers,
         json=payload,
     ) as response:
+        code = response.status
+        if code >= 400:
+            text = await response.text()
+            try:
+                data = json.loads(text)
+                print(json.dumps(data, indent=2))
+            except Exception:
+                pass
+            print(f"Failed to add page for {file_name}: {code} - {text}")
+            print(json.dumps(payload, indent=2))
         response.raise_for_status()
         _db_page_cache.add(file_name)
         return await response.json()

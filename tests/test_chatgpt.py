@@ -857,3 +857,370 @@ class TestChatGPTUploadToNotionComprehensive:
                         # But add_prompt_to_images and upload are skipped
                         mock_add_prompt.assert_not_called()
                         mock_upload.assert_not_called()
+
+
+@pytest.mark.integration
+class TestChatGPTUploadToNotionSingle:
+    """Tests for upload_to_notion_single function."""
+
+    async def test_upload_to_notion_single_full_workflow(
+        self, monkeypatch, tmp_path
+    ):
+        """Should execute per-file upload workflow."""
+        from unittest.mock import AsyncMock, patch
+
+        from models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                conversation_id="conv_abc",
+                message_id="msg_def",
+                asset_pointer="asset_ghi",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
+
+        with patch(
+            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = generations
+
+            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = set()
+
+                with patch(
+                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                ) as mock_exists:
+                    mock_exists.return_value = False
+
+                    with patch(
+                        "chatgpt.download_image", new_callable=AsyncMock
+                    ) as mock_download:
+                        with patch("chatgpt.add_prompt_to_image_single") as mock_prompt:
+                            with patch(
+                                "chatgpt.add_page_to_db", new_callable=AsyncMock
+                            ) as mock_upload:
+                                with patch("chatgpt.mark_generations_uploaded"):
+                                    await chatgpt.upload_to_notion_single(
+                                        image_folder=image_folder,
+                                        db_id="test_db",
+                                        upload_to_notion=True,
+                                        remove_in_chatgpt=False,
+                                        add_prompt_to_image=True,
+                                        limit=5,
+                                    )
+
+                                    mock_fetch.assert_called_once()
+                                    mock_download.assert_called_once()
+                                    mock_prompt.assert_called_once()
+                                    mock_upload.assert_called_once()
+
+    async def test_upload_to_notion_single_skips_uploaded(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """Should skip files already marked uploaded in CSV."""
+        from unittest.mock import AsyncMock, patch
+
+        from models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                conversation_id="conv_abc",
+                message_id="msg_def",
+                asset_pointer="asset_ghi",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
+
+        with patch(
+            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = generations
+
+            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = {"gen_123"}
+
+                with patch(
+                    "chatgpt.download_image", new_callable=AsyncMock
+                ) as mock_download:
+                    with patch("chatgpt.add_page_to_db", new_callable=AsyncMock):
+                        await chatgpt.upload_to_notion_single(
+                            image_folder=image_folder,
+                            db_id="test_db",
+                            upload_to_notion=True,
+                            remove_in_chatgpt=False,
+                            add_prompt_to_image=True,
+                            limit=5,
+                        )
+
+                        mock_download.assert_not_called()
+                        captured = capsys.readouterr()
+                        assert "skipped, already uploaded" in captured.out
+
+    async def test_upload_to_notion_single_skips_in_notion(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """Should skip files already in Notion."""
+        from unittest.mock import AsyncMock, patch
+
+        from models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                conversation_id="conv_abc",
+                message_id="msg_def",
+                asset_pointer="asset_ghi",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
+
+        with patch(
+            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = generations
+
+            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = set()
+
+                with patch(
+                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                ) as mock_exists:
+                    mock_exists.return_value = True
+
+                    with patch(
+                        "chatgpt.download_image", new_callable=AsyncMock
+                    ) as mock_download:
+                        with patch("chatgpt.add_page_to_db", new_callable=AsyncMock):
+                            await chatgpt.upload_to_notion_single(
+                                image_folder=image_folder,
+                                db_id="test_db",
+                                upload_to_notion=True,
+                                remove_in_chatgpt=False,
+                                add_prompt_to_image=True,
+                                limit=5,
+                            )
+
+                            mock_download.assert_not_called()
+                            captured = capsys.readouterr()
+                            assert "skipped, already in Notion" in captured.out
+
+    async def test_upload_to_notion_single_deletes_only_when_all_uploaded(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """Should not delete conversation if not all images uploaded."""
+        from unittest.mock import AsyncMock, patch
+
+        from models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_1",
+                conversation_id="conv_abc",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/1.png",
+                prompt="Test 1",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:31:00.000000+00:00",
+                id="gen_2",
+                conversation_id="conv_abc",
+                message_id="msg_2",
+                asset_pointer="asset_2",
+                url="https://example.com/2.png",
+                prompt="Test 2",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:32:00.000000+00:00",
+                id="gen_3",
+                conversation_id="conv_abc",
+                message_id="msg_3",
+                asset_pointer="asset_3",
+                url="https://example.com/3.png",
+                prompt="Test 3",
+            ),
+        ]
+
+        async def mock_upload_fail_for_gen3(*args, **kwargs):
+            file_path = args[2] if len(args) > 2 else kwargs.get("file_path", "")
+            if "gen_3" in file_path:
+                raise Exception("Network error")
+            return {"id": "page_123"}
+
+        with patch(
+            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = generations
+
+            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = set()
+
+                with patch(
+                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                ) as mock_exists:
+                    mock_exists.return_value = False
+
+                    with patch("chatgpt.download_image", new_callable=AsyncMock):
+                        with patch("chatgpt.add_prompt_to_image_single"):
+                            with patch(
+                                "chatgpt.add_page_to_db",
+                                new_callable=AsyncMock,
+                                side_effect=mock_upload_fail_for_gen3,
+                            ):
+                                with patch("chatgpt.mark_generations_uploaded"):
+                                    with patch(
+                                        "chatgpt.delete_conversation",
+                                        new_callable=AsyncMock,
+                                    ) as mock_delete:
+                                        await chatgpt.upload_to_notion_single(
+                                            image_folder=image_folder,
+                                            db_id="test_db",
+                                            upload_to_notion=True,
+                                            remove_in_chatgpt=True,
+                                            add_prompt_to_image=True,
+                                            limit=5,
+                                        )
+
+                                        mock_delete.assert_not_called()
+                                        captured = capsys.readouterr()
+                                        assert "skipped" in captured.out
+
+    async def test_upload_to_notion_single_resume_after_failure(
+        self, monkeypatch, tmp_path
+    ):
+        """Should retry failed files on re-run."""
+        from unittest.mock import AsyncMock, patch
+
+        from models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_fail",
+                conversation_id="conv_abc",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/fail.png",
+                prompt="Test",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:31:00.000000+00:00",
+                id="gen_ok",
+                conversation_id="conv_def",
+                message_id="msg_2",
+                asset_pointer="asset_2",
+                url="https://example.com/ok.png",
+                prompt="Test",
+            ),
+        ]
+
+        call_count = 0
+
+        async def mock_upload(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if args[2] == str(tmp_path / "images" / "gen_fail.png"):
+                raise Exception("Network error")
+            return {"id": "page_123"}
+
+        with patch(
+            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = generations
+
+            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = set()
+
+                with patch(
+                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                ) as mock_exists:
+                    mock_exists.return_value = False
+
+                    with patch("chatgpt.download_image", new_callable=AsyncMock):
+                        with patch("chatgpt.add_prompt_to_image_single"):
+                            with patch(
+                                "chatgpt.add_page_to_db",
+                                new_callable=AsyncMock,
+                                side_effect=mock_upload,
+                            ):
+                                with patch("chatgpt.mark_generations_uploaded"):
+                                    await chatgpt.upload_to_notion_single(
+                                        image_folder=image_folder,
+                                        db_id="test_db",
+                                        upload_to_notion=True,
+                                        remove_in_chatgpt=False,
+                                        add_prompt_to_image=True,
+                                        limit=5,
+                                    )
+
+                                    # gen_ok uploaded, gen_fail failed
+                                    assert call_count == 2
+
+    async def test_delete_conversation_no_dedup_bug(
+        self, monkeypatch, capsys
+    ):
+        """Should delete conversation only when all images confirmed in Notion."""
+        from unittest.mock import AsyncMock, patch
+
+        from models import ChatGPTImageGeneration
+
+        # Three images from same conversation
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="img_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/1.png",
+                prompt="test 1",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:31:00.000000+00:00",
+                id="img_2",
+                conversation_id="conv_1",
+                message_id="msg_2",
+                asset_pointer="asset_2",
+                url="https://example.com/2.png",
+                prompt="test 2",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:32:00.000000+00:00",
+                id="img_3",
+                conversation_id="conv_1",
+                message_id="msg_3",
+                asset_pointer="asset_3",
+                url="https://example.com/3.png",
+                prompt="test 3",
+            ),
+        ]
+
+        with patch(
+            "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+        ) as mock_exists:
+            mock_exists.return_value = True
+
+            with patch(
+                "chatgpt.delete_conversation", new_callable=AsyncMock
+            ) as mock_delete:
+                await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
+                    generations, "test_db"
+                )
+
+                # Should delete once for the conversation
+                assert mock_delete.call_count == 1

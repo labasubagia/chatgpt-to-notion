@@ -10,9 +10,9 @@ import aiohttp
 import pandas as pd
 from tqdm.asyncio import tqdm
 
-from img import add_prompt_to_images
+from img import add_prompt_to_image_single, add_prompt_to_images
 from models import ChatGPTImageGeneration, RuntimeOptions
-from notion import is_page_exists_in_db, upload_all_images_to_notion
+from notion import add_page_to_db, is_page_exists_in_db, upload_all_images_to_notion
 from util import (
     MAX_CONCURRENT_DOWNLOADS,
     MAX_CONCURRENT_REQUESTS,
@@ -21,6 +21,8 @@ from util import (
     get_image_folder,
     get_output_path,
     get_provider_context,
+    get_uploaded_generation_ids,
+    mark_generations_uploaded,
     retry_http,
     save_to_dataset,
 )
@@ -312,51 +314,43 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
     db_id: str,
     options: RuntimeOptions | None = None,
 ) -> None:
-    generations = list({gen.conversation_id: gen for gen in generations}.values())
-    total = len(generations)
-    pbar = tqdm(total=total, desc="Deleting conversations")
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-
-    conversation_map = defaultdict(set)
+    conversation_map: dict[str, set[str]] = defaultdict(set)
     for gen in generations:
         conversation_map[gen.conversation_id].add(gen.id)
+
+    total = len(conversation_map)
+    pbar = tqdm(total=total, desc="Deleting conversations")
 
     async with aiohttp.ClientSession(
         headers=get_headers(options), timeout=get_http_timeout()
     ) as session:
 
-        async def delete(row: ChatGPTImageGeneration):
-            async with semaphore:
-                file_name = f"{row.id}.png"
-                conversation_id = row.conversation_id
-
-                try:
+        async def delete_conversation_by_id(conversation_id: str, image_ids: set[str]):
+            try:
+                for img_id in image_ids:
+                    file_name = f"{img_id}.png"
                     exists = await is_page_exists_in_db(
                         session, db_id, file_name, options=options
                     )
                     if not exists:
                         pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
-                        pbar.update(1)
                         return
 
-                    conversation_map[conversation_id].discard(row.id)
-                    if conversation_map[conversation_id]:
-                        pbar.write(
-                            f"⏭️  Conversation ID {conversation_id} skipped, still has pending images"  # noqa: E501
-                        )
-                        pbar.update(1)
-                        return
+                await delete_conversation(
+                    session, conversation_id, headers=get_headers(options)
+                )
+                pbar.write(f"✅ Conversation ID {conversation_id}")
+            except Exception as e:
+                pbar.write(f"❌ Conversation ID {conversation_id} failed: {e}")
+            finally:
+                pbar.update(1)
 
-                    await delete_conversation(
-                        session, conversation_id, headers=get_headers(options)
-                    )
-                    pbar.write(f"✅ Conversation ID {conversation_id}")
-                except Exception as e:
-                    pbar.write(f"❌ Conversation ID {conversation_id} failed: {e}")
-                finally:
-                    pbar.update(1)
-
-        await asyncio.gather(*[delete(row) for row in generations])
+        await asyncio.gather(
+            *[
+                delete_conversation_by_id(cid, ids)
+                for cid, ids in conversation_map.items()
+            ]
+        )
 
     pbar.close()
     print()
@@ -422,4 +416,169 @@ async def upload_to_notion(
     if remove_in_chatgpt:
         await delete_conversation_of_image_generation_uploaded_to_notion(
             generations=generations, db_id=db_id, options=options
+        )
+
+
+async def delete_conversations_after_upload(
+    generations: list[ChatGPTImageGeneration],
+    db_id: str,
+    dataset: str | None,
+    uploaded_ids: set[str],
+    options: RuntimeOptions | None = None,
+) -> None:
+    conversation_map: dict[str, set[str]] = defaultdict(set)
+    for gen in generations:
+        conversation_map[gen.conversation_id].add(gen.id)
+
+    total = len(conversation_map)
+    if total == 0:
+        return
+    pbar = tqdm(total=total, desc="Deleting conversations")
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+    async with aiohttp.ClientSession(
+        headers=get_headers(options), timeout=get_http_timeout()
+    ) as session:
+
+        async def delete_conv(conv_id: str, image_ids: set[str]):
+            async with semaphore:
+                remaining = image_ids - uploaded_ids
+                if remaining:
+                    pbar.write(
+                        f"⏭️  Conversation {conv_id} skipped, "
+                        f"{len(remaining)} image(s) not uploaded"
+                    )
+                    pbar.update(1)
+                    return
+
+                try:
+                    await delete_conversation(
+                        session, conv_id, headers=get_headers(options)
+                    )
+                    pbar.write(f"✅ Conversation {conv_id}")
+                except Exception as e:
+                    pbar.write(f"❌ Conversation {conv_id} failed: {e}")
+                finally:
+                    pbar.update(1)
+
+        await asyncio.gather(
+            *[delete_conv(cid, ids) for cid, ids in conversation_map.items()]
+        )
+
+    pbar.close()
+    print()
+
+
+async def upload_to_notion_single(
+    image_folder: str,
+    db_id: str,
+    upload_to_notion: bool = True,
+    remove_in_chatgpt: bool = False,
+    add_prompt_to_image: bool = True,
+    dataset: str | None = None,
+    check_notion_api: bool = False,
+    from_history: bool = False,
+    limit: int = 100,
+    keep_days: int | None = None,
+    timezone_name: str | None = None,
+    options: RuntimeOptions | None = None,
+) -> None:
+    if Path(image_folder).is_absolute():
+        resolved_image_folder = Path(image_folder)
+    else:
+        resolved_image_folder = get_image_folder(options)
+
+    if from_history:
+        if not dataset:
+            raise ValueError("dataset is required when from_history=True")
+        generations = load_image_generations_from_dataset(
+            dataset=dataset,
+            include_uploaded=check_notion_api,
+            keep_days=keep_days,
+            timezone_name=timezone_name,
+        )
+    else:
+        generations = await fetch_image_generations(limit=limit, options=options)
+
+    if not generations:
+        print("No generations found.")
+        return
+
+    if dataset and not from_history:
+        save_to_dataset(dataset=dataset, data=generations, options=options)
+
+    uploaded_ids = get_uploaded_generation_ids(dataset, options)
+    csv_lock = asyncio.Lock()
+
+    total = len(generations)
+    pbar = tqdm(total=total, desc="Processing files")
+    semaphore = asyncio.Semaphore(5)
+
+    async with aiohttp.ClientSession(
+        headers=get_headers(options), timeout=get_http_timeout()
+    ) as chatgpt_session:
+        async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
+
+            async def process_one(gen: ChatGPTImageGeneration):
+                async with semaphore:
+                    file_name = f"{gen.id}.png"
+                    try:
+                        if gen.id in uploaded_ids and not check_notion_api:
+                            pbar.write(f"⏭️  {file_name} skipped, already uploaded")
+                            return
+
+                        if await is_page_exists_in_db(
+                            notion_session, db_id, file_name, options=options
+                        ):
+                            uploaded_ids.add(gen.id)
+                            pbar.write(f"⏭️  {file_name} skipped, already in Notion")
+                            return
+
+                        file_path = resolved_image_folder / file_name
+                        if not file_path.exists():
+                            await download_image(
+                                chatgpt_session,
+                                gen.url,
+                                str(file_path),
+                                headers=get_headers(options),
+                            )
+
+                        if add_prompt_to_image:
+                            add_prompt_to_image_single(gen, str(resolved_image_folder))
+
+                        if upload_to_notion:
+                            await add_page_to_db(
+                                notion_session,
+                                db_id,
+                                str(file_path),
+                                gen.prompt,
+                                model="ChatGPT",
+                                options=options,
+                            )
+
+                            if dataset:
+                                async with csv_lock:
+                                    mark_generations_uploaded(
+                                        dataset, {gen.id}, options
+                                    )
+                            uploaded_ids.add(gen.id)
+
+                        pbar.write(f"✅ {file_name}")
+                    except Exception as e:
+                        pbar.write(f"❌ {file_name} failed: {e}")
+                    finally:
+                        pbar.update(1)
+
+            await asyncio.gather(*[process_one(gen) for gen in generations])
+
+    pbar.close()
+    print()
+
+    if remove_in_chatgpt:
+        await delete_conversations_after_upload(
+            generations=generations,
+            db_id=db_id,
+            dataset=dataset,
+            uploaded_ids=uploaded_ids,
+            options=options,
         )
