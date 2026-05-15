@@ -97,9 +97,7 @@ def upload_to_notion(
     ] = False,
     from_history: Annotated[
         bool,
-        typer.Option(
-            help="Use CSV as source (non-uploaded items only, today's data)"
-        ),
+        typer.Option(help="Use CSV as source (non-uploaded items only, today's data)"),
     ] = False,
     verify_history: Annotated[
         bool,
