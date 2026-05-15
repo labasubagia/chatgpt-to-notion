@@ -284,7 +284,7 @@ class TestAccountActivityStatus:
         """Today empty, yesterday has partial active -> yellow"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
-        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
         yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
         pd.DataFrame(
             [
@@ -300,7 +300,7 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        rows = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert rows[0]["Ready Generate?"] == "⚠️  (5/8 to wait)"
 
@@ -308,7 +308,7 @@ class TestAccountActivityStatus:
         """Today empty, yesterday has all active -> red"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
-        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
         yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
         pd.DataFrame(
             [
@@ -324,7 +324,7 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        rows = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
 

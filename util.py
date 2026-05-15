@@ -466,6 +466,7 @@ def get_account_activity_statuses(
     *,
     config_path: str | None = None,
     timezone_name: str | None = None,
+    now: datetime | None = None,
 ) -> list[dict[str, str]]:
     account_names = get_account_names(config_path)
     if not account_names:
@@ -474,7 +475,8 @@ def get_account_activity_statuses(
     tz = (
         ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
     )
-    now = datetime.now(tz)
+    if now is None:
+        now = datetime.now(tz)
     rows: list[dict[str, str]] = []
     sortable_rows: list[tuple[datetime, dict[str, str]]] = []
 
