@@ -1,7 +1,7 @@
 import asyncio
 import os
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -213,6 +213,7 @@ async def fetch_image_generations(
 def load_image_generations_from_dataset(
     dataset: str,
     include_uploaded: bool = False,
+    keep_days: int | None = None,
 ) -> list[ChatGPTImageGeneration]:
     file_path = get_output_path(dataset)
     if not file_path.exists():
@@ -226,6 +227,14 @@ def load_image_generations_from_dataset(
         df["uploaded_at"] = ""
     if not include_uploaded:
         df = df[df["uploaded_at"].fillna("").astype(str).str.strip() == ""]
+
+    if keep_days is not None and "created_at" in df.columns:
+        df["created_at"] = pd.to_datetime(
+            df["created_at"], utc=True, format="ISO8601", errors="coerce"
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+        df = df.dropna(subset=["created_at"])
+        df = df[df["created_at"] >= cutoff]
 
     generations: list[ChatGPTImageGeneration] = []
     for row in df.fillna("").to_dict(orient="records"):
@@ -350,6 +359,7 @@ async def upload_to_notion(
     check_notion_api: bool = False,
     from_history: bool = False,
     limit: int = 100,
+    keep_days: int | None = None,
     options: RuntimeOptions | None = None,
 ) -> None:
     if from_history:
@@ -358,6 +368,7 @@ async def upload_to_notion(
         generations = load_image_generations_from_dataset(
             dataset=dataset,
             include_uploaded=check_notion_api,
+            keep_days=keep_days,
         )
     else:
         generations = await fetch_image_generations(limit=limit, options=options)

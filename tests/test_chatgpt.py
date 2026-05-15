@@ -766,6 +766,7 @@ class TestChatGPTUploadToNotionComprehensive:
         mock_load.assert_called_once_with(
             dataset="history/default_chatgpt.csv",
             include_uploaded=True,
+            keep_days=None,
         )
         mock_fetch.assert_not_called()
         mock_save.assert_not_called()

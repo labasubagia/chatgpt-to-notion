@@ -67,16 +67,28 @@ Run every configured account in sequence:
 python main.py upload-to-notion
 ```
 
-Replay from saved history instead of fetching live data:
+Replay from saved history instead of fetching live data (today's data only):
 
 ```bash
 python main.py upload-to-notion --from-history
 ```
 
-Verify saved history against Notion directly:
+Load all data from history (not just today's):
+
+```bash
+python main.py upload-to-notion --from-history --all
+```
+
+Verify saved history against Notion directly (today's data only):
 
 ```bash
 python main.py upload-to-notion --verify-history
+```
+
+Load all data and verify against Notion:
+
+```bash
+python main.py upload-to-notion --verify-history --all
 ```
 
 Check which accounts are ready:

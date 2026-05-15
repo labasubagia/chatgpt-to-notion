@@ -39,6 +39,7 @@ def save_to_dataset(
     dataset: str,
     data: Sequence[dict] | Sequence[BaseModel],
     keep_days: int = 2,
+    display_days: int = 1,
 ) -> None:
     if dataset is None:
         return
@@ -46,7 +47,6 @@ def save_to_dataset(
         print("No generations to save to dataset.")
         return
 
-    # Convert Pydantic models to dicts if needed
     dict_data: list[dict]
     if data and isinstance(data[0], BaseModel):
         dict_data = [item.model_dump() for item in data]  # type: ignore[union-attr]
@@ -62,8 +62,18 @@ def save_to_dataset(
         df_new=df_new,
         keep_days=keep_days,
     )
+
+    df_today = df_final.copy()
+    if "created_at" in df_today.columns and display_days:
+        df_today["created_at"] = pd.to_datetime(
+            df_today["created_at"], utc=True, format="ISO8601", errors="coerce"
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(days=display_days)
+        df_today = df_today.dropna(subset=["created_at"])
+        df_today = df_today[df_today["created_at"] >= cutoff]
+
     df_final.to_csv(file_path, index=False)
-    print(f"✅ Saved dataset to {file_path} (Total: {len(df_final)})\n")
+    print(f"✅ Saved dataset to {file_path} (Total Today: {len(df_today)})\n")
 
 
 def _merge_recent_rows_by_id(

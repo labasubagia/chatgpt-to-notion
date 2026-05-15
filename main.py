@@ -97,11 +97,19 @@ def upload_to_notion(
     ] = False,
     from_history: Annotated[
         bool,
-        typer.Option(help="Use the per-account history CSV as the generation source"),
+        typer.Option(
+            help="Use CSV as source (non-uploaded items only, today's data)"
+        ),
     ] = False,
     verify_history: Annotated[
         bool,
-        typer.Option(help="Shortcut for --from-history --check-notion-api"),
+        typer.Option(
+            help="Shortcut for --from-history --check-notion-api (includes uploaded)"
+        ),
+    ] = False,
+    all: Annotated[
+        bool,
+        typer.Option(help="Load all data from CSV (not just today's)"),
     ] = False,
     limit: Annotated[
         int, typer.Option(help="Limit number of image generations to process")
@@ -136,6 +144,12 @@ def upload_to_notion(
         account_dataset = _account_dataset(resolved.account_name, "chatgpt")
         effective_from_history = from_history or verify_history
         effective_check_notion_api = check_notion_api or verify_history
+        if effective_from_history and not all:
+            effective_keep_days = 1
+        elif all:
+            effective_keep_days = None
+        else:
+            effective_keep_days = None
         asyncio.run(
             chatgpt.upload_to_notion(
                 image_folder=image_folder,
@@ -146,6 +160,7 @@ def upload_to_notion(
                 check_notion_api=effective_check_notion_api,
                 from_history=effective_from_history,
                 limit=limit,
+                keep_days=effective_keep_days,
                 options=options,
             )
         )
