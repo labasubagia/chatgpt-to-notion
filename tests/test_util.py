@@ -294,6 +294,23 @@ class TestAccountActivityStatus:
         assert rows[0]["Next Wait"] == "Ready"
         assert rows[0]["Ready Generate?"] == "✅"
 
+    def test_total_count_only_includes_last_24h(self, tmp_path, monkeypatch):
+        """total_count should only count items from last 24h, not older."""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        pd.DataFrame(
+            [
+                {"id": "x", "created_at": (now - timedelta(hours=1)).isoformat()},
+                {"id": "y", "created_at": (now - timedelta(days=2)).isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        rows = get_account_activity_statuses(timezone_name="UTC")
+
+        assert rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
+
 
 class TestSaveToDataset:
     """Tests for save_to_dataset function."""

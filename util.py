@@ -531,7 +531,7 @@ def _get_activity_status_for_csv(
     created_at = created_at.dt.tz_convert(now.tzinfo)
     cooldown_threshold = now - timedelta(days=1)
     active_items = created_at[created_at > cooldown_threshold]
-    total_count = len(created_at)
+    total_count = len(active_items)
 
     if active_items.empty:
         return now, ready_row
