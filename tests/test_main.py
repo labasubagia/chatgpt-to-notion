@@ -297,7 +297,7 @@ class TestCLIDefaults:
         """Should accept --timezone option."""
         result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
-        assert "--timezone" in result.stdout
+        assert "--timezone" in strip_ansi(result.stdout)
 
     def test_account_status_timezone_option(self):
         """Should accept --timezone option."""
