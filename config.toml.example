@@ -1,5 +1,8 @@
 [shared]
 user_agent = "Mozilla/5.0 ..."
+# Optional: override default output locations (use ~ for home directory)
+# history_folder = "~/data/chatgpt/image_history"
+# image_folder = "~/Desktop/images"
 
 [notion]
 api_key = "secret_xxx"
@@ -8,6 +11,9 @@ database_id = "your_default_database_id"
 [accounts.account_a]
 authorization_token = "eyJhbGciOi..."
 notion_database_id = "optional_account_specific_db_id"
+# Optional: per-account override (overrides shared settings)
+# history_folder = "~/my_chatgpt/history"
+# image_folder = "~/my_chatgpt/images"
 
 [accounts.account_b]
 authorization_token = "eyJhbGciOi..."

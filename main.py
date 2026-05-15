@@ -76,8 +76,18 @@ def account_status(
 
 @app.command("upload-to-notion")
 def upload_to_notion(
+    history_folder: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to folder containing history CSVs (default: output/history)"
+        ),
+    ] = None,
     image_folder: Annotated[
-        str, typer.Option(help="Path to the folder containing images")
+        str,
+        typer.Option(
+            help="Path to folder containing images (default: output/images, "
+            "supports absolute path)",
+        ),
     ] = "images",
     db_id: Annotated[
         str | None,
@@ -121,7 +131,12 @@ def upload_to_notion(
     target_accounts = _resolve_target_accounts(account, config)
     total_accounts = len(target_accounts)
     for index, target_account in enumerate(target_accounts, start=1):
-        options = RuntimeOptions(config_path=config, account=target_account)
+        options = RuntimeOptions(
+            config_path=config,
+            account=target_account,
+            history_folder=history_folder,
+            image_folder=image_folder,
+        )
         required_vars = [
             "NOTION_API_KEY",
             "CHATGPT_AUTHORIZATION_TOKEN",

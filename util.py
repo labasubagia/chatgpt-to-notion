@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import shutil
 import tomllib
 from collections.abc import Sequence
@@ -40,6 +41,7 @@ def save_to_dataset(
     data: Sequence[dict] | Sequence[BaseModel],
     keep_days: int = 2,
     display_days: int = 1,
+    options: RuntimeOptions | None = None,
 ) -> None:
     if dataset is None:
         return
@@ -53,7 +55,7 @@ def save_to_dataset(
     else:
         dict_data = list(data)  # type: ignore[arg-type]
 
-    file_path = get_output_path(dataset)
+    file_path = _resolve_dataset_path(dataset, options)
     df_new = pd.DataFrame(dict_data)
     if "uploaded_at" not in df_new.columns:
         df_new["uploaded_at"] = ""
@@ -74,6 +76,17 @@ def save_to_dataset(
 
     df_final.to_csv(file_path, index=False)
     print(f"✅ Saved dataset to {file_path} (Total Today: {len(df_today)})\n")
+
+
+def _resolve_dataset_path(dataset: str, options: RuntimeOptions | None = None) -> Path:
+    parts = dataset.replace("\\", "/").split("/")
+    if len(parts) >= 2 and parts[0] == "history" and "_" in parts[-1]:
+        filename = parts[-1]
+        name_without_ext = filename.replace(".csv", "")
+        if "_" in name_without_ext:
+            account_name, service = name_without_ext.rsplit("_", 1)
+            return get_history_csv_path(account_name, service, options)
+    return get_output_path(dataset)
 
 
 def _merge_recent_rows_by_id(
@@ -127,10 +140,12 @@ def _merge_recent_rows_by_id(
     return df_combined
 
 
-def get_uploaded_generation_ids(dataset: str | None) -> set[str]:
+def get_uploaded_generation_ids(
+    dataset: str | None, options: RuntimeOptions | None = None
+) -> set[str]:
     if not dataset:
         return set()
-    file_path = get_output_path(dataset)
+    file_path = _resolve_dataset_path(dataset, options)
     if not file_path.exists():
         return set()
 
@@ -143,10 +158,14 @@ def get_uploaded_generation_ids(dataset: str | None) -> set[str]:
     return set(uploaded["id"].astype(str))
 
 
-def mark_generations_uploaded(dataset: str | None, generation_ids: set[str]) -> None:
+def mark_generations_uploaded(
+    dataset: str | None,
+    generation_ids: set[str],
+    options: RuntimeOptions | None = None,
+) -> None:
     if not dataset or not generation_ids:
         return
-    file_path = get_output_path(dataset)
+    file_path = _resolve_dataset_path(dataset, options)
     if not file_path.exists():
         return
 
@@ -181,6 +200,55 @@ def get_output_path(input_path_str: str, is_dir=False) -> Path:
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
     return final_path
+
+
+def _resolve_folder_path(folder_str: str | None, default_subpath: str) -> Path:
+    if not folder_str:
+        return Path(OUTPUT_PATH).resolve() / default_subpath
+    path = Path(os.path.expanduser(folder_str))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_history_folder(options: RuntimeOptions | None = None) -> Path:
+    options = options or RuntimeOptions()
+    cli_folder = options.history_folder
+    if cli_folder:
+        return _resolve_folder_path(cli_folder, "")
+    if options.config_path or options.account:
+        try:
+            resolved = resolve_config(options)
+            config_folder = resolved.history_folder
+            if config_folder:
+                return _resolve_folder_path(config_folder, "")
+        except ValueError:
+            pass
+    return Path(OUTPUT_PATH).resolve() / "history"
+
+
+def get_image_folder(options: RuntimeOptions | None = None) -> Path:
+    options = options or RuntimeOptions()
+    cli_folder = options.image_folder
+    if cli_folder:
+        return _resolve_folder_path(cli_folder, "")
+    if options.config_path or options.account:
+        try:
+            resolved = resolve_config(options)
+            config_folder = resolved.image_folder
+            if config_folder:
+                return _resolve_folder_path(config_folder, "")
+        except ValueError:
+            pass
+    return Path(OUTPUT_PATH).resolve() / "images"
+
+
+def get_history_csv_path(
+    account_name: str,
+    service: str,
+    options: RuntimeOptions | None = None,
+) -> Path:
+    folder = get_history_folder(options)
+    return folder / f"{account_name}_{service}.csv"
 
 
 def clean_output_path() -> None:
@@ -263,14 +331,21 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
     notion = app_config.notion.model_copy(deep=True)
     if account.notion_database_id:
         notion.database_id = account.notion_database_id
+
+    shared = app_config.shared
+    history_folder = account.history_folder or shared.history_folder
+    image_folder = account.image_folder or shared.image_folder
+
     return ResolvedConfig(
         account_name=account_name,
         account=account.model_copy(
             update={
-                "user_agent": account.user_agent or app_config.shared.user_agent,
+                "user_agent": account.user_agent or shared.user_agent,
             }
         ),
         notion=notion,
+        history_folder=history_folder,
+        image_folder=image_folder,
     )
 
 
@@ -384,7 +459,7 @@ def _activity_csv_path(
     account_name: str,
     service: str,
 ) -> Path:
-    return Path(OUTPUT_PATH).resolve() / "history" / f"{account_name}_{service}.csv"
+    return get_history_csv_path(account_name, service)
 
 
 def get_account_activity_statuses(

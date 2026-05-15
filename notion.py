@@ -1,6 +1,7 @@
 import asyncio
 import os
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -205,7 +206,11 @@ async def upload_all_images_to_notion(
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    uploaded_generation_ids = get_uploaded_generation_ids(dataset)
+    uploaded_generation_ids = get_uploaded_generation_ids(dataset, options)
+
+    image_folder_path = Path(image_folder)
+    if not image_folder_path.is_absolute():
+        image_folder_path = get_output_path(image_folder)
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
 
@@ -217,7 +222,7 @@ async def upload_all_images_to_notion(
                     pbar.update(1)
                     return None
 
-                file_path = get_output_path(os.path.join(image_folder, file_name))
+                file_path = image_folder_path / file_name
                 if not os.path.exists(file_path):
                     pbar.write(f"⚠️  {file_name} not found, skipped")
                     pbar.update(1)
@@ -254,5 +259,6 @@ async def upload_all_images_to_notion(
     mark_generations_uploaded(
         dataset,
         {generation_id for generation_id in uploaded_results if generation_id},
+        options,
     )
     print()  # Add spacing after progress bar

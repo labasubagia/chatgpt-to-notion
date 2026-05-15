@@ -243,6 +243,23 @@ class TestCLICommands:
         assert "Ready" in result.stdout
         assert "0s" in result.stdout
 
+    def test_account_status_multiple_accounts_no_flag(self):
+        """Should work without --account when multiple accounts exist."""
+        with patch("util._load_toml_config") as mock_load:
+            from models import AppConfig, AccountConfig, NotionConfig, SharedAccountConfig
+            mock_load.return_value = AppConfig(
+                notion=NotionConfig(api_key="x", database_id="x"),
+                shared=SharedAccountConfig(user_agent="x"),
+                accounts={
+                    "account_a": AccountConfig(authorization_token="token_a"),
+                    "account_b": AccountConfig(authorization_token="token_b"),
+                },
+            )
+            result = runner.invoke(app, ["account-status"])
+            assert result.exit_code == 0
+            assert "account_a" in result.stdout
+            assert "account_b" in result.stdout
+
 
 class TestCLIConfigValidation:
     """Tests for TOML configuration validation."""

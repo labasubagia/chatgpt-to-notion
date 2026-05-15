@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -16,6 +17,7 @@ from util import (
     MAX_CONCURRENT_REQUESTS,
     download_image,
     get_http_timeout,
+    get_image_folder,
     get_output_path,
     get_provider_context,
     retry_http,
@@ -264,6 +266,10 @@ async def download_all_images(
     pbar = tqdm(total=total, desc="Downloading images")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
+    download_path = Path(download_folder)
+    if not download_path.is_absolute():
+        download_path = get_output_path(download_folder)
+
     async with aiohttp.ClientSession(
         headers=get_headers(options), timeout=get_http_timeout()
     ) as session:
@@ -271,7 +277,7 @@ async def download_all_images(
         async def download(row: ChatGPTImageGeneration):
             async with semaphore:
                 file_name = f"{row.id}.png"
-                file_path = get_output_path(os.path.join(download_folder, file_name))
+                file_path = download_path / file_name
 
                 if os.path.exists(file_path):
                     pbar.write(f"⏭️  {file_name} skipped, already exists")
@@ -362,6 +368,11 @@ async def upload_to_notion(
     keep_days: int | None = None,
     options: RuntimeOptions | None = None,
 ) -> None:
+    if Path(image_folder).is_absolute():
+        resolved_image_folder = Path(image_folder)
+    else:
+        resolved_image_folder = get_image_folder(options)
+
     if from_history:
         if not dataset:
             raise ValueError("dataset is required when from_history=True")
@@ -378,20 +389,22 @@ async def upload_to_notion(
         return
 
     if dataset and not from_history:
-        save_to_dataset(dataset=dataset, data=generations)
+        save_to_dataset(dataset=dataset, data=generations, options=options)
 
     await download_all_images(
-        generations=generations, download_folder=image_folder, options=options
+        generations=generations,
+        download_folder=str(resolved_image_folder),
+        options=options,
     )
 
     if add_prompt_to_image:
-        add_prompt_to_images(generations=generations, folder=image_folder)
+        add_prompt_to_images(generations=generations, folder=str(resolved_image_folder))
 
     if upload_to_notion:
         await upload_all_images_to_notion(
             generations=generations,
             db_id=db_id,
-            image_folder=image_folder,
+            image_folder=str(resolved_image_folder),
             dataset=dataset,
             check_notion_api=check_notion_api,
             options=options,

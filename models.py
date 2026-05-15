@@ -44,6 +44,8 @@ class AccountConfig(BaseModel):
     authorization_token: str
     user_agent: str | None = None
     notion_database_id: str | None = None
+    history_folder: str | None = None
+    image_folder: str | None = None
 
 
 class SharedAccountConfig(BaseModel):
@@ -52,6 +54,8 @@ class SharedAccountConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_agent: str | None = None
+    history_folder: str | None = None
+    image_folder: str | None = None
 
 
 class AppConfig(BaseModel):
@@ -72,6 +76,8 @@ class ResolvedConfig(BaseModel):
     account_name: str
     account: AccountConfig
     notion: NotionConfig
+    history_folder: str | None = None
+    image_folder: str | None = None
 
 
 class RuntimeOptions(BaseModel):
@@ -81,6 +87,8 @@ class RuntimeOptions(BaseModel):
 
     config_path: str | None = None
     account: str | None = None
+    history_folder: str | None = None
+    image_folder: str | None = None
 
 
 class ProviderContext(BaseModel):
