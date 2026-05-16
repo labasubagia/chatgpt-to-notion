@@ -250,11 +250,13 @@ class TestAccountActivityStatus:
     """Tests for account readiness status."""
 
     def test_csv_file_not_exists_is_ready(self):
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Account"] == "default"
-        assert rows[0]["Next Wait"] == "Ready"
-        assert rows[0]["Ready Generate?"] == "✅"
+        assert today_rows[0]["Account"] == "default"
+        assert today_rows[0]["Next Wait"] == "Ready"
+        assert today_rows[0]["Ready Generate?"] == "✅"
+        assert yesterday_rows[0]["Next Wait"] == "Ready"
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_today_all_active_red(self, tmp_path, monkeypatch):
         """Today has data, all active (<24h) -> red"""
@@ -276,9 +278,10 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
 
-        assert rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
+        assert today_rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_fallback_to_yesterday_partial_active(self, tmp_path, monkeypatch):
         """Today empty, yesterday has partial active -> yellow"""
@@ -300,9 +303,10 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
 
-        assert rows[0]["Ready Generate?"] == "⚠️  (5/8 to wait)"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "⚠️  (5/8 to wait)"
 
     def test_fallback_to_yesterday_all_active_red(self, tmp_path, monkeypatch):
         """Today empty, yesterday has all active -> red"""
@@ -324,12 +328,13 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
 
-        assert rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
 
     def test_both_empty_ready(self, tmp_path, monkeypatch):
-        """Both today and yesterday empty -> ready"""
+        """Data from 2+ days ago -> today empty, yesterday ready"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
         now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
@@ -341,12 +346,13 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "✅"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_selected_file_all_over_24h_ready(self, tmp_path, monkeypatch):
-        """Selected file all > 24h old -> ready"""
+        """Yesterday data all > 24h old -> ready, today has no data"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
         now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
@@ -365,9 +371,10 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "✅"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_yesterday_late_night_still_active(self, tmp_path, monkeypatch):
         """Yesterday late night entries (23:50) still active at 07:30 -> red"""
@@ -382,9 +389,10 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
 
     def test_yesterday_partial_ready(self, tmp_path, monkeypatch):
         """Yesterday has 2 active (<24h), 6 ready (>24h) -> yellow"""
@@ -406,12 +414,13 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "⚠️  (2/8 to wait)"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "⚠️  (2/8 to wait)"
 
     def test_csv_file_empty_ready(self, tmp_path, monkeypatch):
-        """CSV file is empty -> ready"""
+        """CSV file is empty -> both ready"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
         pd.DataFrame(columns=["id", "created_at"]).to_csv(
@@ -419,12 +428,13 @@ class TestAccountActivityStatus:
         )
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "✅"
+        assert today_rows[0]["Ready Generate?"] == "✅"
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_csv_no_valid_created_at_ready(self, tmp_path, monkeypatch):
-        """CSV has no valid created_at column -> ready"""
+        """CSV has no valid created_at column -> both ready"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
         pd.DataFrame(
@@ -435,20 +445,22 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "✅"
+        assert today_rows[0]["Ready Generate?"] == "✅"
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_csv_corrupted_ready(self, tmp_path, monkeypatch):
-        """CSV is corrupted -> ready"""
+        """CSV is corrupted -> both ready"""
         history_dir = tmp_path / "output" / "history"
         history_dir.mkdir(parents=True)
         (history_dir / "default_chatgpt.csv").write_text("not,a,valid,csv,file,at,all")
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
 
-        assert rows[0]["Ready Generate?"] == "✅"
+        assert today_rows[0]["Ready Generate?"] == "✅"
+        assert yesterday_rows[0]["Ready Generate?"] == "✅"
 
     def test_timezone_filter_uses_user_timezone(self, tmp_path, monkeypatch):
         """Entry is yesterday in Asia/Jakarta but <24h old -> yellow"""
@@ -469,9 +481,34 @@ class TestAccountActivityStatus:
         ).to_csv(history_dir / "default_chatgpt.csv", index=False)
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
 
-        rows = get_account_activity_statuses(timezone_name="Asia/Jakarta")
+        today_rows, yesterday_rows = get_account_activity_statuses(
+            timezone_name="Asia/Jakarta", now=now_jakarta
+        )
 
-        assert rows[0]["Ready Generate?"] == "⚠️  (1/2 to wait)"
+        assert len(today_rows) == 0
+        assert yesterday_rows[0]["Ready Generate?"] == "⚠️  (1/2 to wait)"
+
+    def test_both_days_have_data(self, tmp_path, monkeypatch):
+        """Today and yesterday both have data -> both tables show status"""
+        history_dir = tmp_path / "output" / "history"
+        history_dir.mkdir(parents=True)
+        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        today_start = now.replace(hour=0, minute=0)
+        yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0)
+        pd.DataFrame(
+            [
+                {"id": "a", "created_at": (today_start + timedelta(hours=2)).isoformat()},
+                {"id": "b", "created_at": (today_start + timedelta(hours=4)).isoformat()},
+                {"id": "c", "created_at": (yesterday_start + timedelta(hours=14)).isoformat()},
+                {"id": "d", "created_at": (yesterday_start + timedelta(hours=16)).isoformat()},
+            ]
+        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "output"))
+
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+
+        assert today_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"
+        assert yesterday_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"
 
 
 class TestSaveToDataset:

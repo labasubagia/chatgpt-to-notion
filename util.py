@@ -4,7 +4,7 @@ import os
 import shutil
 import tomllib
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -466,86 +466,126 @@ def get_account_activity_statuses(
     config_path: str | None = None,
     timezone_name: str | None = None,
     now: datetime | None = None,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     account_names = get_account_names(config_path)
     if not account_names:
-        return []
+        return [], []
 
     tz = (
         ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
     )
     if now is None:
         now = datetime.now(tz)
-    rows: list[dict[str, str]] = []
-    sortable_rows: list[tuple[datetime, dict[str, str]]] = []
+    today_date = now.date()
+    yesterday_date = (now - timedelta(days=1)).date()
+
+    today_rows: list[dict[str, str]] = []
+    yesterday_rows: list[dict[str, str]] = []
+    today_sortable: list[tuple[datetime, dict[str, str]]] = []
+    yesterday_sortable: list[tuple[datetime, dict[str, str]]] = []
 
     for account_name in account_names:
         csv_path = _activity_csv_path(
             account_name=account_name,
             service="chatgpt",
         )
-        sort_key, row = _get_activity_status_for_csv(
+        has_data = _csv_has_valid_data(csv_path)
+
+        if not has_data:
+            ready_row = _make_ready_row(account_name, "chatgpt")
+            today_sortable.append((now, ready_row))
+            yesterday_sortable.append((now, ready_row))
+            continue
+
+        today_key, today_row = _get_activity_status_for_date(
             account_name=account_name,
             service="chatgpt",
             csv_path=csv_path,
             now=now,
+            target_date=today_date,
         )
-        sortable_rows.append((sort_key, row))
+        yesterday_key, yesterday_row = _get_activity_status_for_date(
+            account_name=account_name,
+            service="chatgpt",
+            csv_path=csv_path,
+            now=now,
+            target_date=yesterday_date,
+        )
+        if today_row is not None:
+            today_sortable.append((today_key, today_row))
+        if yesterday_row is not None:
+            yesterday_sortable.append((yesterday_key, yesterday_row))
+        else:
+            ready_row = _make_ready_row(account_name, "chatgpt")
+            yesterday_sortable.append((now, ready_row))
 
-    for _, row in sorted(sortable_rows, key=lambda item: item[0]):
-        rows.append(row)
-    return rows
+    for _, row in sorted(today_sortable, key=lambda item: item[0]):
+        today_rows.append(row)
+    for _, row in sorted(yesterday_sortable, key=lambda item: item[0]):
+        yesterday_rows.append(row)
+    return today_rows, yesterday_rows
 
 
-def _get_activity_status_for_csv(
-    *,
-    account_name: str,
-    service: str,
-    csv_path: Path,
-    now: datetime,
-) -> tuple[datetime, dict[str, str]]:
-    ready_row = {
+def _csv_has_valid_data(csv_path: Path) -> bool:
+    if not csv_path.exists():
+        return False
+    try:
+        df = pd.read_csv(csv_path, usecols=["created_at"])
+    except Exception:
+        return False
+    if df.empty:
+        return False
+    created_at = pd.to_datetime(
+        df["created_at"], utc=True, format="ISO8601", errors="coerce"
+    ).dropna()
+    return not created_at.empty
+
+
+def _make_ready_row(account_name: str, service: str) -> dict[str, str]:
+    return {
         "Account": account_name,
+        "Service": service,
         "Next Wait": "Ready",
         "Next Cooldown": "0s",
         "Fully Ready In": "0s",
         "Total Wait": "0s",
         "Ready Generate?": "✅",
     }
+
+
+def _get_activity_status_for_date(
+    *,
+    account_name: str,
+    service: str,
+    csv_path: Path,
+    now: datetime,
+    target_date: date,
+) -> tuple[datetime, dict[str, str] | None]:
+    no_data_key = now - timedelta(days=1)
     if not csv_path.exists():
-        return now - timedelta(days=1), ready_row
+        return no_data_key, None
 
     try:
         df = pd.read_csv(csv_path, usecols=["created_at"])
     except Exception:
-        return now - timedelta(days=1), ready_row
+        return no_data_key, None
 
     if df.empty:
-        return now - timedelta(days=1), ready_row
+        return no_data_key, None
 
     created_at = pd.to_datetime(
         df["created_at"], utc=True, format="ISO8601", errors="coerce"
     ).dropna()
     if created_at.empty:
-        return now - timedelta(days=1), ready_row
+        return no_data_key, None
 
     created_at = created_at.dt.tz_convert(now.tzinfo)
-    today_date = now.date()
-    yesterday_date = (now - timedelta(days=1)).date()
+    target_mask = created_at.dt.date == target_date
 
-    today_mask = created_at.dt.date == today_date
-    yesterday_mask = created_at.dt.date == yesterday_date
-    relevant_mask = today_mask | yesterday_mask
+    if not target_mask.any():
+        return now, None
 
-    if not relevant_mask.any():
-        return now, ready_row
-
-    relevant_df = created_at[relevant_mask]
-    today_df = relevant_df[today_mask]
-    selected_df = today_df if not today_df.empty else relevant_df[yesterday_mask]
-
-    if selected_df.empty:
-        return now, ready_row
+    selected_df = created_at[target_mask]
 
     total_count = len(selected_df)
     cooldown_threshold = now - timedelta(days=1)
@@ -553,7 +593,7 @@ def _get_activity_status_for_csv(
     active_count = len(active_items)
 
     if active_count == 0:
-        return now, ready_row
+        return now, _make_ready_row(account_name, service)
 
     first_active = active_items.min()
     last_active = active_items.max()

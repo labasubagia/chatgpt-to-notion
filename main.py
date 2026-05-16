@@ -36,9 +36,13 @@ def _account_dataset(account_name: str, service: str) -> str:
     return f"history/{account_name}_{service}.csv"
 
 
-def _print_activity_table(rows: list[dict[str, str]]) -> None:
+def _print_activity_table(rows: list[dict[str, str]], title: str = "") -> None:
     if not rows:
-        util.console.print("No accounts found in config.")
+        if title:
+            util.console.print(f"[bold]{title}[/bold]")
+            util.console.print("No accounts have data for this period.")
+        else:
+            util.console.print("No accounts found in config.")
         return
 
     columns = [
@@ -49,6 +53,10 @@ def _print_activity_table(rows: list[dict[str, str]]) -> None:
         "Total Wait",
         "Ready Generate?",
     ]
+
+    if title:
+        util.console.print()
+        util.console.print(f"[bold]{title}[/bold]")
 
     table = Table(show_header=True, header_style="bold")
     for column in columns:
@@ -67,11 +75,12 @@ def account_status(
     ] = None,
 ) -> None:
     """Show which accounts are ready to generate new data."""
-    rows = util.get_account_activity_statuses(
+    today_rows, yesterday_rows = util.get_account_activity_statuses(
         config_path=config,
         timezone_name=timezone,
     )
-    _print_activity_table(rows)
+    _print_activity_table(today_rows, title="Today")
+    _print_activity_table(yesterday_rows, title="Yesterday")
 
 
 @app.command("upload-to-notion")
