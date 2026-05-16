@@ -1,5 +1,5 @@
 import asyncio
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 from rich.table import Table
@@ -130,6 +130,12 @@ def upload_to_notion(
     account: Annotated[
         str | None, typer.Option(help="Named account from TOML config")
     ] = None,
+    mode: Annotated[
+        Literal["single", "batch"],
+        typer.Option(
+            help="Processing mode: single (per-file, resilient) or batch (parallel)"
+        ),
+    ] = "single",
 ):
     """Upload image generations to Notion"""
     target_accounts = _resolve_target_accounts(account, config)
@@ -167,8 +173,13 @@ def upload_to_notion(
             effective_keep_days = None
         else:
             effective_keep_days = None
+        upload_fn = (
+            chatgpt.upload_to_notion_single
+            if mode == "single"
+            else chatgpt.upload_to_notion
+        )
         asyncio.run(
-            chatgpt.upload_to_notion(
+            upload_fn(
                 image_folder=image_folder,
                 db_id=effective_db_id,
                 upload_to_notion=upload_to_notion,

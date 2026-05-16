@@ -1,6 +1,7 @@
 import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
@@ -37,6 +38,22 @@ def get_png_prompt(file_path: str) -> str | None:
     with Image.open(file_path) as img:
         prompt = img.info.get("Prompt")
         return prompt if isinstance(prompt, str) else None
+
+
+def add_prompt_to_image_single(generation: ImageGeneration, folder: str) -> None:
+    """Add prompt text metadata to a single PNG image."""
+    file_name = f"{generation.id}.png"
+    file_path = Path(folder) / file_name
+    if not file_path.exists():
+        return
+
+    if get_png_prompt(str(file_path)) == generation.prompt:
+        return
+
+    edit_png_info(
+        str(file_path),
+        payload={"Prompt": generation.prompt},
+    )
 
 
 def add_prompt_to_images(
