@@ -307,14 +307,21 @@ def get_activity_stats(
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as active_count,
-                MIN(created_at) as first_active,
-                MAX(created_at) as last_active
+                MIN(CASE WHEN created_at > ? THEN created_at END) as first_active,
+                MAX(CASE WHEN created_at > ? THEN created_at END) as last_active
             FROM image_generations
             WHERE account = ?
               AND created_at >= ?
               AND created_at < ?
             """,
-            (cooldown_threshold, account, date_start, date_end),
+            (
+                cooldown_threshold,
+                cooldown_threshold,
+                cooldown_threshold,
+                account,
+                date_start,
+                date_end,
+            ),
         ).fetchone()
         if row is None or row["total"] == 0:
             return None

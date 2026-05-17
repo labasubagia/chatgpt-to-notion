@@ -429,6 +429,11 @@ class TestGetActivityStats:
         assert stats is not None
         assert stats["total"] == 2
         assert stats["active_count"] == 1
+        # first_active and last_active should only reflect active items
+        first_active = datetime.fromisoformat(stats["first_active"])
+        last_active = datetime.fromisoformat(stats["last_active"])
+        assert first_active > cooldown
+        assert last_active > cooldown
 
 
 class TestCountRecentGenerations:

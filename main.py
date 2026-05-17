@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from typing import Annotated, Literal
 
 import typer
@@ -78,6 +79,9 @@ def account_status(
         config_path=config,
         timezone_name=timezone,
     )
+    user_tz = util.resolve_timezone(timezone_name=timezone)
+    current_time = datetime.now().astimezone(user_tz).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Current Time: {current_time}")
     _print_activity_table(today_rows, title="Today")
     _print_activity_table(yesterday_rows, title="Yesterday")
 
