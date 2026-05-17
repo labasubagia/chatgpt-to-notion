@@ -145,10 +145,10 @@ class TestCLICommands:
         assert mock_upload.call_count == 2
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
-    def test_upload_to_notion_uses_account_csv(
+    def test_upload_to_notion_uses_account(
         self, mock_upload, mock_config_toml
     ):
-        """Should write the single per-account CSV."""
+        """Should pass account name directly."""
         result = runner.invoke(
             app,
             [
@@ -158,8 +158,8 @@ class TestCLICommands:
         )
         assert result.exit_code == 0
         mock_upload.assert_called_once()
-        assert mock_upload.call_args.kwargs["dataset"] == "history/default_chatgpt.csv"
-        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+        assert mock_upload.call_args.kwargs["account"] == "default"
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_check_notion_api_flag(
@@ -196,7 +196,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert mock_upload.call_args.kwargs["from_history"] is True
-        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_verify_history_flag(
@@ -282,10 +282,10 @@ class TestCLIDefaults:
     """Tests for CLI default values."""
 
     def test_chatgpt_default_image_folder(self):
-        """Should use default image folder."""
+        """Should use default image folder from output/images."""
         result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
-        assert "[default: images]" in result.stdout
+        assert "output/images" in result.stdout
 
     def test_chatgpt_default_limit(self):
         """Should use default limit."""

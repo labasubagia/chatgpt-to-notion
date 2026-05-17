@@ -23,10 +23,6 @@ BASE_URL = "https://api.notion.com"
 
 DB_ID: str | None = None
 
-# Cache for database data sources
-_db_data_sources_cache: dict[str, Any] = {}
-_db_page_cache: set[str] = set()
-
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
     """Get headers for Notion API requests"""
@@ -39,8 +35,11 @@ async def get_db_data_sources(
     db_id: str,
     headers: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    if db_id in _db_data_sources_cache:
-        return _db_data_sources_cache[db_id]
+    from db import async_set_cached_data_sources, get_cached_data_sources
+
+    cached = get_cached_data_sources(db_id)
+    if cached is not None:
+        return cached
 
     async with session.get(
         f"{BASE_URL}/v1/databases/{db_id}", headers=headers or get_headers()
@@ -48,7 +47,7 @@ async def get_db_data_sources(
         response.raise_for_status()
         data = await response.json()
         data_sources = data.get("data_sources", [])
-        _db_data_sources_cache[db_id] = data_sources
+        await async_set_cached_data_sources(db_id, data_sources)
         return data_sources
 
 
@@ -77,8 +76,6 @@ async def is_page_exists_in_db(
     options: RuntimeOptions | None = None,
 ) -> bool:
     headers = get_headers(options)
-    if query in _db_page_cache:
-        return True
     data_sources = await get_db_data_sources(session, db_id, headers=headers)
     for data_source in data_sources:
         data = await query_data_source(
@@ -87,7 +84,6 @@ async def is_page_exists_in_db(
         for page in data.get("results", []):
             name = page["properties"]["Name"]["title"][0]["text"]["content"]
             if name == query:
-                _db_page_cache.add(query)
                 return True
     return False
 
@@ -209,7 +205,6 @@ async def add_page_to_db(
             print(f"Failed to add page for {file_name}: {code} - {text}")
             print(json.dumps(payload, indent=2))
         response.raise_for_status()
-        _db_page_cache.add(file_name)
         return await response.json()
 
 
@@ -217,14 +212,14 @@ async def upload_all_images_to_notion(
     generations: Sequence[ImageGeneration],
     db_id: str,
     image_folder: str,
-    dataset: str | None = None,
+    account: str | None = None,
     check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    uploaded_generation_ids = get_uploaded_generation_ids(dataset, options)
+    uploaded_generation_ids = get_uploaded_generation_ids(account, options)
 
     image_folder_path = Path(image_folder)
     if not image_folder_path.is_absolute():
@@ -236,7 +231,7 @@ async def upload_all_images_to_notion(
             async with semaphore:
                 file_name = f"{generation_id}.png"
                 if generation_id in uploaded_generation_ids and not check_notion_api:
-                    pbar.write(f"⏭️  {file_name} skipped, marked uploaded in CSV")
+                    pbar.write(f"⏭️  {file_name} skipped, marked uploaded")
                     pbar.update(1)
                     return None
 
@@ -275,7 +270,7 @@ async def upload_all_images_to_notion(
 
     pbar.close()
     mark_generations_uploaded(
-        dataset,
+        account,
         {generation_id for generation_id in uploaded_results if generation_id},
         options,
     )

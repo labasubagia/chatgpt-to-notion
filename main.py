@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from typing import Annotated, Literal
 
 import typer
@@ -30,10 +31,6 @@ def _resolve_target_accounts(
     if not accounts:
         raise typer.BadParameter("No accounts found in config.")
     return accounts
-
-
-def _account_dataset(account_name: str, service: str) -> str:
-    return f"history/{account_name}_{service}.csv"
 
 
 def _print_activity_table(rows: list[dict[str, str]], title: str = "") -> None:
@@ -75,10 +72,16 @@ def account_status(
     ] = None,
 ) -> None:
     """Show which accounts are ready to generate new data."""
+    import db
+
+    db.init_db()
     today_rows, yesterday_rows = util.get_account_activity_statuses(
         config_path=config,
         timezone_name=timezone,
     )
+    user_tz = util.resolve_timezone(timezone_name=timezone)
+    current_time = datetime.now().astimezone(user_tz).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Current Time: {current_time}")
     _print_activity_table(today_rows, title="Today")
     _print_activity_table(yesterday_rows, title="Yesterday")
 
@@ -88,16 +91,16 @@ def upload_to_notion(
     history_folder: Annotated[
         str | None,
         typer.Option(
-            help="Path to folder containing history CSVs (default: output/history)"
+            help="Path to folder containing history data (default: output/history)"
         ),
     ] = None,
     image_folder: Annotated[
-        str,
+        str | None,
         typer.Option(
             help="Path to folder containing images (default: output/images, "
             "supports absolute path)",
         ),
-    ] = "images",
+    ] = None,
     db_id: Annotated[
         str | None,
         typer.Option(help="Notion Database ID", callback=validate_db_id),
@@ -110,13 +113,11 @@ def upload_to_notion(
     ] = False,
     check_notion_api: Annotated[
         bool,
-        typer.Option(
-            help="Check Notion API even when uploaded_at is already set in CSV"
-        ),
-    ] = False,
+        typer.Option(help="Check Notion API even when uploaded_at is already set"),
+    ] = True,
     from_history: Annotated[
         bool,
-        typer.Option(help="Use CSV as source (non-uploaded items only, today's data)"),
+        typer.Option(help="Use history data as source (non-uploaded items only)"),
     ] = False,
     verify_history: Annotated[
         bool,
@@ -126,7 +127,11 @@ def upload_to_notion(
     ] = False,
     all: Annotated[
         bool,
-        typer.Option(help="Load all data from CSV (not just today's)"),
+        typer.Option(help="Load all data from history (not just today's)"),
+    ] = False,
+    no_cache: Annotated[
+        bool,
+        typer.Option(help="Bypass SQLite cache and fetch fresh from API"),
     ] = False,
     limit: Annotated[
         int, typer.Option(help="Limit number of image generations to process")
@@ -173,7 +178,6 @@ def upload_to_notion(
         )
         effective_db_id = db_id or resolved.notion.database_id
         assert effective_db_id is not None, "db_id must be provided"
-        account_dataset = _account_dataset(resolved.account_name, "chatgpt")
         effective_from_history = from_history or verify_history
         effective_check_notion_api = check_notion_api or verify_history
         if effective_from_history and not all:
@@ -193,12 +197,13 @@ def upload_to_notion(
                 db_id=effective_db_id,
                 upload_to_notion=upload_to_notion,
                 remove_in_chatgpt=remove,
-                dataset=account_dataset,
+                account=resolved.account_name,
                 check_notion_api=effective_check_notion_api,
                 from_history=effective_from_history,
                 limit=limit,
                 keep_days=effective_keep_days,
                 timezone_name=timezone,
+                no_cache=no_cache,
                 options=options,
             )
         )

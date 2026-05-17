@@ -1,15 +1,14 @@
 import asyncio
 import os
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import aiohttp
-import pandas as pd
 from tqdm.asyncio import tqdm
 
+import db
 from img import add_prompt_to_image_single, add_prompt_to_images
 from models import ChatGPTImageGeneration, RuntimeOptions
 from notion import add_page_to_db, is_page_exists_in_db, upload_all_images_to_notion
@@ -18,13 +17,12 @@ from util import (
     MAX_CONCURRENT_REQUESTS,
     download_image,
     get_http_timeout,
-    get_image_folder,
-    get_output_path,
     get_provider_context,
     get_uploaded_generation_ids,
     mark_generations_uploaded,
+    resolve_image_folder,
     retry_http,
-    save_to_dataset,
+    save_generations,
 )
 
 BASE_URL = "https://chatgpt.com/backend-api"
@@ -156,114 +154,92 @@ def get_prompt_from_image_node_in_conversation(
 async def fetch_image_generations(
     limit: int = 100,
     options: RuntimeOptions | None = None,
+    no_cache: bool = False,
 ) -> list[ChatGPTImageGeneration]:
+    account = options.account if options else None
+    if not account:
+        account = "default"
+
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     headers = get_headers(options)
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
         data = await get_image_generations(session, headers=headers, limit=limit)
 
-        total = len(data.get("items", []))
-        pbar = tqdm(total=total, desc="Fetching generation details")
+        items = data.get("items", [])
+        api_ids = {item["id"] for item in items}
 
-        async def fetch_generation_details(
-            img_gen: dict[str, Any],
-        ) -> ChatGPTImageGeneration | None:
-            async with semaphore:
-                try:
-                    detail = await get_conversation_details(
-                        session, img_gen["conversation_id"], headers=headers
-                    )
-                    prompt = get_prompt_from_image_node_in_conversation(
-                        detail, img_gen["message_id"], img_gen["asset_pointer"]
-                    )
-                    created_at = datetime.fromtimestamp(
-                        img_gen["created_at"], tz=timezone.utc
-                    ).isoformat(timespec="microseconds")
-                    pbar.write(f"✅ img ID {img_gen['id']}")
-                    return ChatGPTImageGeneration(
-                        created_at=created_at,
-                        id=img_gen["id"],
-                        conversation_id=img_gen["conversation_id"],
-                        message_id=img_gen["message_id"],
-                        asset_pointer=img_gen["asset_pointer"],
-                        url=img_gen["url"],
-                        prompt=prompt or "",
-                    )
-                except Exception as e:
-                    pbar.write(f"❌ img ID {img_gen['id']} failed: {e}")
-                    return None
-                finally:
-                    pbar.update(1)
+        existing_ids = db.get_existing_ids(account, api_ids)
 
-        results = await asyncio.gather(
-            *[fetch_generation_details(img_gen) for img_gen in data.get("items", [])],
-            return_exceptions=True,
-        )
+        new_items = [item for item in items if item["id"] not in existing_ids]
 
-        pbar.close()
-        print()
+        if new_items:
+            pbar = tqdm(total=len(new_items), desc="Fetching new generation details")
 
-        # Filter out None and exceptions
-        valid_generations = [
-            g
-            for g in results
-            if g is not None
-            and not isinstance(g, Exception)
-            and isinstance(g, ChatGPTImageGeneration)
-        ]
-        return sorted(valid_generations, key=lambda x: x.created_at)
+            async def fetch_generation_details(
+                img_gen: dict[str, Any],
+            ) -> ChatGPTImageGeneration | None:
+                async with semaphore:
+                    try:
+                        detail = await get_conversation_details(
+                            session, img_gen["conversation_id"], headers=headers
+                        )
+                        prompt = get_prompt_from_image_node_in_conversation(
+                            detail, img_gen["message_id"], img_gen["asset_pointer"]
+                        )
+                        created_at = datetime.fromtimestamp(
+                            img_gen["created_at"], tz=timezone.utc
+                        ).isoformat(timespec="microseconds")
+                        pbar.write(f"✅ img ID {img_gen['id']}")
+                        return ChatGPTImageGeneration(
+                            created_at=created_at,
+                            id=img_gen["id"],
+                            conversation_id=img_gen["conversation_id"],
+                            message_id=img_gen["message_id"],
+                            asset_pointer=img_gen["asset_pointer"],
+                            url=img_gen["url"],
+                            prompt=prompt or "",
+                        )
+                    except Exception as e:
+                        pbar.write(f"❌ img ID {img_gen['id']} failed: {e}")
+                        return None
+                    finally:
+                        pbar.update(1)
+
+            results = await asyncio.gather(
+                *[fetch_generation_details(item) for item in new_items],
+                return_exceptions=True,
+            )
+
+            pbar.close()
+            print()
+
+            new_generations = [
+                g
+                for g in results
+                if g is not None
+                and not isinstance(g, Exception)
+                and isinstance(g, ChatGPTImageGeneration)
+            ]
+
+            await db.async_upsert_generations(account, new_generations)
+
+        return db.get_generations(account, include_uploaded=True, ids_filter=api_ids)
 
 
-def load_image_generations_from_dataset(
-    dataset: str,
+def load_image_generations(
+    account: str,
     include_uploaded: bool = False,
     keep_days: int | None = None,
     timezone_name: str | None = None,
+    options: RuntimeOptions | None = None,
 ) -> list[ChatGPTImageGeneration]:
-    file_path = get_output_path(dataset)
-    if not file_path.exists():
-        print(f"No history dataset found at {file_path}.")
-        return []
-
-    df = pd.read_csv(file_path)
-    if df.empty:
-        return []
-    if "uploaded_at" not in df.columns:
-        df["uploaded_at"] = ""
-    if not include_uploaded:
-        df = df[df["uploaded_at"].fillna("").astype(str).str.strip() == ""]
-
-    if keep_days is not None and "created_at" in df.columns:
-        df["created_at"] = pd.to_datetime(
-            df["created_at"], utc=True, format="ISO8601", errors="coerce"
-        )
-        tz = (
-            ZoneInfo(timezone_name)
-            if timezone_name
-            else datetime.now().astimezone().tzinfo
-        )
-        cutoff = datetime.now(tz) - timedelta(days=keep_days)
-        df = df.dropna(subset=["created_at"])
-        df = df[df["created_at"] >= cutoff]
-
-    generations: list[ChatGPTImageGeneration] = []
-    for row in df.fillna("").to_dict(orient="records"):
-        try:
-            generations.append(
-                ChatGPTImageGeneration(
-                    created_at=str(row.get("created_at", "")),
-                    id=str(row.get("id", "")),
-                    conversation_id=str(row.get("conversation_id", "")),
-                    message_id=str(row.get("message_id", "")),
-                    asset_pointer=str(row.get("asset_pointer", "")),
-                    url=str(row.get("url", "")),
-                    prompt=str(row.get("prompt", "")),
-                )
-            )
-        except Exception as e:
-            print(f"⚠️  Skipped invalid history row: {e}")
-    return generations
+    return db.get_generations(
+        account,
+        include_uploaded=include_uploaded,
+        keep_days=keep_days,
+        timezone_name=timezone_name,
+    )
 
 
 async def download_all_images(
@@ -276,8 +252,6 @@ async def download_all_images(
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
     download_path = Path(download_folder)
-    if not download_path.is_absolute():
-        download_path = get_output_path(download_folder)
 
     async with aiohttp.ClientSession(
         headers=get_headers(options), timeout=get_http_timeout()
@@ -357,42 +331,45 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
 
 
 async def upload_to_notion(
-    image_folder: str,
+    image_folder: str | None,
     db_id: str,
     upload_to_notion: bool = True,
     remove_in_chatgpt: bool = False,
     add_prompt_to_image: bool = True,
-    dataset: str | None = None,
+    account: str | None = None,
     check_notion_api: bool = False,
     from_history: bool = False,
     limit: int = 100,
     keep_days: int | None = None,
     timezone_name: str | None = None,
+    no_cache: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
-    if Path(image_folder).is_absolute():
-        resolved_image_folder = Path(image_folder)
-    else:
-        resolved_image_folder = get_image_folder(options)
+    resolved_image_folder = resolve_image_folder(image_folder, options)
+
+    db.init_db()
 
     if from_history:
-        if not dataset:
-            raise ValueError("dataset is required when from_history=True")
-        generations = load_image_generations_from_dataset(
-            dataset=dataset,
+        if not account:
+            raise ValueError("account is required when from_history=True")
+        generations = load_image_generations(
+            account=account,
             include_uploaded=check_notion_api,
             keep_days=keep_days,
             timezone_name=timezone_name,
+            options=options,
         )
     else:
-        generations = await fetch_image_generations(limit=limit, options=options)
+        generations = await fetch_image_generations(
+            limit=limit, options=options, no_cache=no_cache
+        )
 
     if not generations:
         print("No generations found.")
         return
 
-    if dataset and not from_history:
-        save_to_dataset(dataset=dataset, data=generations, options=options)
+    if account and not from_history:
+        save_generations(account=account, data=generations, options=options)
 
     await download_all_images(
         generations=generations,
@@ -408,7 +385,7 @@ async def upload_to_notion(
             generations=generations,
             db_id=db_id,
             image_folder=str(resolved_image_folder),
-            dataset=dataset,
+            account=account,
             check_notion_api=check_notion_api,
             options=options,
         )
@@ -422,7 +399,7 @@ async def upload_to_notion(
 async def delete_conversations_after_upload(
     generations: list[ChatGPTImageGeneration],
     db_id: str,
-    dataset: str | None,
+    account: str | None,
     uploaded_ids: set[str],
     options: RuntimeOptions | None = None,
 ) -> None:
@@ -470,45 +447,49 @@ async def delete_conversations_after_upload(
 
 
 async def upload_to_notion_single(
-    image_folder: str,
+    image_folder: str | None,
     db_id: str,
     upload_to_notion: bool = True,
     remove_in_chatgpt: bool = False,
     add_prompt_to_image: bool = True,
-    dataset: str | None = None,
+    account: str | None = None,
     check_notion_api: bool = False,
     from_history: bool = False,
     limit: int = 100,
     keep_days: int | None = None,
     timezone_name: str | None = None,
+    no_cache: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
-    if Path(image_folder).is_absolute():
-        resolved_image_folder = Path(image_folder)
-    else:
-        resolved_image_folder = get_image_folder(options)
+    if not account:
+        raise ValueError("account is required")
+
+    resolved_image_folder = resolve_image_folder(image_folder, options)
+
+    db.init_db()
 
     if from_history:
-        if not dataset:
-            raise ValueError("dataset is required when from_history=True")
-        generations = load_image_generations_from_dataset(
-            dataset=dataset,
+        generations = load_image_generations(
+            account=account,
             include_uploaded=check_notion_api,
             keep_days=keep_days,
             timezone_name=timezone_name,
+            options=options,
         )
     else:
-        generations = await fetch_image_generations(limit=limit, options=options)
+        generations = await fetch_image_generations(
+            limit=limit, options=options, no_cache=no_cache
+        )
 
     if not generations:
         print("No generations found.")
         return
 
-    if dataset and not from_history:
-        save_to_dataset(dataset=dataset, data=generations, options=options)
+    if account and not from_history:
+        save_generations(account=account, data=generations, options=options)
 
-    uploaded_ids = get_uploaded_generation_ids(dataset, options)
-    csv_lock = asyncio.Lock()
+    uploaded_ids = get_uploaded_generation_ids(account, options)
+    db_lock = asyncio.Lock()
 
     total = len(generations)
     pbar = tqdm(total=total, desc="Processing files")
@@ -530,6 +511,8 @@ async def upload_to_notion_single(
                         if await is_page_exists_in_db(
                             notion_session, db_id, file_name, options=options
                         ):
+                            async with db_lock:
+                                mark_generations_uploaded(account, {gen.id}, options)
                             uploaded_ids.add(gen.id)
                             pbar.write(f"⏭️  {file_name} skipped, already in Notion")
                             return
@@ -555,12 +538,8 @@ async def upload_to_notion_single(
                                 model="ChatGPT",
                                 options=options,
                             )
-
-                            if dataset:
-                                async with csv_lock:
-                                    mark_generations_uploaded(
-                                        dataset, {gen.id}, options
-                                    )
+                            async with db_lock:
+                                mark_generations_uploaded(account, {gen.id}, options)
                             uploaded_ids.add(gen.id)
 
                         pbar.write(f"✅ {file_name}")
@@ -578,7 +557,7 @@ async def upload_to_notion_single(
         await delete_conversations_after_upload(
             generations=generations,
             db_id=db_id,
-            dataset=dataset,
+            account=account,
             uploaded_ids=uploaded_ids,
             options=options,
         )

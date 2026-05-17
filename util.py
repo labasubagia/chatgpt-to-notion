@@ -10,7 +10,6 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 import aiohttp
-import pandas as pd
 from pydantic import BaseModel
 from rich.console import Console
 from rich.rule import Rule
@@ -18,6 +17,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from models import (
     AppConfig,
+    ChatGPTImageGeneration,
     NotionContext,
     ProviderContext,
     ResolvedConfig,
@@ -36,17 +36,15 @@ DEFAULT_CONFIG_PATH = "config.toml"
 console = Console(width=120)
 
 
-def save_to_dataset(
-    dataset: str,
+def save_generations(
+    account: str,
     data: Sequence[dict] | Sequence[BaseModel],
     keep_days: int = 2,
     display_days: int = 1,
     options: RuntimeOptions | None = None,
 ) -> None:
-    if dataset is None:
-        return
     if len(data) == 0:
-        print("No generations to save to dataset.")
+        print("No generations to save.")
         return
 
     dict_data: list[dict]
@@ -55,131 +53,39 @@ def save_to_dataset(
     else:
         dict_data = list(data)  # type: ignore[arg-type]
 
-    file_path = _resolve_dataset_path(dataset, options)
-    df_new = pd.DataFrame(dict_data)
-    if "uploaded_at" not in df_new.columns:
-        df_new["uploaded_at"] = ""
-    df_final = _merge_recent_rows_by_id(
-        target_path=file_path,
-        df_new=df_new,
-        keep_days=keep_days,
+    generations = [ChatGPTImageGeneration(**d) for d in dict_data]
+    import db
+
+    db.upsert_generations(account, generations)
+    db.delete_old_generations(account, keep_days=keep_days)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=display_days)
+    today_count = db.count_recent_generations(account, cutoff.isoformat())
+    print(
+        f"✅ Saved generations for account '{account}' (Total Today: {today_count})\n"
     )
-
-    df_today = df_final.copy()
-    if "created_at" in df_today.columns and display_days:
-        df_today["created_at"] = pd.to_datetime(
-            df_today["created_at"], utc=True, format="ISO8601", errors="coerce"
-        )
-        cutoff = datetime.now(timezone.utc) - timedelta(days=display_days)
-        df_today = df_today.dropna(subset=["created_at"])
-        df_today = df_today[df_today["created_at"] >= cutoff]
-
-    df_final.to_csv(file_path, index=False)
-    print(f"✅ Saved dataset to {file_path} (Total Today: {len(df_today)})\n")
-
-
-def _resolve_dataset_path(dataset: str, options: RuntimeOptions | None = None) -> Path:
-    parts = dataset.replace("\\", "/").split("/")
-    if len(parts) >= 2 and parts[0] == "history" and "_" in parts[-1]:
-        filename = parts[-1]
-        name_without_ext = filename.replace(".csv", "")
-        if "_" in name_without_ext:
-            account_name, service = name_without_ext.rsplit("_", 1)
-            return get_history_csv_path(account_name, service, options)
-    return get_output_path(dataset)
-
-
-def _merge_recent_rows_by_id(
-    *,
-    target_path: Path,
-    df_new: pd.DataFrame,
-    keep_days: int,
-) -> pd.DataFrame:
-    uploaded_at_by_id: dict[str, str] = {}
-    if target_path.exists():
-        df_existing = pd.read_csv(target_path)
-        if "id" in df_existing.columns and "uploaded_at" in df_existing.columns:
-            existing_uploaded = df_existing.dropna(subset=["id", "uploaded_at"])
-            existing_uploaded = existing_uploaded[
-                existing_uploaded["uploaded_at"].astype(str).str.strip() != ""
-            ]
-            uploaded_at_by_id = dict(
-                zip(
-                    existing_uploaded["id"].astype(str),
-                    existing_uploaded["uploaded_at"].astype(str),
-                    strict=False,
-                )
-            )
-        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-    else:
-        df_combined = df_new
-
-    if "uploaded_at" not in df_combined.columns:
-        df_combined["uploaded_at"] = ""
-
-    if "id" in df_combined.columns:
-        df_combined = df_combined.dropna(subset=["id"]).copy()
-        df_combined = df_combined.drop_duplicates(subset=["id"], keep="last")
-        if uploaded_at_by_id:
-            existing_uploaded_at = df_combined["id"].astype(str).map(uploaded_at_by_id)
-            current_uploaded_at = df_combined["uploaded_at"].fillna("").astype(str)
-            df_combined["uploaded_at"] = current_uploaded_at.mask(
-                current_uploaded_at.str.strip() == "",
-                existing_uploaded_at,
-            ).fillna("")
-
-    if "created_at" in df_combined.columns:
-        df_combined["created_at"] = pd.to_datetime(
-            df_combined["created_at"], utc=True, format="ISO8601", errors="coerce"
-        )
-        cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
-        df_combined = df_combined.dropna(subset=["created_at"]).copy()
-        df_combined = df_combined[df_combined["created_at"] >= cutoff]
-        df_combined = df_combined.sort_values(by="created_at", ascending=False)
-
-    return df_combined
 
 
 def get_uploaded_generation_ids(
-    dataset: str | None, options: RuntimeOptions | None = None
+    account: str | None, options: RuntimeOptions | None = None
 ) -> set[str]:
-    if not dataset:
+    if not account:
         return set()
-    file_path = _resolve_dataset_path(dataset, options)
-    if not file_path.exists():
-        return set()
+    import db
 
-    df = pd.read_csv(file_path, usecols=lambda column: column in {"id", "uploaded_at"})
-    if df.empty or "id" not in df.columns or "uploaded_at" not in df.columns:
-        return set()
-
-    uploaded = df.dropna(subset=["id", "uploaded_at"]).copy()
-    uploaded = uploaded[uploaded["uploaded_at"].astype(str).str.strip() != ""]
-    return set(uploaded["id"].astype(str))
+    return db.get_uploaded_ids(account)
 
 
 def mark_generations_uploaded(
-    dataset: str | None,
+    account: str | None,
     generation_ids: set[str],
     options: RuntimeOptions | None = None,
 ) -> None:
-    if not dataset or not generation_ids:
+    if not account or not generation_ids:
         return
-    file_path = _resolve_dataset_path(dataset, options)
-    if not file_path.exists():
-        return
+    import db
 
-    df = pd.read_csv(file_path)
-    if df.empty or "id" not in df.columns:
-        return
-    if "uploaded_at" not in df.columns:
-        df["uploaded_at"] = ""
-    df["uploaded_at"] = df["uploaded_at"].fillna("").astype(str)
-
-    uploaded_at = datetime.now(timezone.utc).isoformat()
-    mask = df["id"].astype(str).isin(generation_ids)
-    df.loc[mask, "uploaded_at"] = uploaded_at
-    df.to_csv(file_path, index=False)
+    db.mark_uploaded(account, generation_ids)
 
 
 def get_output_path(input_path_str: str, is_dir=False) -> Path:
@@ -241,17 +147,23 @@ def get_image_folder(options: RuntimeOptions | None = None) -> Path:
     return Path(OUTPUT_PATH).resolve() / "images"
 
 
-def get_history_csv_path(
-    account_name: str,
-    service: str,
+def resolve_image_folder(
+    image_folder: str | None,
     options: RuntimeOptions | None = None,
 ) -> Path:
-    folder = get_history_folder(options)
-    return folder / f"{account_name}_{service}.csv"
+    """Resolve image folder path.
+
+    None → default, relative → output/<path>, absolute → as-is.
+    """
+    if image_folder is None:
+        return get_image_folder(options)
+    path = Path(image_folder)
+    if path.is_absolute():
+        return path
+    return get_output_path(image_folder)
 
 
 def clean_output_path() -> None:
-    # Except .gitkeep, force remove all files and folders in OUTPUT_PATH
     base_dir: Path = Path(OUTPUT_PATH).resolve()
     if not base_dir.exists():
         return
@@ -265,7 +177,6 @@ def clean_output_path() -> None:
 
 
 def should_retry_http(exception: Exception) -> bool:
-    """Determine if an HTTP exception should be retried"""
     if isinstance(exception, aiohttp.ClientResponseError):
         return http_retryable(exception.status)
     if isinstance(exception, aiohttp.ClientError):
@@ -282,7 +193,6 @@ def should_retry_http(exception: Exception) -> bool:
 
 
 def retry_http():
-    """Reusable retry decorator for async HTTP requests"""
     return retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=1, min=1, max=10),
@@ -298,7 +208,6 @@ def http_retryable(status_code: int | None) -> bool:
 
 
 def get_http_timeout() -> aiohttp.ClientTimeout:
-    """Get default HTTP timeout configuration"""
     return aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
 
 
@@ -453,12 +362,23 @@ def _format_duration(total_seconds: float) -> str:
     return " ".join(parts)
 
 
-def _activity_csv_path(
-    *,
-    account_name: str,
-    service: str,
-) -> Path:
-    return get_history_csv_path(account_name, service)
+def _make_ready_row(account_name: str, service: str) -> dict[str, str]:
+    return {
+        "Account": account_name,
+        "Service": service,
+        "Next Wait": "Ready",
+        "Next Cooldown": "0s",
+        "Fully Ready In": "0s",
+        "Total Wait": "0s",
+        "Ready Generate?": "✅",
+    }
+
+
+def resolve_timezone(timezone_name: str | None = None):
+    """Resolve timezone: provided IANA name, or system default."""
+    if timezone_name:
+        return ZoneInfo(timezone_name)
+    return datetime.now().astimezone().tzinfo
 
 
 def get_account_activity_statuses(
@@ -467,13 +387,12 @@ def get_account_activity_statuses(
     timezone_name: str | None = None,
     now: datetime | None = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+
     account_names = get_account_names(config_path)
     if not account_names:
         return [], []
 
-    tz = (
-        ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
-    )
+    tz = resolve_timezone(timezone_name)
     if now is None:
         now = datetime.now(tz)
     today_date = now.date()
@@ -485,11 +404,7 @@ def get_account_activity_statuses(
     yesterday_sortable: list[tuple[datetime, dict[str, str]]] = []
 
     for account_name in account_names:
-        csv_path = _activity_csv_path(
-            account_name=account_name,
-            service="chatgpt",
-        )
-        has_data = _csv_has_valid_data(csv_path)
+        has_data = _db_has_valid_data(account_name)
 
         if not has_data:
             ready_row = _make_ready_row(account_name, "chatgpt")
@@ -500,14 +415,12 @@ def get_account_activity_statuses(
         today_key, today_row = _get_activity_status_for_date(
             account_name=account_name,
             service="chatgpt",
-            csv_path=csv_path,
             now=now,
             target_date=today_date,
         )
         yesterday_key, yesterday_row = _get_activity_status_for_date(
             account_name=account_name,
             service="chatgpt",
-            csv_path=csv_path,
             now=now,
             target_date=yesterday_date,
         )
@@ -526,83 +439,57 @@ def get_account_activity_statuses(
     return today_rows, yesterday_rows
 
 
-def _csv_has_valid_data(csv_path: Path) -> bool:
-    if not csv_path.exists():
-        return False
-    try:
-        df = pd.read_csv(csv_path, usecols=["created_at"])
-    except Exception:
-        return False
-    if df.empty:
-        return False
-    created_at = pd.to_datetime(
-        df["created_at"], utc=True, format="ISO8601", errors="coerce"
-    ).dropna()
-    return not created_at.empty
+def _db_has_valid_data(account_name: str) -> bool:
+    import db
 
-
-def _make_ready_row(account_name: str, service: str) -> dict[str, str]:
-    return {
-        "Account": account_name,
-        "Service": service,
-        "Next Wait": "Ready",
-        "Next Cooldown": "0s",
-        "Fully Ready In": "0s",
-        "Total Wait": "0s",
-        "Ready Generate?": "✅",
-    }
+    return db.has_generations(account_name)
 
 
 def _get_activity_status_for_date(
     *,
     account_name: str,
     service: str,
-    csv_path: Path,
     now: datetime,
     target_date: date,
 ) -> tuple[datetime, dict[str, str] | None]:
-    no_data_key = now - timedelta(days=1)
-    if not csv_path.exists():
-        return no_data_key, None
+    import db
 
-    try:
-        df = pd.read_csv(csv_path, usecols=["created_at"])
-    except Exception:
-        return no_data_key, None
+    tz = now.tzinfo or timezone.utc
+    date_start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=tz)
+    date_end = date_start + timedelta(days=1)
+    cooldown_threshold = now - timedelta(days=1)
 
-    if df.empty:
-        return no_data_key, None
-
-    created_at = pd.to_datetime(
-        df["created_at"], utc=True, format="ISO8601", errors="coerce"
-    ).dropna()
-    if created_at.empty:
-        return no_data_key, None
-
-    created_at = created_at.dt.tz_convert(now.tzinfo)
-    target_mask = created_at.dt.date == target_date
-
-    if not target_mask.any():
+    stats = db.get_activity_stats(
+        account=account_name,
+        date_start=date_start.astimezone(timezone.utc).isoformat(),
+        date_end=date_end.astimezone(timezone.utc).isoformat(),
+        cooldown_threshold=cooldown_threshold.astimezone(timezone.utc).isoformat(),
+    )
+    if stats is None:
         return now, None
 
-    selected_df = created_at[target_mask]
-
-    total_count = len(selected_df)
-    cooldown_threshold = now - timedelta(days=1)
-    active_items = selected_df[selected_df > cooldown_threshold]
-    active_count = len(active_items)
+    total_count = stats["total"]
+    active_count = stats["active_count"]
 
     if active_count == 0:
         return now, _make_ready_row(account_name, service)
 
-    first_active = active_items.min()
-    last_active = active_items.max()
-    next_wait = first_active + timedelta(days=1)
+    first_active = datetime.fromisoformat(stats["first_active"])
+    last_active = datetime.fromisoformat(stats["last_active"])
+    if first_active.tzinfo is None:
+        first_active = first_active.replace(tzinfo=timezone.utc)
+    if last_active.tzinfo is None:
+        last_active = last_active.replace(tzinfo=timezone.utc)
+
+    first_active_local = first_active.astimezone(tz)
+    last_active_local = last_active.astimezone(tz)
+
+    next_wait = first_active_local + timedelta(days=1)
     status_msg = f"{active_count}/{total_count} to wait"
     ready_generate = (
         f"❌  ({status_msg})" if active_count == total_count else f"⚠️  ({status_msg})"
     )
-    total_wait = (last_active - first_active).total_seconds()
+    total_wait = (last_active_local - first_active_local).total_seconds()
 
     return next_wait, {
         "Account": account_name,
@@ -610,7 +497,7 @@ def _get_activity_status_for_date(
         "Next Wait": next_wait.strftime("%Y-%m-%d %H:%M:%S"),
         "Next Cooldown": _format_duration((next_wait - now).total_seconds()),
         "Fully Ready In": _format_duration(
-            (last_active + timedelta(days=1) - now).total_seconds()
+            (last_active_local + timedelta(days=1) - now).total_seconds()
         ),
         "Total Wait": _format_duration(total_wait),
         "Ready Generate?": ready_generate,
@@ -623,7 +510,6 @@ async def download_image(
     file_path: str,
     headers: dict[str, str] | None = None,
 ) -> None:
-    """Download an image from URL to file path"""
     async with session.get(url, headers=headers or {}) as response:
         response.raise_for_status()
         content = await response.read()
