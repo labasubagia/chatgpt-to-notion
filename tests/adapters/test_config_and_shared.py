@@ -40,6 +40,7 @@ from chatgpt_to_notion.shared.http import (
     http_retryable,
     retry_http,
     should_retry_http,
+    DetailedHTTPError,
 )
 from chatgpt_to_notion.shared.time import resolve_timezone
 
@@ -624,8 +625,10 @@ class TestRetryHttp:
 
     @patch("chatgpt_to_notion.shared.http.MAX_RETRIES", 2)
     @pytest.mark.asyncio
-    async def test_applies_retry_logic(self):
+    async def test_applies_retry_logic(self, caplog):
         import errno
+        import logging
+        caplog.set_level(logging.WARNING, logger="chatgpt_to_notion.http")
         call_count = 0
 
         @retry_http()
@@ -634,12 +637,26 @@ class TestRetryHttp:
             call_count += 1
             if call_count < 2:
                 os_error = OSError(errno.ECONNREFUSED, "Connection refused")
-                raise aiohttp.ClientConnectorError(None, os_error)
+                
+                class MockConnKey:
+                    ssl = False
+                    host = "localhost"
+                    port = 80
+                    is_ssl = False
+                    proxy = None
+                    proxy_auth = None
+                    proxy_headers_hash = None
+                
+                raise aiohttp.ClientConnectorError(MockConnKey(), os_error)
             return "success"
 
         result = await failing_func()
         assert result == "success"
         assert call_count == 2
+        
+        # Verify exactly one retry attempt was logged
+        retries_logged = caplog.text.count("Retrying")
+        assert retries_logged == 1
 
 
 class TestDownloadImage:
@@ -649,6 +666,8 @@ class TestDownloadImage:
         def __init__(self, content: bytes = b"data", error: Exception | None = None):
             self.content = content
             self.error = error
+            self.status = getattr(error, "status", 200) if error else 200
+            self.reason = "OK" if not error else "Error"
 
         def raise_for_status(self):
             if self.error:
@@ -656,6 +675,9 @@ class TestDownloadImage:
 
         async def read(self):
             return self.content
+
+        async def text(self):
+            return "mock error body"
 
     class MockContext:
         def __init__(self, response):
@@ -710,7 +732,7 @@ class TestDownloadImage:
         mock_session.get.return_value = self.MockContext(mock_response)
 
         file_path = tmp_path / "test.png"
-        with pytest.raises(aiohttp.ClientResponseError):
+        with pytest.raises(DetailedHTTPError):
             await download_image(
                 mock_session, "http://example.com/img.png", str(file_path)
             )

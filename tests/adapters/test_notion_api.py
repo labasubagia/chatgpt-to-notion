@@ -418,3 +418,28 @@ class TestNotionUploadAllImages:
         ).fetchone()
         conn.close()
         assert row["uploaded_at"] != ""
+
+
+@pytest.mark.integration
+class TestNotionErrorHandling:
+    """Tests for Notion API error handling and logging."""
+
+    async def test_get_db_data_sources_failure(self, mock_aiohttp_session, isolated_db):
+        """Should raise DetailedHTTPError with rich context on Notion error."""
+        from chatgpt_to_notion.shared.http import DetailedHTTPError
+
+        mock_aiohttp_session._responses = [
+            make_mock_response(
+                {"message": "Database not found"},
+                status=404,
+                reason="Not Found",
+                text_data='{"message": "Database not found"}',
+            )
+        ]
+
+        with pytest.raises(DetailedHTTPError) as exc_info:
+            await get_db_data_sources(mock_aiohttp_session, "test_db_123")
+
+        assert exc_info.value.status == 404
+        assert "Not Found" in str(exc_info.value)
+        assert '{"message": "Database not found"}' in str(exc_info.value)

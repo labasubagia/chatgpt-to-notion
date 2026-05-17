@@ -5,7 +5,7 @@ from typing import Any
 import aiohttp
 
 from ..domain.models import RuntimeOptions
-from ..shared.http import retry_http
+from ..shared.http import raise_for_status_with_detail, retry_http
 from .config_loader import get_provider_context
 
 BASE_URL = "https://chatgpt.com/backend-api"
@@ -36,7 +36,7 @@ async def get_conversations(
             "is_starred": str(is_starred).lower(),
         },
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 
@@ -50,7 +50,7 @@ async def get_conversation_details(
         f"{BASE_URL}/conversation/{conversation_id}",
         headers=headers or get_headers(),
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 
@@ -65,7 +65,7 @@ async def delete_conversation(
         headers=headers or get_headers(),
         json={"is_visible": False},
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 
@@ -80,7 +80,7 @@ async def get_image_generations(
         headers=headers or get_headers(),
         params={"limit": limit},
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 

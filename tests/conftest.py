@@ -106,12 +106,17 @@ def mock_aiohttp_session():
     """Create a mock aiohttp session for testing."""
     # Create proper async context manager mock
     class MockResponse:
-        def __init__(self, json_data, status=200):
+        def __init__(self, json_data, status=200, reason="OK", text_data=""):
             self._json_data = json_data
             self.status = status
+            self.reason = reason
+            self._text_data = text_data
         
         async def json(self):
             return self._json_data
+
+        async def text(self):
+            return self._text_data
         
         def raise_for_status(self):
             if self.status >= 400:
@@ -147,20 +152,25 @@ def mock_aiohttp_session():
     return MockSession()
 
 
-def make_mock_response(json_data, status=200):
+def make_mock_response(json_data, status=200, reason="OK", text_data=""):
     """Helper to create mock HTTP response."""
     class MockResp:
-        def __init__(self, data, s):
+        def __init__(self, data, s, r, t):
             self._data = data
             self.status = s
+            self.reason = r
+            self._text_data = t
         
         async def json(self):
             return self._data
+
+        async def text(self):
+            return self._text_data
         
         def raise_for_status(self):
             pass
     
-    return MockResp(json_data, status)
+    return MockResp(json_data, status, reason, text_data)
 
 
 @pytest.fixture
