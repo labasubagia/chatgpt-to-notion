@@ -971,6 +971,7 @@ class TestChatGPTUploadToNotionSingle:
                                     await chatgpt.upload_to_notion_single(
                                         image_folder=image_folder,
                                         db_id="test_db",
+                                        account="test_account",
                                         upload_to_notion=True,
                                         remove_in_chatgpt=False,
                                         add_prompt_to_image=True,
@@ -1018,6 +1019,7 @@ class TestChatGPTUploadToNotionSingle:
                         await chatgpt.upload_to_notion_single(
                             image_folder=image_folder,
                             db_id="test_db",
+                            account="test_account",
                             upload_to_notion=True,
                             remove_in_chatgpt=False,
                             add_prompt_to_image=True,
@@ -1069,6 +1071,7 @@ class TestChatGPTUploadToNotionSingle:
                             await chatgpt.upload_to_notion_single(
                                 image_folder=image_folder,
                                 db_id="test_db",
+                                account="test_account",
                                 upload_to_notion=True,
                                 remove_in_chatgpt=False,
                                 add_prompt_to_image=True,
@@ -1152,6 +1155,7 @@ class TestChatGPTUploadToNotionSingle:
                                         await chatgpt.upload_to_notion_single(
                                             image_folder=image_folder,
                                             db_id="test_db",
+                                            account="test_account",
                                             upload_to_notion=True,
                                             remove_in_chatgpt=True,
                                             add_prompt_to_image=True,
@@ -1225,6 +1229,7 @@ class TestChatGPTUploadToNotionSingle:
                                     await chatgpt.upload_to_notion_single(
                                         image_folder=image_folder,
                                         db_id="test_db",
+                                        account="test_account",
                                         upload_to_notion=True,
                                         remove_in_chatgpt=False,
                                         add_prompt_to_image=True,
