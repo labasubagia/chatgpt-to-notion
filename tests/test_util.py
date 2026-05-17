@@ -469,13 +469,8 @@ class TestAccountActivityStatus:
 class TestSaveToDataset:
     """Tests for save_to_dataset function."""
 
-    def test_none_dataset_skips(self, capsys):
-        save_to_dataset(None, [{"id": "test"}])
-        captured = capsys.readouterr()
-        assert "Saved dataset" not in captured.out
-
     def test_empty_data_skips(self, capsys):
-        save_to_dataset("test.csv", [])
+        save_to_dataset("test", [])
         captured = capsys.readouterr()
         assert "No generations to save" in captured.out
 
@@ -491,7 +486,7 @@ class TestSaveToDataset:
                 prompt="test prompt",
             )
         ]
-        save_to_dataset("history/default_chatgpt.csv", data)
+        save_to_dataset("default", data)
 
         result = db.get_generations("default", include_uploaded=True)
         assert len(result) == 1
@@ -522,11 +517,11 @@ class TestUploadedGenerationHelpers:
         )
         db.upsert_generations("default", [gen_a, gen_b])
 
-        assert get_uploaded_generation_ids("history/default_chatgpt.csv") == set()
+        assert get_uploaded_generation_ids("default") == set()
 
-        mark_generations_uploaded("history/default_chatgpt.csv", {"b"})
+        mark_generations_uploaded("default", {"b"})
 
-        assert get_uploaded_generation_ids("history/default_chatgpt.csv") == {"b"}
+        assert get_uploaded_generation_ids("default") == {"b"}
 
 
 class TestCleanOutputPath:

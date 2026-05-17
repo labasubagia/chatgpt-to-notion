@@ -32,10 +32,6 @@ def _resolve_target_accounts(
     return accounts
 
 
-def _account_dataset(account_name: str, service: str) -> str:
-    return f"history/{account_name}_{service}.csv"
-
-
 def _print_activity_table(rows: list[dict[str, str]], title: str = "") -> None:
     if not rows:
         if title:
@@ -91,7 +87,7 @@ def upload_to_notion(
     history_folder: Annotated[
         str | None,
         typer.Option(
-            help="Path to folder containing history CSVs (default: output/history)"
+            help="Path to folder containing history data (default: output/history)"
         ),
     ] = None,
     image_folder: Annotated[
@@ -113,13 +109,11 @@ def upload_to_notion(
     ] = False,
     check_notion_api: Annotated[
         bool,
-        typer.Option(
-            help="Check Notion API even when uploaded_at is already set in CSV"
-        ),
+        typer.Option(help="Check Notion API even when uploaded_at is already set"),
     ] = False,
     from_history: Annotated[
         bool,
-        typer.Option(help="Use CSV as source (non-uploaded items only, today's data)"),
+        typer.Option(help="Use history data as source (non-uploaded items only)"),
     ] = False,
     verify_history: Annotated[
         bool,
@@ -180,7 +174,6 @@ def upload_to_notion(
         )
         effective_db_id = db_id or resolved.notion.database_id
         assert effective_db_id is not None, "db_id must be provided"
-        account_dataset = _account_dataset(resolved.account_name, "chatgpt")
         effective_from_history = from_history or verify_history
         effective_check_notion_api = check_notion_api or verify_history
         if effective_from_history and not all:
@@ -200,7 +193,7 @@ def upload_to_notion(
                 db_id=effective_db_id,
                 upload_to_notion=upload_to_notion,
                 remove_in_chatgpt=remove,
-                dataset=account_dataset,
+                account=resolved.account_name,
                 check_notion_api=effective_check_notion_api,
                 from_history=effective_from_history,
                 limit=limit,

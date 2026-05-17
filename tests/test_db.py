@@ -61,7 +61,6 @@ class TestInitDb:
         table_names = {t[0] for t in tables}
         assert "image_generations" in table_names
         assert "cache_data_sources" in table_names
-        assert "cache_fetch_generations" in table_names
 
 
 class TestUpsertGenerations:
@@ -129,6 +128,25 @@ class TestGetGenerations:
             "test_account", keep_days=3, db_path=tmp_db_path
         )
         assert len(result) == 2
+
+    def test_filters_by_ids_filter(self, tmp_db_path, sample_generations):
+        db.init_db(tmp_db_path)
+        db.upsert_generations("test_account", sample_generations, tmp_db_path)
+
+        ids = {sample_generations[0].id, sample_generations[2].id}
+        result = db.get_generations(
+            "test_account", ids_filter=ids, db_path=tmp_db_path
+        )
+        assert len(result) == 2
+        result_ids = {g.id for g in result}
+        assert result_ids == ids
+
+    def test_ids_filter_empty_account_returns_empty(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        result = db.get_generations(
+            "test_account", ids_filter={"nonexistent"}, db_path=tmp_db_path
+        )
+        assert result == []
 
     def test_empty_account_returns_empty_list(self, tmp_db_path):
         db.init_db(tmp_db_path)
@@ -230,34 +248,3 @@ class TestDataSourcesCache:
         assert result is None
 
 
-class TestFetchGenerationsCache:
-    def test_set_and_get(self, tmp_db_path, sample_generations):
-        db.init_db(tmp_db_path)
-        db.set_cached_fetch_generations("test_account", sample_generations, db_path=tmp_db_path)
-
-        result = db.get_cached_fetch_generations("test_account", db_path=tmp_db_path)
-        assert len(result) == 3
-        assert result[0].id == sample_generations[0].id
-
-    def test_returns_none_when_missing(self, tmp_db_path):
-        db.init_db(tmp_db_path)
-        result = db.get_cached_fetch_generations("nonexistent", db_path=tmp_db_path)
-        assert result is None
-
-    def test_expires_after_ttl(self, tmp_db_path, sample_generations):
-        db.init_db(tmp_db_path)
-        db.set_cached_fetch_generations("test_account", sample_generations, ttl_days=0, db_path=tmp_db_path)
-
-        import time
-        time.sleep(0.01)
-
-        result = db.get_cached_fetch_generations("test_account", db_path=tmp_db_path)
-        assert result is None
-
-    def test_reset_deletes_cache(self, tmp_db_path, sample_generations):
-        db.init_db(tmp_db_path)
-        db.set_cached_fetch_generations("test_account", sample_generations, db_path=tmp_db_path)
-        db.reset_fetch_cache("test_account", db_path=tmp_db_path)
-
-        result = db.get_cached_fetch_generations("test_account", db_path=tmp_db_path)
-        assert result is None

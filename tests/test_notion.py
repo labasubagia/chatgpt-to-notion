@@ -326,7 +326,7 @@ class TestNotionUploadAllImages:
                     generations=generations,
                     db_id="test_db",
                     image_folder=image_folder,
-                    dataset="history/default_chatgpt.csv",
+                    account="default",
                     options=type("Options", (), {"account": "default"})(),
                 )
 
@@ -366,7 +366,7 @@ class TestNotionUploadAllImages:
                     generations=generations,
                     db_id="test_db",
                     image_folder=image_folder,
-                    dataset="history/default_chatgpt.csv",
+                    account="default",
                     check_notion_api=True,
                     options=type("Options", (), {"account": "default"})(),
                 )
@@ -407,7 +407,7 @@ class TestNotionUploadAllImages:
                     generations=generations,
                     db_id="test_db",
                     image_folder=image_folder,
-                    dataset="history/default_chatgpt.csv",
+                    account="default",
                     options=type("Options", (), {"account": "default"})(),
                 )
 

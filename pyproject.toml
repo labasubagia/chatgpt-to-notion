@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.13.3",
-    "pandas>=3.0.0",
     "pillow>=12.1.0",
     "pydantic>=2.12.5",
     "rich>=14.2.0",
@@ -31,7 +30,6 @@ py-modules = ["main", "chatgpt", "notion", "img", "util", "models"]
 [dependency-groups]
 dev = [
     "mypy==1.18.1",
-    "pandas-stubs>=3.0.0",
     "pre-commit>=4.5.1",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

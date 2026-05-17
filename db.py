@@ -57,13 +57,6 @@ def init_db(db_path: Path | None = None) -> None:
             data_sources_json TEXT NOT NULL,
             expires_at TEXT NOT NULL
         );
-
-        CREATE TABLE IF NOT EXISTS cache_fetch_generations (
-            account TEXT PRIMARY KEY,
-            generations_json TEXT NOT NULL,
-            fetched_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL
-        );
         """
     )
     conn.commit()
@@ -119,12 +112,18 @@ def get_generations(
     include_uploaded: bool = False,
     keep_days: int | None = None,
     timezone_name: str | None = None,
+    ids_filter: set[str] | None = None,
     db_path: Path | None = None,
 ) -> list[ChatGPTImageGeneration]:
     conn = _get_connection(db_path)
     try:
         query = "SELECT * FROM image_generations WHERE account = ?"
         params: list[Any] = [account]
+
+        if ids_filter:
+            placeholders = ",".join("?" for _ in ids_filter)
+            query += f" AND id IN ({placeholders})"
+            params.extend(ids_filter)
 
         if not include_uploaded:
             query += " AND (uploaded_at IS NULL OR uploaded_at = '')"
@@ -264,81 +263,6 @@ def set_cached_data_sources(
         conn.close()
 
 
-def get_cached_fetch_generations(
-    account: str,
-    db_path: Path | None = None,
-) -> list[ChatGPTImageGeneration] | None:
-    conn = _get_connection(db_path)
-    try:
-        row = conn.execute(
-            "SELECT generations_json, expires_at"
-            " FROM cache_fetch_generations WHERE account = ?",
-            (account,),
-        ).fetchone()
-        if row is None:
-            return None
-        expires_at = datetime.fromisoformat(row["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            conn.execute(
-                "DELETE FROM cache_fetch_generations WHERE account = ?",
-                (account,),
-            )
-            conn.commit()
-            return None
-        data = json.loads(row["generations_json"])
-        return [ChatGPTImageGeneration(**item) for item in data]
-    finally:
-        conn.close()
-
-
-def set_cached_fetch_generations(
-    account: str,
-    generations: list[ChatGPTImageGeneration],
-    ttl_days: int = 1,
-    db_path: Path | None = None,
-) -> None:
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
-    fetched_at = datetime.now(timezone.utc).isoformat()
-    conn = _get_connection(db_path)
-    try:
-        conn.execute(
-            """
-            INSERT INTO cache_fetch_generations (
-                account, generations_json, fetched_at, expires_at
-            )
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(account) DO UPDATE SET
-                generations_json=excluded.generations_json,
-                fetched_at=excluded.fetched_at,
-                expires_at=excluded.expires_at
-            """,
-            (
-                account,
-                json.dumps([g.model_dump() for g in generations]),
-                fetched_at,
-                expires_at,
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def reset_fetch_cache(
-    account: str,
-    db_path: Path | None = None,
-) -> None:
-    conn = _get_connection(db_path)
-    try:
-        conn.execute(
-            "DELETE FROM cache_fetch_generations WHERE account = ?",
-            (account,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
 async def async_upsert_generations(
     account: str,
     generations: list[ChatGPTImageGeneration],
@@ -365,21 +289,3 @@ async def async_set_cached_data_sources(
 ) -> None:
     async with _lock:
         set_cached_data_sources(db_id, sources, ttl_days, db_path)
-
-
-async def async_set_cached_fetch_generations(
-    account: str,
-    generations: list[ChatGPTImageGeneration],
-    ttl_days: int = 1,
-    db_path: Path | None = None,
-) -> None:
-    async with _lock:
-        set_cached_fetch_generations(account, generations, ttl_days, db_path)
-
-
-async def async_reset_fetch_cache(
-    account: str,
-    db_path: Path | None = None,
-) -> None:
-    async with _lock:
-        reset_fetch_cache(account, db_path)

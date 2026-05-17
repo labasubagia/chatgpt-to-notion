@@ -145,10 +145,10 @@ class TestCLICommands:
         assert mock_upload.call_count == 2
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
-    def test_upload_to_notion_uses_account_csv(
+    def test_upload_to_notion_uses_account(
         self, mock_upload, mock_config_toml
     ):
-        """Should write the single per-account CSV."""
+        """Should pass account name directly."""
         result = runner.invoke(
             app,
             [
@@ -158,7 +158,7 @@ class TestCLICommands:
         )
         assert result.exit_code == 0
         mock_upload.assert_called_once()
-        assert mock_upload.call_args.kwargs["dataset"] == "history/default_chatgpt.csv"
+        assert mock_upload.call_args.kwargs["account"] == "default"
         assert mock_upload.call_args.kwargs["check_notion_api"] is False
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)

@@ -37,20 +37,14 @@ console = Console(width=120)
 
 
 def save_to_dataset(
-    dataset: str,
+    account: str,
     data: Sequence[dict] | Sequence[BaseModel],
     keep_days: int = 2,
     display_days: int = 1,
     options: RuntimeOptions | None = None,
 ) -> None:
-    if dataset is None:
-        return
     if len(data) == 0:
         print("No generations to save to dataset.")
-        return
-
-    account = _resolve_account_name(dataset, options)
-    if account is None:
         return
 
     dict_data: list[dict]
@@ -81,28 +75,10 @@ def _is_within_days(created_at: str, days: int) -> bool:
         return False
 
 
-def _resolve_account_name(
-    dataset: str, options: RuntimeOptions | None = None
-) -> str | None:
-    if options and options.account:
-        return options.account
-    parts = dataset.replace("\\", "/").split("/")
-    if len(parts) >= 2 and parts[0] == "history" and "_" in parts[-1]:
-        filename = parts[-1]
-        name_without_ext = filename.replace(".csv", "")
-        if "_" in name_without_ext:
-            account_name, _ = name_without_ext.rsplit("_", 1)
-            return account_name
-    return None
-
-
 def get_uploaded_generation_ids(
-    dataset: str | None, options: RuntimeOptions | None = None
+    account: str | None, options: RuntimeOptions | None = None
 ) -> set[str]:
-    if not dataset:
-        return set()
-    account = _resolve_account_name(dataset, options)
-    if account is None:
+    if not account:
         return set()
     import db
 
@@ -110,14 +86,11 @@ def get_uploaded_generation_ids(
 
 
 def mark_generations_uploaded(
-    dataset: str | None,
+    account: str | None,
     generation_ids: set[str],
     options: RuntimeOptions | None = None,
 ) -> None:
-    if not dataset or not generation_ids:
-        return
-    account = _resolve_account_name(dataset, options)
-    if account is None:
+    if not account or not generation_ids:
         return
     import db
 
@@ -181,15 +154,6 @@ def get_image_folder(options: RuntimeOptions | None = None) -> Path:
         except ValueError:
             pass
     return Path(OUTPUT_PATH).resolve() / "images"
-
-
-def get_history_csv_path(
-    account_name: str,
-    service: str,
-    options: RuntimeOptions | None = None,
-) -> Path:
-    folder = get_history_folder(options)
-    return folder / f"{account_name}_{service}.csv"
 
 
 def clean_output_path() -> None:

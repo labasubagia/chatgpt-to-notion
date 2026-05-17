@@ -212,14 +212,14 @@ async def upload_all_images_to_notion(
     generations: Sequence[ImageGeneration],
     db_id: str,
     image_folder: str,
-    dataset: str | None = None,
+    account: str | None = None,
     check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    uploaded_generation_ids = get_uploaded_generation_ids(dataset, options)
+    uploaded_generation_ids = get_uploaded_generation_ids(account, options)
 
     image_folder_path = Path(image_folder)
     if not image_folder_path.is_absolute():
@@ -270,7 +270,7 @@ async def upload_all_images_to_notion(
 
     pbar.close()
     mark_generations_uploaded(
-        dataset,
+        account,
         {generation_id for generation_id in uploaded_results if generation_id},
         options,
     )

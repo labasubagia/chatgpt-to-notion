@@ -58,13 +58,12 @@ class TestChatGPTHeaders:
 class TestChatGPTFetchImageGenerations:
     """Tests for fetch_image_generations function."""
 
-    async def test_fetch_image_generations_success(
-        self, mock_aiohttp_session, monkeypatch
+    async def test_fetch_image_generations_new_items(
+        self, mock_aiohttp_session, monkeypatch, isolated_db
     ):
-        """Should fetch and process image generations."""
+        """Should fetch details only for new items and upsert to DB."""
         from unittest.mock import AsyncMock, patch
 
-        # Mock get_image_generations response
         mock_data = {
             "items": [
                 {
@@ -101,15 +100,78 @@ class TestChatGPTFetchImageGenerations:
                 ) as mock_prompt:
                     mock_prompt.return_value = "Test prompt"
 
-                    result = await chatgpt.fetch_image_generations(limit=5)
+                    with patch("chatgpt.get_headers") as mock_headers:
+                        mock_headers.return_value = {"Authorization": "Bearer test"}
 
-                    assert isinstance(result, list)
+                        result = await chatgpt.fetch_image_generations(
+                            limit=5,
+                            options=type("Options", (), {"account": "default"})(),
+                        )
+
+                        assert isinstance(result, list)
+                        assert len(result) == 1
+                        assert result[0].id == "img_123"
+                        assert result[0].prompt == "Test prompt"
+
+                        mock_get.assert_called_once()
+                        mock_detail.assert_called_once()
+
+    async def test_fetch_image_generations_existing_items_skip_details(
+        self, mock_aiohttp_session, monkeypatch, isolated_db
+    ):
+        """Should skip fetching details for items already in DB."""
+        from unittest.mock import AsyncMock, patch
+        from models import ChatGPTImageGeneration
+
+        gen = ChatGPTImageGeneration(
+            created_at="2024-01-15T10:30:00.000000+00:00",
+            id="img_123",
+            conversation_id="conv_abc",
+            message_id="msg_def",
+            asset_pointer="asset_ghi",
+            url="https://example.com/image.png",
+            prompt="Existing prompt",
+        )
+        db.upsert_generations("default", [gen])
+
+        mock_data = {
+            "items": [
+                {
+                    "id": "img_123",
+                    "conversation_id": "conv_abc",
+                    "message_id": "msg_def",
+                    "asset_pointer": "asset_ghi",
+                    "url": "https://example.com/image.png",
+                    "created_at": 1705315800,
+                }
+            ]
+        }
+
+        with patch("chatgpt.get_image_generations", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_data
+
+            with patch(
+                "chatgpt.get_conversation_details", new_callable=AsyncMock
+            ) as mock_detail:
+                mock_detail.return_value = {}
+
+                with patch("chatgpt.get_headers") as mock_headers:
+                    mock_headers.return_value = {"Authorization": "Bearer test"}
+
+                    result = await chatgpt.fetch_image_generations(
+                        limit=5,
+                        options=type("Options", (), {"account": "default"})(),
+                    )
+
                     assert len(result) == 1
                     assert result[0].id == "img_123"
-                    assert result[0].prompt == "Test prompt"
+                    assert result[0].prompt == "Existing prompt"
+
+                    mock_get.assert_called_once()
+                    mock_detail.assert_not_called()
 
     async def test_fetch_image_generations_empty(
-        self, mock_aiohttp_session, monkeypatch
+        self, mock_aiohttp_session, monkeypatch, isolated_db
     ):
         """Should return empty list when no generations."""
         from unittest.mock import AsyncMock, patch
@@ -117,9 +179,15 @@ class TestChatGPTFetchImageGenerations:
         with patch("chatgpt.get_image_generations", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = {"items": []}
 
-            result = await chatgpt.fetch_image_generations(limit=5)
+            with patch("chatgpt.get_headers") as mock_headers:
+                mock_headers.return_value = {"Authorization": "Bearer test"}
 
-            assert result == []
+                result = await chatgpt.fetch_image_generations(
+                    limit=5,
+                    options=type("Options", (), {"account": "default"})(),
+                )
+
+                assert result == []
 
 
 @pytest.mark.integration
@@ -282,7 +350,7 @@ class TestChatGPTHistoryDataset:
         db.mark_uploaded("default", {"img_2"})
 
         generations = load_image_generations_from_dataset(
-            "history/default_chatgpt.csv",
+            "default",
             options=type("Options", (), {"account": "default"})(),
         )
 
@@ -315,7 +383,7 @@ class TestChatGPTHistoryDataset:
         db.mark_uploaded("default", {"img_2"})
 
         generations = load_image_generations_from_dataset(
-            "history/default_chatgpt.csv",
+            "default",
             include_uploaded=True,
             options=type("Options", (), {"account": "default"})(),
         )
@@ -711,7 +779,7 @@ class TestChatGPTUploadToNotionComprehensive:
                                 upload_to_notion=True,
                                 remove_in_chatgpt=False,
                                 add_prompt_to_image=True,
-                                dataset="test.csv",
+                                account="test",
                                 limit=5,
                             )
 
@@ -719,7 +787,7 @@ class TestChatGPTUploadToNotionComprehensive:
                             mock_save.assert_called_once()
 
     async def test_upload_to_notion_from_history(self, monkeypatch, tmp_path):
-        """Should use history CSV instead of fetching live generations."""
+        """Should use history data instead of fetching live generations."""
         from unittest.mock import AsyncMock, patch
 
         from models import ChatGPTImageGeneration
@@ -752,13 +820,13 @@ class TestChatGPTUploadToNotionComprehensive:
                                 await chatgpt.upload_to_notion(
                                     image_folder=image_folder,
                                     db_id="test_db",
-                                    dataset="history/default_chatgpt.csv",
+                                    account="default",
                                     check_notion_api=True,
                                     from_history=True,
                                 )
 
         mock_load.assert_called_once_with(
-            dataset="history/default_chatgpt.csv",
+            account="default",
             include_uploaded=True,
             keep_days=None,
             timezone_name=None,
