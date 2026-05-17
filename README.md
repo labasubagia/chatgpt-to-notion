@@ -7,7 +7,7 @@ A command-line tool for downloading ChatGPT image generations, embedding prompts
 - Download recent ChatGPT image generations
 - Save prompt text into PNG metadata
 - Upload images to a Notion database
-- Keep per-account history CSVs for replay and verification
+- Store image generations in a local SQLite database
 - Optionally delete uploaded conversations from ChatGPT
 
 ## Installation
@@ -57,7 +57,6 @@ Upload recent generations:
 ```bash
 python main.py upload-to-notion \
   --account personal \
-  --image-folder images \
   --limit 100
 ```
 
@@ -105,9 +104,11 @@ python main.py clean-output-path
 
 ## CLI Notes
 
-- History is stored at `output/history/<account>_chatgpt.csv`
+- Image generations are stored in a local SQLite database (`output/chatgpt.db`)
 - `uploaded_at` is used to skip repeated Notion uploads
-- `--check-notion-api` bypasses the CSV shortcut and checks Notion directly
+- `--check-notion-api` bypasses the local DB cache and checks Notion directly
+- `--image-folder` defaults to `output/images/`, override with `--image-folder <path>`
+- `--mode single` (default) processes files one-by-one; `--mode batch` processes in parallel
 - `--remove` deletes uploaded conversations after verification
 
 ## Make Targets
@@ -128,8 +129,12 @@ sora/
 ├── img.py
 ├── util.py
 ├── models.py
+├── db.py
 ├── config.toml.example
+├── tests/
 └── output/
+    ├── images/
+    └── chatgpt.db
 ```
 
 ## Getting Credentials
@@ -143,4 +148,6 @@ sora/
 
 ```bash
 uv run pytest
+uv run mypy .
+uv run ruff check .
 ```

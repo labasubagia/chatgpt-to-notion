@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Top-level Python modules hold the application code: `main.py` contains the Typer CLI, `chatgpt.py` handles ChatGPT history/download flows, `notion.py` wraps Notion uploads, `img.py` writes PNG metadata, `util.py` contains shared helpers, and `models.py` defines Pydantic models. Tests live under `tests/` and mirror the module layout with files such as `tests/test_main.py` and `tests/test_chatgpt.py`. Example configuration lives in `config.toml.example`.
+Top-level Python modules hold the application code: `main.py` contains the Typer CLI, `chatgpt.py` handles ChatGPT history/download flows, `notion.py` wraps Notion uploads, `img.py` writes PNG metadata, `util.py` contains shared helpers, `models.py` defines Pydantic models, and `db.py` manages SQLite storage. Tests live under `tests/` and mirror the module layout with files such as `tests/test_main.py` and `tests/test_chatgpt.py`. Example configuration lives in `config.toml.example`.
 
 ## Build, Test, and Development Commands
 
@@ -20,7 +20,7 @@ Use Python 3.13, 4-space indentation, and type hints on public functions. Follow
 
 ## Testing Guidelines
 
-Pytest is the test runner, with `pytest-asyncio` for async code and `pytest-mock` for mocking. Add or update tests in the matching `tests/test_*.py` file for every behavioral change. Prefer focused unit/integration tests that explain intent, not just output. Keep test names descriptive, e.g. `test_upload_to_notion_from_history_flag`. Run `uv run pytest` before opening a PR.
+Pytest is the test runner, with `pytest-asyncio` for async code and `pytest-mock` for mocking. Add or update tests in the matching `tests/test_*.py` file for every behavioral change. Prefer focused unit/integration tests that explain intent, not just output. Keep test names descriptive, e.g. `test_upload_to_notion_from_history_flag`. Use the `isolated_db` fixture for tests that need database access. Run `uv run pytest` before opening a PR.
 
 ## Agent Workflow
 
