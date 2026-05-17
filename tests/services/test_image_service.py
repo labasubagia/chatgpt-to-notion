@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from img import add_prompt_to_images, edit_png_info, get_png_prompt
-from util import MAX_RETRIES
+from chatgpt_to_notion.services.image_service import add_prompt_to_images, edit_png_info, get_png_prompt
+from chatgpt_to_notion.shared.constants import MAX_RETRIES
 
 
 class TestEditPngInfo:
@@ -93,7 +93,7 @@ class TestAddPromptToImages:
         # Use relative path within tmp_path
         folder = tmp_path / "images"
         folder.mkdir()
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
 
         add_prompt_to_images(sample_chatgpt_generations, "images")
 
@@ -111,7 +111,7 @@ class TestAddPromptToImages:
         """Should add prompts to existing images."""
         folder = tmp_path / "images"
         folder.mkdir()
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
 
         # Create test images
         for gen in sample_chatgpt_generations:
@@ -140,12 +140,12 @@ class TestAddPromptToImages:
         """Should not rewrite image metadata when prompt already matches."""
         folder = tmp_path / "images"
         folder.mkdir()
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         img_path = folder / f"{sample_chatgpt_generation.id}.png"
         img_path.write_bytes(sample_image_bytes)
         edit_png_info(str(img_path), {"Prompt": sample_chatgpt_generation.prompt})
 
-        with patch("img.edit_png_info") as mock_edit:
+        with patch("chatgpt_to_notion.services.image_service.edit_png_info") as mock_edit:
             add_prompt_to_images([sample_chatgpt_generation], "images")
 
         mock_edit.assert_not_called()
@@ -163,7 +163,7 @@ class TestAddPromptToImages:
         """Should retry on failure up to MAX_RETRIES."""
         folder = tmp_path / "images"
         folder.mkdir()
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
 
         # Create test image
         for gen in sample_chatgpt_generations:
@@ -178,7 +178,7 @@ class TestAddPromptToImages:
             if call_count[0] < 3:
                 raise OSError("Simulated failure")
 
-        with patch("img.edit_png_info", side_effect=flaky_edit):
+        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=flaky_edit):
             add_prompt_to_images(sample_chatgpt_generations[:1], "images")
 
         captured = capsys.readouterr()
@@ -196,7 +196,7 @@ class TestAddPromptToImages:
         """Should fail after MAX_RETRIES attempts."""
         folder = tmp_path / "images"
         folder.mkdir()
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
 
         # Create test image
         for gen in sample_chatgpt_generations:
@@ -204,7 +204,7 @@ class TestAddPromptToImages:
             img_path.write_bytes(sample_image_bytes)
 
         # Mock edit_png_info to always fail
-        with patch("img.edit_png_info", side_effect=OSError("Always fails")):
+        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=OSError("Always fails")):
             add_prompt_to_images(sample_chatgpt_generations[:1], "images")
 
         captured = capsys.readouterr()

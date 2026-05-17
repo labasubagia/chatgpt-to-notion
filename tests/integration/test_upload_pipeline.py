@@ -6,9 +6,9 @@ No real API calls are made. All external dependencies are mocked.
 
 import pytest
 
-import db
-import chatgpt
-from chatgpt import (
+from chatgpt_to_notion.adapters import sqlite_store as db
+from chatgpt_to_notion.services import upload_pipeline as chatgpt
+from chatgpt_to_notion.services.upload_pipeline import (
     delete_conversation,
     delete_conversation_of_image_generation_uploaded_to_notion,
     download_all_images,
@@ -77,11 +77,11 @@ class TestChatGPTFetchImageGenerations:
             ]
         }
 
-        with patch("chatgpt.get_image_generations", new_callable=AsyncMock) as mock_get:
+        with patch("chatgpt_to_notion.services.history_service.get_image_generations", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_data
 
             with patch(
-                "chatgpt.get_conversation_details", new_callable=AsyncMock
+                "chatgpt_to_notion.services.history_service.get_conversation_details", new_callable=AsyncMock
             ) as mock_detail:
                 mock_detail.return_value = {
                     "mapping": {
@@ -96,11 +96,11 @@ class TestChatGPTFetchImageGenerations:
                 }
 
                 with patch(
-                    "chatgpt.get_prompt_from_image_node_in_conversation"
+                    "chatgpt_to_notion.services.history_service.get_prompt_from_image_node_in_conversation"
                 ) as mock_prompt:
                     mock_prompt.return_value = "Test prompt"
 
-                    with patch("chatgpt.get_headers") as mock_headers:
+                    with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                         mock_headers.return_value = {"Authorization": "Bearer test"}
 
                         result = await chatgpt.fetch_image_generations(
@@ -121,7 +121,7 @@ class TestChatGPTFetchImageGenerations:
     ):
         """Should skip fetching details for items already in DB."""
         from unittest.mock import AsyncMock, patch
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         gen = ChatGPTImageGeneration(
             created_at="2024-01-15T10:30:00.000000+00:00",
@@ -147,15 +147,15 @@ class TestChatGPTFetchImageGenerations:
             ]
         }
 
-        with patch("chatgpt.get_image_generations", new_callable=AsyncMock) as mock_get:
+        with patch("chatgpt_to_notion.services.history_service.get_image_generations", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_data
 
             with patch(
-                "chatgpt.get_conversation_details", new_callable=AsyncMock
+                "chatgpt_to_notion.services.history_service.get_conversation_details", new_callable=AsyncMock
             ) as mock_detail:
                 mock_detail.return_value = {}
 
-                with patch("chatgpt.get_headers") as mock_headers:
+                with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                     mock_headers.return_value = {"Authorization": "Bearer test"}
 
                     result = await chatgpt.fetch_image_generations(
@@ -176,10 +176,10 @@ class TestChatGPTFetchImageGenerations:
         """Should return empty list when no generations."""
         from unittest.mock import AsyncMock, patch
 
-        with patch("chatgpt.get_image_generations", new_callable=AsyncMock) as mock_get:
+        with patch("chatgpt_to_notion.services.history_service.get_image_generations", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = {"items": []}
 
-            with patch("chatgpt.get_headers") as mock_headers:
+            with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                 mock_headers.return_value = {"Authorization": "Bearer test"}
 
                 result = await chatgpt.fetch_image_generations(
@@ -201,7 +201,7 @@ class TestChatGPTUploadToNotion:
         image_folder = str(tmp_path / "images")
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = [
                 {
@@ -212,15 +212,15 @@ class TestChatGPTUploadToNotion:
             ]
 
             with patch(
-                "chatgpt.download_all_images", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock
             ) as mock_download:
                 mock_download.return_value = None
 
-                with patch("chatgpt.add_prompt_to_images") as mock_add_prompt:
+                with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images") as mock_add_prompt:
                     mock_add_prompt.return_value = None
 
                     with patch(
-                        "chatgpt.upload_all_images_to_notion", new_callable=AsyncMock
+                        "chatgpt_to_notion.services.upload_pipeline.upload_all_images_to_notion", new_callable=AsyncMock
                     ) as mock_upload:
                         mock_upload.return_value = None
 
@@ -245,12 +245,12 @@ class TestChatGPTUploadToNotion:
         image_folder = str(tmp_path / "images")
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = []
 
             with patch(
-                "chatgpt.download_all_images", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock
             ) as mock_download:
                 mock_download.return_value = None
 
@@ -326,7 +326,7 @@ class TestChatGPTHistoryDataset:
     def test_loads_unuploaded_generations(
         self, isolated_db, monkeypatch
     ):
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         gen_1 = ChatGPTImageGeneration(
             created_at="2026-05-14T00:00:00+00:00",
@@ -359,7 +359,7 @@ class TestChatGPTHistoryDataset:
     def test_loads_all_generations_when_include_uploaded(
         self, isolated_db, monkeypatch
     ):
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         gen_1 = ChatGPTImageGeneration(
             created_at="2026-05-14T00:00:00+00:00",
@@ -541,9 +541,9 @@ class TestChatGPTDownloadImages:
         """Should download all images."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         download_folder = "images"
         generations = [
             ChatGPTImageGeneration(
@@ -566,7 +566,7 @@ class TestChatGPTDownloadImages:
             ),
         ]
 
-        with patch("chatgpt.download_image", new_callable=AsyncMock) as mock_download:
+        with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock) as mock_download:
             await download_all_images(
                 generations=generations, download_folder=download_folder
             )
@@ -579,9 +579,9 @@ class TestChatGPTDownloadImages:
         """Should skip already downloaded images."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         download_folder = "images"
 
         # Create existing image
@@ -610,7 +610,7 @@ class TestChatGPTDownloadImages:
             ),
         ]
 
-        with patch("chatgpt.download_image", new_callable=AsyncMock) as mock_download:
+        with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock) as mock_download:
             await download_all_images(
                 generations=generations, download_folder=download_folder
             )
@@ -629,7 +629,7 @@ class TestChatGPTDeleteConversation:
         """Should delete conversations for images in Notion."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         generations = [
             ChatGPTImageGeneration(
@@ -653,12 +653,12 @@ class TestChatGPTDeleteConversation:
         ]
 
         with patch(
-            "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = True
 
             with patch(
-                "chatgpt.delete_conversation", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
             ) as mock_delete:
                 await delete_conversation_of_image_generation_uploaded_to_notion(
                     generations, "test_db"
@@ -671,7 +671,7 @@ class TestChatGPTDeleteConversation:
         """Should skip conversations for images not in Notion."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         generations = [
             ChatGPTImageGeneration(
@@ -686,12 +686,12 @@ class TestChatGPTDeleteConversation:
         ]
 
         with patch(
-            "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = False
 
             with patch(
-                "chatgpt.delete_conversation", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
             ) as mock_delete:
                 await delete_conversation_of_image_generation_uploaded_to_notion(
                     generations, "test_db"
@@ -706,7 +706,7 @@ class TestChatGPTDeleteConversation:
         """Should deduplicate by conversation_id."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         # Two images from same conversation
         generations = [
@@ -731,12 +731,12 @@ class TestChatGPTDeleteConversation:
         ]
 
         with patch(
-            "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = True
 
             with patch(
-                "chatgpt.delete_conversation", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
             ) as mock_delete:
                 await delete_conversation_of_image_generation_uploaded_to_notion(
                     generations, "test_db"
@@ -757,7 +757,7 @@ class TestChatGPTUploadToNotionComprehensive:
         image_folder = str(tmp_path / "images")
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = [
                 {
@@ -767,12 +767,12 @@ class TestChatGPTUploadToNotionComprehensive:
                 }
             ]
 
-            with patch("chatgpt.download_all_images", new_callable=AsyncMock):
-                with patch("chatgpt.add_prompt_to_images"):
+            with patch("chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock):
+                with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images"):
                     with patch(
-                        "chatgpt.upload_all_images_to_notion", new_callable=AsyncMock
+                        "chatgpt_to_notion.services.upload_pipeline.upload_all_images_to_notion", new_callable=AsyncMock
                     ):
-                        with patch("chatgpt.save_generations") as mock_save:
+                        with patch("chatgpt_to_notion.services.upload_pipeline.save_generations") as mock_save:
                             await chatgpt.upload_to_notion(
                                 image_folder=image_folder,
                                 db_id="test_db",
@@ -790,7 +790,7 @@ class TestChatGPTUploadToNotionComprehensive:
         """Should use history data instead of fetching live generations."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -805,18 +805,18 @@ class TestChatGPTUploadToNotionComprehensive:
             )
         ]
 
-        with patch("chatgpt.load_image_generations") as mock_load:
+        with patch("chatgpt_to_notion.services.upload_pipeline.load_image_generations") as mock_load:
             mock_load.return_value = generations
             with patch(
-                "chatgpt.fetch_image_generations", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
             ) as mock_fetch:
-                with patch("chatgpt.download_all_images", new_callable=AsyncMock):
-                    with patch("chatgpt.add_prompt_to_images"):
+                with patch("chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock):
+                    with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images"):
                         with patch(
-                            "chatgpt.upload_all_images_to_notion",
+                            "chatgpt_to_notion.services.upload_pipeline.upload_all_images_to_notion",
                             new_callable=AsyncMock,
                         ) as mock_upload:
-                            with patch("chatgpt.save_generations") as mock_save:
+                            with patch("chatgpt_to_notion.services.upload_pipeline.save_generations") as mock_save:
                                 await chatgpt.upload_to_notion(
                                     image_folder=image_folder,
                                     db_id="test_db",
@@ -840,7 +840,7 @@ class TestChatGPTUploadToNotionComprehensive:
         """Should remove conversations when remove_in_chatgpt=True."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -856,17 +856,17 @@ class TestChatGPTUploadToNotionComprehensive:
         ]
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
-            with patch("chatgpt.download_all_images", new_callable=AsyncMock):
-                with patch("chatgpt.add_prompt_to_images"):
+            with patch("chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock):
+                with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images"):
                     with patch(
-                        "chatgpt.upload_all_images_to_notion", new_callable=AsyncMock
+                        "chatgpt_to_notion.services.upload_pipeline.upload_all_images_to_notion", new_callable=AsyncMock
                     ):
                         with patch(
-                            "chatgpt.delete_conversation_of_image_generation_uploaded_to_notion",
+                            "chatgpt_to_notion.services.upload_pipeline.delete_conversation_of_image_generation_uploaded_to_notion",
                             new_callable=AsyncMock,
                         ) as mock_remove:
                             await chatgpt.upload_to_notion(
@@ -881,7 +881,7 @@ class TestChatGPTUploadToNotionComprehensive:
         """Should skip optional steps when flags are False."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -897,16 +897,16 @@ class TestChatGPTUploadToNotionComprehensive:
         ]
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
             with patch(
-                "chatgpt.download_all_images", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock
             ) as mock_download:
-                with patch("chatgpt.add_prompt_to_images") as mock_add_prompt:
+                with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images") as mock_add_prompt:
                     with patch(
-                        "chatgpt.upload_all_images_to_notion", new_callable=AsyncMock
+                        "chatgpt_to_notion.services.upload_pipeline.upload_all_images_to_notion", new_callable=AsyncMock
                     ) as mock_upload:
                         await chatgpt.upload_to_notion(
                             image_folder=image_folder,
@@ -932,7 +932,7 @@ class TestChatGPTUploadToNotionSingle:
         """Should execute per-file upload workflow."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -948,26 +948,26 @@ class TestChatGPTUploadToNotionSingle:
         ]
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
-            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
 
                 with patch(
-                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
                 ) as mock_exists:
                     mock_exists.return_value = False
 
                     with patch(
-                        "chatgpt.download_image", new_callable=AsyncMock
+                        "chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock
                     ) as mock_download:
-                        with patch("chatgpt.add_prompt_to_image_single") as mock_prompt:
+                        with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single") as mock_prompt:
                             with patch(
-                                "chatgpt.add_page_to_db", new_callable=AsyncMock
+                                "chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock
                             ) as mock_upload:
-                                with patch("chatgpt.mark_generations_uploaded"):
+                                with patch("chatgpt_to_notion.services.upload_pipeline.mark_generations_uploaded"):
                                     await chatgpt.upload_to_notion_single(
                                         image_folder=image_folder,
                                         db_id="test_db",
@@ -989,7 +989,7 @@ class TestChatGPTUploadToNotionSingle:
         """Should skip files already marked uploaded in CSV."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -1005,17 +1005,17 @@ class TestChatGPTUploadToNotionSingle:
         ]
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
-            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = {"gen_123"}
 
                 with patch(
-                    "chatgpt.download_image", new_callable=AsyncMock
+                    "chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock
                 ) as mock_download:
-                    with patch("chatgpt.add_page_to_db", new_callable=AsyncMock):
+                    with patch("chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock):
                         await chatgpt.upload_to_notion_single(
                             image_folder=image_folder,
                             db_id="test_db",
@@ -1036,7 +1036,7 @@ class TestChatGPTUploadToNotionSingle:
         """Should skip files already in Notion."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -1052,22 +1052,22 @@ class TestChatGPTUploadToNotionSingle:
         ]
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
-            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
 
                 with patch(
-                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
                 ) as mock_exists:
                     mock_exists.return_value = True
 
                     with patch(
-                        "chatgpt.download_image", new_callable=AsyncMock
+                        "chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock
                     ) as mock_download:
-                        with patch("chatgpt.add_page_to_db", new_callable=AsyncMock):
+                        with patch("chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock):
                             await chatgpt.upload_to_notion_single(
                                 image_folder=image_folder,
                                 db_id="test_db",
@@ -1088,7 +1088,7 @@ class TestChatGPTUploadToNotionSingle:
         """Should not delete conversation if not all images uploaded."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -1128,28 +1128,28 @@ class TestChatGPTUploadToNotionSingle:
             return {"id": "page_123"}
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
-            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
 
                 with patch(
-                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
                 ) as mock_exists:
                     mock_exists.return_value = False
 
-                    with patch("chatgpt.download_image", new_callable=AsyncMock):
-                        with patch("chatgpt.add_prompt_to_image_single"):
+                    with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock):
+                        with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single"):
                             with patch(
-                                "chatgpt.add_page_to_db",
+                                "chatgpt_to_notion.services.upload_pipeline.add_page_to_db",
                                 new_callable=AsyncMock,
                                 side_effect=mock_upload_fail_for_gen3,
                             ):
-                                with patch("chatgpt.mark_generations_uploaded"):
+                                with patch("chatgpt_to_notion.services.upload_pipeline.mark_generations_uploaded"):
                                     with patch(
-                                        "chatgpt.delete_conversation",
+                                        "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
                                         new_callable=AsyncMock,
                                     ) as mock_delete:
                                         await chatgpt.upload_to_notion_single(
@@ -1172,7 +1172,7 @@ class TestChatGPTUploadToNotionSingle:
         """Should retry failed files on re-run."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
         generations = [
@@ -1206,26 +1206,26 @@ class TestChatGPTUploadToNotionSingle:
             return {"id": "page_123"}
 
         with patch(
-            "chatgpt.fetch_image_generations", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
             mock_fetch.return_value = generations
 
-            with patch("chatgpt.get_uploaded_generation_ids") as mock_uploaded:
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
 
                 with patch(
-                    "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
                 ) as mock_exists:
                     mock_exists.return_value = False
 
-                    with patch("chatgpt.download_image", new_callable=AsyncMock):
-                        with patch("chatgpt.add_prompt_to_image_single"):
+                    with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock):
+                        with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single"):
                             with patch(
-                                "chatgpt.add_page_to_db",
+                                "chatgpt_to_notion.services.upload_pipeline.add_page_to_db",
                                 new_callable=AsyncMock,
                                 side_effect=mock_upload,
                             ):
-                                with patch("chatgpt.mark_generations_uploaded"):
+                                with patch("chatgpt_to_notion.services.upload_pipeline.mark_generations_uploaded"):
                                     await chatgpt.upload_to_notion_single(
                                         image_folder=image_folder,
                                         db_id="test_db",
@@ -1245,7 +1245,7 @@ class TestChatGPTUploadToNotionSingle:
         """Should delete conversation only when all images confirmed in Notion."""
         from unittest.mock import AsyncMock, patch
 
-        from models import ChatGPTImageGeneration
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         # Three images from same conversation
         generations = [
@@ -1279,12 +1279,12 @@ class TestChatGPTUploadToNotionSingle:
         ]
 
         with patch(
-            "chatgpt.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = True
 
             with patch(
-                "chatgpt.delete_conversation", new_callable=AsyncMock
+                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
             ) as mock_delete:
                 await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
                     generations, "test_db"

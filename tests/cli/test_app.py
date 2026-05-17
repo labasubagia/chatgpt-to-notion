@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from main import app
+from chatgpt_to_notion.cli.app import app
 
 runner = CliRunner()
 
@@ -70,10 +70,10 @@ class TestCLICommands:
     @pytest.fixture(autouse=True)
     def setup(self, mock_config_toml, tmp_output_dir, monkeypatch):
         """Setup test environment."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         yield
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion(self, mock_upload, mock_config_toml):
         """Should call chatgpt.upload_to_notion_single (default mode)."""
         result = runner.invoke(
@@ -89,7 +89,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_defaults_to_all_accounts(
         self, mock_upload, mock_config_toml
     ):
@@ -104,10 +104,10 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
-    @patch("util.validate_runtime_config")
-    @patch("util.resolve_config")
-    @patch("util.get_account_names", return_value=["acc1", "acc2"])
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config")
+    @patch("chatgpt_to_notion.cli.commands.upload.resolve_config")
+    @patch("chatgpt_to_notion.cli.commands.upload.get_account_names", return_value=["acc1", "acc2"])
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_multiple_accounts(
         self,
         mock_upload,
@@ -117,7 +117,7 @@ class TestCLICommands:
         mock_config_toml,
     ):
         """Should call chatgpt.upload_to_notion_single for every configured account."""
-        from models import AccountConfig, NotionConfig, ResolvedConfig
+        from chatgpt_to_notion.domain.models import AccountConfig, NotionConfig, ResolvedConfig
 
         mock_validate.return_value = None
         mock_resolve.side_effect = [
@@ -144,7 +144,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert mock_upload.call_count == 2
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_uses_account(
         self, mock_upload, mock_config_toml
     ):
@@ -161,7 +161,7 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["account"] == "default"
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_check_notion_api_flag(
         self, mock_upload, mock_config_toml
     ):
@@ -179,7 +179,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_from_history_flag(
         self, mock_upload, mock_config_toml
     ):
@@ -198,7 +198,7 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["from_history"] is True
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_verify_history_flag(
         self, mock_upload, mock_config_toml
     ):
@@ -219,7 +219,7 @@ class TestCLICommands:
 
     def test_clean_output_path(self, tmp_output_dir, monkeypatch):
         """Should clean output path."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
 
         # Create test files
         (tmp_output_dir / "test.txt").write_text("test")
@@ -239,26 +239,41 @@ class TestCLICommands:
         result = runner.invoke(app, ["account-status", "--timezone", "UTC"])
 
         assert result.exit_code == 0
-        assert "default" in result.stdout
+        assert "Today" in result.stdout
+        assert "Yesterday" in result.stdout
         assert "Ready" in result.stdout
         assert "0s" in result.stdout
 
     def test_account_status_multiple_accounts_no_flag(self):
         """Should work without --account when multiple accounts exist."""
-        with patch("util._load_toml_config") as mock_load:
-            from models import AppConfig, AccountConfig, NotionConfig, SharedAccountConfig
-            mock_load.return_value = AppConfig(
-                notion=NotionConfig(api_key="x", database_id="x"),
-                shared=SharedAccountConfig(user_agent="x"),
-                accounts={
-                    "account_a": AccountConfig(authorization_token="token_a"),
-                    "account_b": AccountConfig(authorization_token="token_b"),
-                },
-            )
+        with patch(
+            "chatgpt_to_notion.cli.commands.accounts.get_account_activity_statuses",
+            return_value=(
+                [
+                    {
+                        "Account": "account_a",
+                        "Next Wait": "Ready",
+                        "Next Cooldown": "0s",
+                        "Fully Ready In": "0s",
+                        "Total Wait": "0s",
+                        "Ready Generate?": "✅",
+                    },
+                    {
+                        "Account": "account_b",
+                        "Next Wait": "Ready",
+                        "Next Cooldown": "0s",
+                        "Fully Ready In": "0s",
+                        "Total Wait": "0s",
+                        "Ready Generate?": "✅",
+                    },
+                ],
+                [],
+            ),
+        ):
             result = runner.invoke(app, ["account-status"])
             assert result.exit_code == 0
-            assert "account_a" in result.stdout
-            assert "account_b" in result.stdout
+            assert "Today" in result.stdout
+            assert "Yesterday" in result.stdout
 
 
 class TestCLIConfigValidation:
@@ -266,7 +281,7 @@ class TestCLIConfigValidation:
 
     def test_missing_config_values_chatgpt(self):
         """Should fail if required TOML config values are missing."""
-        with patch("util.validate_runtime_config") as mock_validate:
+        with patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config") as mock_validate:
             mock_validate.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
             result = runner.invoke(
                 app,
@@ -311,10 +326,10 @@ class TestCLIMode:
     @pytest.fixture(autouse=True)
     def setup(self, mock_config_toml, tmp_output_dir, monkeypatch):
         """Setup test environment."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         yield
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_mode_single(self, mock_upload, mock_config_toml):
         """Should call upload_to_notion_single when --mode single."""
         result = runner.invoke(
@@ -328,7 +343,7 @@ class TestCLIMode:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
-    @patch("chatgpt.upload_to_notion", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion", new_callable=AsyncMock)
     def test_upload_to_notion_mode_batch(self, mock_upload, mock_config_toml):
         """Should call upload_to_notion when --mode batch."""
         result = runner.invoke(
@@ -342,7 +357,7 @@ class TestCLIMode:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
-    @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_defaults_to_single(self, mock_upload, mock_config_toml):
         """Should default to single mode when --mode is omitted."""
         result = runner.invoke(

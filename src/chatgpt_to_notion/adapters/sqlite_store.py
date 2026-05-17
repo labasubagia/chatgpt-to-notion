@@ -7,15 +7,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from models import ChatGPTImageGeneration
+from ..domain.models import ChatGPTImageGeneration
+from ..shared import constants
 
 _lock = asyncio.Lock()
 
 
 def _get_db_path() -> Path:
-    from util import OUTPUT_PATH
-
-    db_dir = Path(OUTPUT_PATH).resolve()
+    db_dir = Path(constants.OUTPUT_PATH).resolve()
     db_dir.mkdir(parents=True, exist_ok=True)
     return db_dir / "chatgpt.db"
 
@@ -89,16 +88,16 @@ def upsert_generations(
             """,
             [
                 (
-                    g.id,
-                    g.created_at,
-                    g.conversation_id,
-                    g.message_id,
-                    g.asset_pointer,
-                    g.url,
-                    g.prompt,
+                    generation.id,
+                    generation.created_at,
+                    generation.conversation_id,
+                    generation.message_id,
+                    generation.asset_pointer,
+                    generation.url,
+                    generation.prompt,
                     account,
                 )
-                for g in generations
+                for generation in generations
             ],
         )
         conn.commit()
@@ -159,10 +158,7 @@ def get_generations(
         conn.close()
 
 
-def get_uploaded_ids(
-    account: str,
-    db_path: Path | None = None,
-) -> set[str]:
+def get_uploaded_ids(account: str, db_path: Path | None = None) -> set[str]:
     conn = _get_connection(db_path)
     try:
         rows = conn.execute(
@@ -183,8 +179,8 @@ def get_existing_ids(
     try:
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(
-            f"SELECT id FROM image_generations"
-            f" WHERE account = ? AND id IN ({placeholders})",
+            "SELECT id FROM image_generations "
+            f"WHERE account = ? AND id IN ({placeholders})",
             (account, *ids),
         ).fetchall()
         return {row["id"] for row in rows}
@@ -204,11 +200,8 @@ def mark_uploaded(
     try:
         placeholders = ",".join("?" for _ in generation_ids)
         conn.execute(
-            f"""
-            UPDATE image_generations
-            SET uploaded_at = ?
-            WHERE account = ? AND id IN ({placeholders})
-            """,
+            "UPDATE image_generations SET uploaded_at = ? "
+            f"WHERE account = ? AND id IN ({placeholders})",
             (uploaded_at, account, *generation_ids),
         )
         conn.commit()
@@ -241,8 +234,8 @@ def get_cached_data_sources(
     conn = _get_connection(db_path)
     try:
         row = conn.execute(
-            "SELECT data_sources_json, expires_at"
-            " FROM cache_data_sources WHERE db_id = ?",
+            "SELECT data_sources_json, expires_at "
+            "FROM cache_data_sources WHERE db_id = ?",
             (db_id,),
         ).fetchone()
         if row is None:
@@ -341,8 +334,8 @@ def count_recent_generations(
     conn = _get_connection(db_path)
     try:
         row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM image_generations"
-            " WHERE account = ? AND created_at >= ?",
+            "SELECT COUNT(*) as cnt FROM image_generations "
+            "WHERE account = ? AND created_at >= ?",
             (account, since),
         ).fetchone()
         return row["cnt"] if row else 0

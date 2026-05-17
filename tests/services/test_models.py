@@ -5,7 +5,7 @@ Unit tests for models.py - Pydantic models validation.
 import pytest
 from pydantic import ValidationError
 
-from models import ChatGPTImageGeneration
+from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
 
 class TestChatGPTImageGeneration:

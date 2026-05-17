@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from models import ChatGPTImageGeneration
+from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
 
 @pytest.fixture
@@ -183,14 +183,15 @@ def sample_image_bytes():
 @pytest.fixture
 def isolated_db(tmp_path, monkeypatch):
     """Provide an isolated SQLite DB for tests that use db module functions."""
-    import db
+    from chatgpt_to_notion.adapters import sqlite_store
 
     db_path = tmp_path / "isolated_test.db"
-    db.init_db(db_path)
+    sqlite_store.init_db(db_path)
 
-    original = db._get_connection
+    original = sqlite_store._get_connection
     monkeypatch.setattr(
-        db, "_get_connection",
+        sqlite_store,
+        "_get_connection",
         lambda p=None: original(db_path),
     )
 

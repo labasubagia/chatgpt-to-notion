@@ -1,3 +1,5 @@
+"""Notion API adapter."""
+
 import asyncio
 import json
 import os
@@ -8,24 +10,22 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from models import ImageGeneration, RuntimeOptions
-from util import (
-    MAX_CONCURRENT_REQUESTS,
-    get_http_timeout,
-    get_notion_context,
-    get_output_path,
-    get_uploaded_generation_ids,
-    mark_generations_uploaded,
-    retry_http,
+from ..domain.models import ImageGeneration, RuntimeOptions
+from ..shared.constants import MAX_CONCURRENT_REQUESTS
+from ..shared.http import get_http_timeout, retry_http
+from .config_loader import get_notion_context
+from .filesystem import get_output_path
+from .sqlite_store import (
+    async_set_cached_data_sources,
+    get_cached_data_sources,
+    get_uploaded_ids,
+    mark_uploaded,
 )
 
 BASE_URL = "https://api.notion.com"
 
-DB_ID: str | None = None
-
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    """Get headers for Notion API requests"""
     return get_notion_context(options).headers
 
 
@@ -35,8 +35,9 @@ async def get_db_data_sources(
     db_id: str,
     headers: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    from db import async_set_cached_data_sources, get_cached_data_sources
+    from . import sqlite_store
 
+    sqlite_store.init_db()
     cached = get_cached_data_sources(db_id)
     if cached is not None:
         return cached
@@ -121,11 +122,10 @@ async def send_upload_img(
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     file_name = os.path.basename(file_path)
-
     notion_headers = headers or get_headers()
-    with open(file_path, "rb") as f:
+    with open(file_path, "rb") as file_obj:
         data = aiohttp.FormData()
-        data.add_field("file", f, filename=file_name, content_type="image/png")
+        data.add_field("file", file_obj, filename=file_name, content_type="image/png")
         async with session.post(
             f"{BASE_URL}/v1/file_uploads/{file_upload_id}/send",
             headers={
@@ -148,6 +148,7 @@ async def add_page_to_db(
     face: str = "_original_",
     options: RuntimeOptions | None = None,
 ) -> dict[str, Any]:
+    del model, face
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     file_name = os.path.basename(file_path)
@@ -157,6 +158,11 @@ async def add_page_to_db(
     send_upload_res = await send_upload_img(
         session, create_upload_res["id"], file_path, headers=headers
     )
+
+    normalized_prompt = str(prompt).strip()
+    normalized_prompt = normalized_prompt.replace("\r \n", "\n")
+    normalized_prompt = normalized_prompt.replace("\r\n", "\n")
+    normalized_prompt = normalized_prompt.replace("\r", "\n")
 
     payload: dict[str, Any] = {
         "parent": {"database_id": db_id},
@@ -171,23 +177,8 @@ async def add_page_to_db(
                 ]
             },
         },
+        "markdown": f"**Prompt:**\n\n```\n{normalized_prompt}\n```",
     }
-
-    prompt = str(prompt).strip()
-
-    # Normalize broken / mixed line endings
-    prompt = prompt.replace("\r \n", "\n")
-    prompt = prompt.replace("\r\n", "\n")
-    prompt = prompt.replace("\r", "\n")
-
-    payload["markdown"] = f"""
-**Prompt:**
-
-```
-{prompt}
-```
-
-""".strip()
 
     async with session.post(
         f"{BASE_URL}/v1/pages",
@@ -219,7 +210,7 @@ async def upload_all_images_to_notion(
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    uploaded_generation_ids = get_uploaded_generation_ids(account, options)
+    uploaded_generation_ids = get_uploaded_ids(account) if account else set()
 
     image_folder_path = Path(image_folder)
     if not image_folder_path.is_absolute():
@@ -247,19 +238,18 @@ async def upload_all_images_to_notion(
                     ):
                         pbar.write(f"⏭️  {file_name} skipped, already exists")
                         return generation_id
-                    else:
-                        await add_page_to_db(
-                            session,
-                            db_id,
-                            file_path,
-                            prompt,
-                            model="ChatGPT",
-                            options=options,
-                        )
-                        pbar.write(f"✅ {file_name} uploaded")
-                        return generation_id
-                except Exception as e:
-                    pbar.write(f"❌ {file_name} failed: {e}")
+                    await add_page_to_db(
+                        session,
+                        db_id,
+                        str(file_path),
+                        prompt,
+                        model="ChatGPT",
+                        options=options,
+                    )
+                    pbar.write(f"✅ {file_name} uploaded")
+                    return generation_id
+                except Exception as exc:
+                    pbar.write(f"❌ {file_name} failed: {exc}")
                     return None
                 finally:
                     pbar.update(1)
@@ -269,9 +259,9 @@ async def upload_all_images_to_notion(
         )
 
     pbar.close()
-    mark_generations_uploaded(
-        account,
-        {generation_id for generation_id in uploaded_results if generation_id},
-        options,
-    )
-    print()  # Add spacing after progress bar
+    if account:
+        mark_uploaded(
+            account,
+            {generation_id for generation_id in uploaded_results if generation_id},
+        )
+    print()

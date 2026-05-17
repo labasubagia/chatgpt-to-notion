@@ -1,4 +1,4 @@
-# ChatGPT Image CLI
+# ChatGPT To Notion
 
 A command-line tool for downloading ChatGPT image generations, embedding prompts in PNG metadata, and uploading the results to Notion.
 
@@ -47,13 +47,13 @@ notion_database_id = "optional_override_database_id"
 Show CLI help:
 
 ```bash
-python main.py --help
+uv run chatgpt-to-notion --help
 ```
 
 Upload recent generations:
 
 ```bash
-python main.py upload-to-notion \
+uv run chatgpt-to-notion upload-to-notion \
   --account personal \
   --limit 100
 ```
@@ -61,43 +61,43 @@ python main.py upload-to-notion \
 Run every configured account in sequence:
 
 ```bash
-python main.py upload-to-notion
+uv run chatgpt-to-notion upload-to-notion
 ```
 
 Replay from saved history instead of fetching live data (today's data only):
 
 ```bash
-python main.py upload-to-notion --from-history
+uv run chatgpt-to-notion upload-to-notion --from-history
 ```
 
 Load all data from history (not just today's):
 
 ```bash
-python main.py upload-to-notion --from-history --all
+uv run chatgpt-to-notion upload-to-notion --from-history --all
 ```
 
 Verify saved history against Notion directly (today's data only):
 
 ```bash
-python main.py upload-to-notion --verify-history
+uv run chatgpt-to-notion upload-to-notion --verify-history
 ```
 
 Load all data and verify against Notion:
 
 ```bash
-python main.py upload-to-notion --verify-history --all
+uv run chatgpt-to-notion upload-to-notion --verify-history --all
 ```
 
 Check which accounts are ready:
 
 ```bash
-python main.py account-status --timezone Asia/Singapore
+uv run chatgpt-to-notion account-status --timezone Asia/Singapore
 ```
 
 Clean generated output:
 
 ```bash
-python main.py clean-output-path
+uv run chatgpt-to-notion clean-output-path
 ```
 
 ## CLI Notes
@@ -121,13 +121,13 @@ make clean-output-path
 
 ```text
 project/
-├── main.py
-├── chatgpt.py
-├── notion.py
-├── img.py
-├── util.py
-├── models.py
-├── db.py
+├── src/
+│   └── chatgpt_to_notion/
+│       ├── cli/
+│       ├── domain/
+│       ├── services/
+│       ├── adapters/
+│       └── shared/
 ├── config.toml.example
 ├── tests/
 └── output/
