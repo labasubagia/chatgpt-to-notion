@@ -12,6 +12,7 @@ from tqdm.asyncio import tqdm
 from ..domain.models import ImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS
 from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
+from ..shared.logging import get_logger
 from .config_loader import get_notion_context
 from .filesystem import get_output_path
 from .sqlite_store import (
@@ -20,6 +21,8 @@ from .sqlite_store import (
     get_uploaded_ids,
     mark_uploaded,
 )
+
+logger = get_logger("notion")
 
 BASE_URL = "https://api.notion.com"
 
@@ -239,6 +242,7 @@ async def upload_all_images_to_notion(
                     return generation_id
                 except Exception as exc:
                     pbar.write(f"❌ {file_name} failed: {exc}")
+                    logger.exception("Failed to upload %s", file_name)
                     return None
                 finally:
                     pbar.update(1)

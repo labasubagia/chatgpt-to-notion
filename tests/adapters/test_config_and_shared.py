@@ -635,7 +635,17 @@ class TestRetryHttp:
             call_count += 1
             if call_count < 2:
                 os_error = OSError(errno.ECONNREFUSED, "Connection refused")
-                raise aiohttp.ClientConnectorError(None, os_error)
+                
+                class MockConnKey:
+                    ssl = False
+                    host = "localhost"
+                    port = 80
+                    is_ssl = False
+                    proxy = None
+                    proxy_auth = None
+                    proxy_headers_hash = None
+                
+                raise aiohttp.ClientConnectorError(MockConnKey(), os_error)
             return "success"
 
         result = await failing_func()

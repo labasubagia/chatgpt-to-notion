@@ -1,11 +1,21 @@
 """HTTP helper utilities."""
 
 import asyncio
+import logging
 
 import aiohttp
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from .constants import HTTP_TIMEOUT_SECONDS, MAX_RETRIES
+from .logging import get_logger
+
+logger = get_logger("http")
 
 
 def http_retryable(status_code: int | None) -> bool:
@@ -54,6 +64,7 @@ def retry_http():
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception(should_retry_http),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
 
