@@ -157,6 +157,22 @@ def get_image_folder(options: RuntimeOptions | None = None) -> Path:
     return Path(OUTPUT_PATH).resolve() / "images"
 
 
+def resolve_image_folder(
+    image_folder: str | None,
+    options: RuntimeOptions | None = None,
+) -> Path:
+    """Resolve image folder path.
+
+    None → default, relative → output/<path>, absolute → as-is.
+    """
+    if image_folder is None:
+        return get_image_folder(options)
+    path = Path(image_folder)
+    if path.is_absolute():
+        return path
+    return get_output_path(image_folder)
+
+
 def clean_output_path() -> None:
     base_dir: Path = Path(OUTPUT_PATH).resolve()
     if not base_dir.exists():

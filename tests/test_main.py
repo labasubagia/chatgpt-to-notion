@@ -282,10 +282,10 @@ class TestCLIDefaults:
     """Tests for CLI default values."""
 
     def test_chatgpt_default_image_folder(self):
-        """Should use default image folder."""
+        """Should use default image folder from output/images."""
         result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
-        assert "[default: images]" in result.stdout
+        assert "output/images" in result.stdout
 
     def test_chatgpt_default_limit(self):
         """Should use default limit."""

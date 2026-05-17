@@ -17,11 +17,10 @@ from util import (
     MAX_CONCURRENT_REQUESTS,
     download_image,
     get_http_timeout,
-    get_image_folder,
-    get_output_path,
     get_provider_context,
     get_uploaded_generation_ids,
     mark_generations_uploaded,
+    resolve_image_folder,
     retry_http,
     save_to_dataset,
 )
@@ -259,8 +258,6 @@ async def download_all_images(
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 
     download_path = Path(download_folder)
-    if not download_path.is_absolute():
-        download_path = get_output_path(download_folder)
 
     async with aiohttp.ClientSession(
         headers=get_headers(options), timeout=get_http_timeout()
@@ -340,7 +337,7 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
 
 
 async def upload_to_notion(
-    image_folder: str,
+    image_folder: str | None,
     db_id: str,
     upload_to_notion: bool = True,
     remove_in_chatgpt: bool = False,
@@ -354,10 +351,7 @@ async def upload_to_notion(
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
-    if Path(image_folder).is_absolute():
-        resolved_image_folder = Path(image_folder)
-    else:
-        resolved_image_folder = get_image_folder(options)
+    resolved_image_folder = resolve_image_folder(image_folder, options)
 
     db.init_db()
 
@@ -459,7 +453,7 @@ async def delete_conversations_after_upload(
 
 
 async def upload_to_notion_single(
-    image_folder: str,
+    image_folder: str | None,
     db_id: str,
     upload_to_notion: bool = True,
     remove_in_chatgpt: bool = False,
@@ -473,10 +467,7 @@ async def upload_to_notion_single(
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
-    if Path(image_folder).is_absolute():
-        resolved_image_folder = Path(image_folder)
-    else:
-        resolved_image_folder = get_image_folder(options)
+    resolved_image_folder = resolve_image_folder(image_folder, options)
 
     db.init_db()
 

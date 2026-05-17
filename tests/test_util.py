@@ -2,6 +2,7 @@
 Unit tests for util.py - pure functions, no external dependencies.
 """
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import aiohttp
@@ -27,6 +28,7 @@ from util import (
     http_retryable,
     mark_generations_uploaded,
     resolve_config,
+    resolve_image_folder,
     retry_http,
     save_to_dataset,
     should_retry_http,
@@ -60,6 +62,29 @@ class TestGetOutputPath:
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
         path = get_output_path("test_dir", is_dir=True)
         assert path.is_dir()
+
+
+class TestResolveImageFolder:
+    """Tests for resolve_image_folder function."""
+
+    def test_none_uses_default(self, tmp_output_dir, monkeypatch):
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        path = resolve_image_folder(None)
+        assert path == tmp_output_dir / "images"
+
+    def test_absolute_path_returned_as_is(self):
+        path = resolve_image_folder("/custom/absolute/path")
+        assert path == Path("/custom/absolute/path")
+
+    def test_relative_path_wrapped_in_output(self, tmp_output_dir, monkeypatch):
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        path = resolve_image_folder("my_images")
+        assert path == tmp_output_dir / "my_images"
+
+    def test_relative_path_creates_directory(self, tmp_output_dir, monkeypatch):
+        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        path = resolve_image_folder("new_folder/sub")
+        assert path.parent.exists()
 
 
 class TestHttpRetryable:

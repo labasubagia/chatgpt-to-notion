@@ -91,12 +91,12 @@ def upload_to_notion(
         ),
     ] = None,
     image_folder: Annotated[
-        str,
+        str | None,
         typer.Option(
             help="Path to folder containing images (default: output/images, "
             "supports absolute path)",
         ),
-    ] = "images",
+    ] = None,
     db_id: Annotated[
         str | None,
         typer.Option(help="Notion Database ID", callback=validate_db_id),
