@@ -20,8 +20,6 @@ A command-line tool for downloading ChatGPT image generations, embedding prompts
 ### Setup
 
 ```bash
-git clone <repository-url>
-cd sora
 uv sync
 cp config.toml.example config.toml
 ```
@@ -122,7 +120,7 @@ make clean-output-path
 ## Project Structure
 
 ```text
-sora/
+project/
 ├── main.py
 ├── chatgpt.py
 ├── notion.py
