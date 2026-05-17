@@ -374,6 +374,13 @@ def _make_ready_row(account_name: str, service: str) -> dict[str, str]:
     }
 
 
+def resolve_timezone(timezone_name: str | None = None):
+    """Resolve timezone: provided IANA name, or system default."""
+    if timezone_name:
+        return ZoneInfo(timezone_name)
+    return datetime.now().astimezone().tzinfo
+
+
 def get_account_activity_statuses(
     *,
     config_path: str | None = None,
@@ -385,9 +392,7 @@ def get_account_activity_statuses(
     if not account_names:
         return [], []
 
-    tz = (
-        ZoneInfo(timezone_name) if timezone_name else datetime.now().astimezone().tzinfo
-    )
+    tz = resolve_timezone(timezone_name)
     if now is None:
         now = datetime.now(tz)
     today_date = now.date()
@@ -476,12 +481,15 @@ def _get_activity_status_for_date(
     if last_active.tzinfo is None:
         last_active = last_active.replace(tzinfo=timezone.utc)
 
-    next_wait = first_active + timedelta(days=1)
+    first_active_local = first_active.astimezone(tz)
+    last_active_local = last_active.astimezone(tz)
+
+    next_wait = first_active_local + timedelta(days=1)
     status_msg = f"{active_count}/{total_count} to wait"
     ready_generate = (
         f"❌  ({status_msg})" if active_count == total_count else f"⚠️  ({status_msg})"
     )
-    total_wait = (last_active - first_active).total_seconds()
+    total_wait = (last_active_local - first_active_local).total_seconds()
 
     return next_wait, {
         "Account": account_name,
@@ -489,7 +497,7 @@ def _get_activity_status_for_date(
         "Next Wait": next_wait.strftime("%Y-%m-%d %H:%M:%S"),
         "Next Cooldown": _format_duration((next_wait - now).total_seconds()),
         "Fully Ready In": _format_duration(
-            (last_active + timedelta(days=1) - now).total_seconds()
+            (last_active_local + timedelta(days=1) - now).total_seconds()
         ),
         "Total Wait": _format_duration(total_wait),
         "Ready Generate?": ready_generate,

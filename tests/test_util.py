@@ -29,6 +29,7 @@ from util import (
     mark_generations_uploaded,
     resolve_config,
     resolve_image_folder,
+    resolve_timezone,
     retry_http,
     save_generations,
     should_retry_http,
@@ -85,6 +86,30 @@ class TestResolveImageFolder:
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
         path = resolve_image_folder("new_folder/sub")
         assert path.parent.exists()
+
+
+class TestResolveTimezone:
+    """Tests for resolve_timezone function."""
+
+    def test_returns_zoneinfo_for_valid_name(self):
+        from zoneinfo import ZoneInfo
+
+        tz = resolve_timezone("Asia/Jakarta")
+        assert isinstance(tz, ZoneInfo)
+
+    def test_returns_utc(self):
+        from zoneinfo import ZoneInfo
+
+        tz = resolve_timezone("UTC")
+        assert isinstance(tz, ZoneInfo)
+
+    def test_returns_system_tz_when_none(self):
+        tz = resolve_timezone(None)
+        assert tz is not None
+
+    def test_returns_system_tz_when_empty(self):
+        tz = resolve_timezone("")
+        assert tz is not None
 
 
 class TestHttpRetryable:
