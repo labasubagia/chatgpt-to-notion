@@ -625,8 +625,10 @@ class TestRetryHttp:
 
     @patch("chatgpt_to_notion.shared.http.MAX_RETRIES", 2)
     @pytest.mark.asyncio
-    async def test_applies_retry_logic(self):
+    async def test_applies_retry_logic(self, caplog):
         import errno
+        import logging
+        caplog.set_level(logging.WARNING, logger="chatgpt_to_notion.http")
         call_count = 0
 
         @retry_http()
@@ -651,6 +653,10 @@ class TestRetryHttp:
         result = await failing_func()
         assert result == "success"
         assert call_count == 2
+        
+        # Verify exactly one retry attempt was logged
+        retries_logged = caplog.text.count("Retrying")
+        assert retries_logged == 1
 
 
 class TestDownloadImage:
