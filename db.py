@@ -263,6 +263,68 @@ def set_cached_data_sources(
         conn.close()
 
 
+def has_generations(account: str, db_path: Path | None = None) -> bool:
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM image_generations WHERE account = ? LIMIT 1",
+            (account,),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def get_activity_stats(
+    account: str,
+    date_start: str,
+    date_end: str,
+    cooldown_threshold: str,
+    db_path: Path | None = None,
+) -> dict[str, Any] | None:
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as active_count,
+                MIN(created_at) as first_active,
+                MAX(created_at) as last_active
+            FROM image_generations
+            WHERE account = ?
+              AND created_at >= ?
+              AND created_at < ?
+            """,
+            (cooldown_threshold, account, date_start, date_end),
+        ).fetchone()
+        if row is None or row["total"] == 0:
+            return None
+        return {
+            "total": row["total"],
+            "active_count": row["active_count"] or 0,
+            "first_active": row["first_active"],
+            "last_active": row["last_active"],
+        }
+    finally:
+        conn.close()
+
+
+def count_recent_generations(
+    account: str, since: str, db_path: Path | None = None
+) -> int:
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM image_generations"
+            " WHERE account = ? AND created_at >= ?",
+            (account, since),
+        ).fetchone()
+        return row["cnt"] if row else 0
+    finally:
+        conn.close()
+
+
 async def async_upsert_generations(
     account: str,
     generations: list[ChatGPTImageGeneration],

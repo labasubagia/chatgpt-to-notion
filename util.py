@@ -59,23 +59,11 @@ def save_generations(
     db.upsert_generations(account, generations)
     db.delete_old_generations(account, keep_days=keep_days)
 
-    today_count = len(
-        [g for g in generations if _is_within_days(g.created_at, display_days)]
-    )
+    cutoff = datetime.now(timezone.utc) - timedelta(days=display_days)
+    today_count = db.count_recent_generations(account, cutoff.isoformat())
     print(
         f"✅ Saved generations for account '{account}' (Total Today: {today_count})\n"
     )
-
-
-def _is_within_days(created_at: str, days: int) -> bool:
-    try:
-        dt = datetime.fromisoformat(created_at)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        return dt >= cutoff
-    except (ValueError, TypeError):
-        return False
 
 
 def get_uploaded_generation_ids(
@@ -449,8 +437,7 @@ def get_account_activity_statuses(
 def _db_has_valid_data(account_name: str) -> bool:
     import db
 
-    generations = db.get_generations(account_name)
-    return len(generations) > 0
+    return db.has_generations(account_name)
 
 
 def _get_activity_status_for_date(
@@ -462,38 +449,33 @@ def _get_activity_status_for_date(
 ) -> tuple[datetime, dict[str, str] | None]:
     import db
 
-    generations = db.get_generations(account_name, include_uploaded=True)
-    if not generations:
-        return now - timedelta(days=1), None
+    tz = now.tzinfo or timezone.utc
+    date_start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=tz)
+    date_end = date_start + timedelta(days=1)
+    cooldown_threshold = now - timedelta(days=1)
 
-    created_at_list: list[datetime] = []
-    for g in generations:
-        try:
-            dt = datetime.fromisoformat(g.created_at)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            dt_local = dt.astimezone(now.tzinfo)
-            created_at_list.append(dt_local)
-        except (ValueError, TypeError):
-            continue
-
-    if not created_at_list:
-        return now - timedelta(days=1), None
-
-    selected = [dt for dt in created_at_list if dt.date() == target_date]
-    if not selected:
+    stats = db.get_activity_stats(
+        account=account_name,
+        date_start=date_start.astimezone(timezone.utc).isoformat(),
+        date_end=date_end.astimezone(timezone.utc).isoformat(),
+        cooldown_threshold=cooldown_threshold.astimezone(timezone.utc).isoformat(),
+    )
+    if stats is None:
         return now, None
 
-    total_count = len(selected)
-    cooldown_threshold = now - timedelta(days=1)
-    active_items = [dt for dt in selected if dt > cooldown_threshold]
-    active_count = len(active_items)
+    total_count = stats["total"]
+    active_count = stats["active_count"]
 
     if active_count == 0:
         return now, _make_ready_row(account_name, service)
 
-    first_active = min(active_items)
-    last_active = max(active_items)
+    first_active = datetime.fromisoformat(stats["first_active"])
+    last_active = datetime.fromisoformat(stats["last_active"])
+    if first_active.tzinfo is None:
+        first_active = first_active.replace(tzinfo=timezone.utc)
+    if last_active.tzinfo is None:
+        last_active = last_active.replace(tzinfo=timezone.utc)
+
     next_wait = first_active + timedelta(days=1)
     status_msg = f"{active_count}/{total_count} to wait"
     ready_generate = (

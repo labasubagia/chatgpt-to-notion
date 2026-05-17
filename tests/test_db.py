@@ -248,3 +248,156 @@ class TestDataSourcesCache:
         assert result is None
 
 
+class TestHasGenerations:
+    def test_returns_true_when_exists(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        db.upsert_generations("acc", [gen], db_path=tmp_db_path)
+        assert db.has_generations("acc", db_path=tmp_db_path) is True
+
+    def test_returns_false_when_empty(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        assert db.has_generations("acc", db_path=tmp_db_path) is False
+
+    def test_returns_false_for_other_account(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        db.upsert_generations("acc", [gen], db_path=tmp_db_path)
+        assert db.has_generations("other", db_path=tmp_db_path) is False
+
+
+class TestGetActivityStats:
+    def test_returns_stats_for_date(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        now = datetime.now(timezone.utc)
+        gens = [
+            ChatGPTImageGeneration(
+                created_at=(now - timedelta(hours=h)).isoformat(),
+                id=f"g{h}",
+                conversation_id="c1",
+                message_id=f"m{h}",
+                asset_pointer=f"a{h}",
+                url=f"https://example.com/{h}.png",
+                prompt="test",
+            )
+            for h in range(1, 5)
+        ]
+        db.upsert_generations("acc", gens, db_path=tmp_db_path)
+
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        cooldown = now - timedelta(days=1)
+
+        stats = db.get_activity_stats(
+            "acc",
+            date_start=today_start.isoformat(),
+            date_end=today_end.isoformat(),
+            cooldown_threshold=cooldown.isoformat(),
+            db_path=tmp_db_path,
+        )
+        assert stats is not None
+        assert stats["total"] == 4
+        assert stats["active_count"] == 4
+
+    def test_returns_none_for_no_data(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        now = datetime.now(timezone.utc)
+        stats = db.get_activity_stats(
+            "acc",
+            date_start=now.isoformat(),
+            date_end=(now + timedelta(days=1)).isoformat(),
+            cooldown_threshold=(now - timedelta(days=1)).isoformat(),
+            db_path=tmp_db_path,
+        )
+        assert stats is None
+
+    def test_active_count_filters_by_cooldown(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        gens = [
+            ChatGPTImageGeneration(
+                created_at=(now - timedelta(hours=25)).isoformat(),
+                id="g_old",
+                conversation_id="c1",
+                message_id="m1",
+                asset_pointer="a1",
+                url="https://example.com/old.png",
+                prompt="old",
+            ),
+            ChatGPTImageGeneration(
+                created_at=(now - timedelta(minutes=30)).isoformat(),
+                id="g_new",
+                conversation_id="c1",
+                message_id="m2",
+                asset_pointer="a2",
+                url="https://example.com/new.png",
+                prompt="new",
+            ),
+        ]
+        db.upsert_generations("acc", gens, db_path=tmp_db_path)
+
+        # Use a wide date range that includes both entries
+        date_start = (now - timedelta(days=2)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        date_end = now + timedelta(days=1)
+        cooldown = now - timedelta(days=1)
+
+        stats = db.get_activity_stats(
+            "acc",
+            date_start=date_start.isoformat(),
+            date_end=date_end.isoformat(),
+            cooldown_threshold=cooldown.isoformat(),
+            db_path=tmp_db_path,
+        )
+        assert stats is not None
+        assert stats["total"] == 2
+        assert stats["active_count"] == 1
+
+
+class TestCountRecentGenerations:
+    def test_counts_within_window(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        now = datetime.now(timezone.utc)
+        gens = [
+            ChatGPTImageGeneration(
+                created_at=(now - timedelta(hours=h)).isoformat(),
+                id=f"g{h}",
+                conversation_id="c1",
+                message_id=f"m{h}",
+                asset_pointer=f"a{h}",
+                url=f"https://example.com/{h}.png",
+                prompt="test",
+            )
+            for h in [1, 2, 3, 25, 26]
+        ]
+        db.upsert_generations("acc", gens, db_path=tmp_db_path)
+
+        since = (now - timedelta(days=1)).isoformat()
+        count = db.count_recent_generations("acc", since, db_path=tmp_db_path)
+        assert count == 3
+
+    def test_returns_zero_when_none(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        since = datetime.now(timezone.utc).isoformat()
+        count = db.count_recent_generations("acc", since, db_path=tmp_db_path)
+        assert count == 0
+
+
