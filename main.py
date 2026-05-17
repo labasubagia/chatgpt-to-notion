@@ -114,7 +114,7 @@ def upload_to_notion(
     check_notion_api: Annotated[
         bool,
         typer.Option(help="Check Notion API even when uploaded_at is already set"),
-    ] = False,
+    ] = True,
     from_history: Annotated[
         bool,
         typer.Option(help="Use history data as source (non-uploaded items only)"),
