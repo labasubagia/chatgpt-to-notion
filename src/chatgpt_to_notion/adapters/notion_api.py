@@ -1,7 +1,6 @@
 """Notion API adapter."""
 
 import asyncio
-import json
 import os
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,7 +11,7 @@ from tqdm.asyncio import tqdm
 
 from ..domain.models import ImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS
-from ..shared.http import get_http_timeout, retry_http
+from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
 from .config_loader import get_notion_context
 from .filesystem import get_output_path
 from .sqlite_store import (
@@ -45,7 +44,7 @@ async def get_db_data_sources(
     async with session.get(
         f"{BASE_URL}/v1/databases/{db_id}", headers=headers or get_headers()
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         data = await response.json()
         data_sources = data.get("data_sources", [])
         await async_set_cached_data_sources(db_id, data_sources)
@@ -66,7 +65,7 @@ async def query_data_source(
             "filter": {"and": [{"property": "Name", "rich_text": {"equals": query}}]}
         },
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 
@@ -108,7 +107,7 @@ async def create_upload_img(
             "content_type": "image/png",
         },
     ) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 
@@ -134,7 +133,7 @@ async def send_upload_img(
             },
             data=data,
         ) as response:
-            response.raise_for_status()
+            await raise_for_status_with_detail(response)
             return await response.json()
 
 
@@ -185,17 +184,7 @@ async def add_page_to_db(
         headers=headers,
         json=payload,
     ) as response:
-        code = response.status
-        if code >= 400:
-            text = await response.text()
-            try:
-                data = json.loads(text)
-                print(json.dumps(data, indent=2))
-            except Exception:
-                pass
-            print(f"Failed to add page for {file_name}: {code} - {text}")
-            print(json.dumps(payload, indent=2))
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         return await response.json()
 
 

@@ -40,6 +40,7 @@ from chatgpt_to_notion.shared.http import (
     http_retryable,
     retry_http,
     should_retry_http,
+    DetailedHTTPError,
 )
 from chatgpt_to_notion.shared.time import resolve_timezone
 
@@ -649,6 +650,8 @@ class TestDownloadImage:
         def __init__(self, content: bytes = b"data", error: Exception | None = None):
             self.content = content
             self.error = error
+            self.status = getattr(error, "status", 200) if error else 200
+            self.reason = "OK" if not error else "Error"
 
         def raise_for_status(self):
             if self.error:
@@ -656,6 +659,9 @@ class TestDownloadImage:
 
         async def read(self):
             return self.content
+
+        async def text(self):
+            return "mock error body"
 
     class MockContext:
         def __init__(self, response):
@@ -710,7 +716,7 @@ class TestDownloadImage:
         mock_session.get.return_value = self.MockContext(mock_response)
 
         file_path = tmp_path / "test.png"
-        with pytest.raises(aiohttp.ClientResponseError):
+        with pytest.raises(DetailedHTTPError):
             await download_image(
                 mock_session, "http://example.com/img.png", str(file_path)
             )

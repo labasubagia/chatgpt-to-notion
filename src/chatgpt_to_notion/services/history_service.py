@@ -14,7 +14,7 @@ from ..adapters import chatgpt_api, sqlite_store
 from ..adapters.config_loader import get_provider_context
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_REQUESTS
-from ..shared.http import get_http_timeout
+from ..shared.http import get_http_timeout, raise_for_status_with_detail
 
 get_image_generations = chatgpt_api.get_image_generations
 get_conversation_details = chatgpt_api.get_conversation_details
@@ -68,7 +68,7 @@ async def download_image(
     headers: dict[str, str] | None = None,
 ) -> None:
     async with session.get(url, headers=headers or {}) as response:
-        response.raise_for_status()
+        await raise_for_status_with_detail(response)
         Path(file_path).write_bytes(await response.read())
 
 
