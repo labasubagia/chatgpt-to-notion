@@ -8,39 +8,47 @@ from unittest.mock import MagicMock, patch
 import aiohttp
 import pytest
 
-import db
-from models import ChatGPTImageGeneration, RuntimeOptions
-from util import (
+from chatgpt_to_notion.adapters import sqlite_store as db
+from chatgpt_to_notion.adapters.config_loader import (
+    get_account_names,
+    get_notion_context,
+    get_provider_context,
+    resolve_config,
+)
+from chatgpt_to_notion.adapters.filesystem import (
+    clean_output_path,
+    get_output_path,
+    resolve_image_folder,
+)
+from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
+from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
+from chatgpt_to_notion.services.history_service import (
+    download_image,
+    get_uploaded_generation_ids,
+    mark_generations_uploaded,
+    save_generations,
+)
+from chatgpt_to_notion.shared.constants import (
     HTTP_TIMEOUT_SECONDS,
     MAX_CONCURRENT_DOWNLOADS,
     MAX_CONCURRENT_REQUESTS,
     MAX_RETRIES,
     OUTPUT_PATH,
-    clean_output_path,
-    download_image,
-    get_account_activity_statuses,
-    get_account_names,
+)
+from chatgpt_to_notion.shared.http import (
     get_http_timeout,
-    get_notion_context,
-    get_output_path,
-    get_provider_context,
-    get_uploaded_generation_ids,
     http_retryable,
-    mark_generations_uploaded,
-    resolve_config,
-    resolve_image_folder,
-    resolve_timezone,
     retry_http,
-    save_generations,
     should_retry_http,
 )
+from chatgpt_to_notion.shared.time import resolve_timezone
 
 
 class TestGetOutputPath:
     """Tests for get_output_path function."""
 
     def test_relative_path_allowed(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         path = get_output_path("images/test.png")
         assert path.name == "test.png"
         assert "images" in str(path)
@@ -50,17 +58,17 @@ class TestGetOutputPath:
             get_output_path("/etc/passwd")
 
     def test_path_traversal_rejected(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         with pytest.raises(ValueError, match="attempts to escape"):
             get_output_path("../../etc/passwd")
 
     def test_creates_parent_directories(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         path = get_output_path("nested/deep/path/file.png")
         assert path.parent.exists()
 
     def test_is_dir_flag(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         path = get_output_path("test_dir", is_dir=True)
         assert path.is_dir()
 
@@ -69,7 +77,7 @@ class TestResolveImageFolder:
     """Tests for resolve_image_folder function."""
 
     def test_none_uses_default(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         path = resolve_image_folder(None)
         assert path == tmp_output_dir / "images"
 
@@ -78,12 +86,12 @@ class TestResolveImageFolder:
         assert path == Path("/custom/absolute/path")
 
     def test_relative_path_wrapped_in_output(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         path = resolve_image_folder("my_images")
         assert path == tmp_output_dir / "my_images"
 
     def test_relative_path_creates_directory(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         path = resolve_image_folder("new_folder/sub")
         assert path.parent.exists()
 
@@ -581,7 +589,7 @@ class TestCleanOutputPath:
     """Tests for clean_output_path function."""
 
     def test_removes_files(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
 
         (tmp_output_dir / "test.txt").write_text("test")
         (tmp_output_dir / ".gitkeep").write_text("keep")
@@ -592,7 +600,7 @@ class TestCleanOutputPath:
         assert (tmp_output_dir / ".gitkeep").exists()
 
     def test_removes_directories(self, tmp_output_dir, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
 
         test_dir = tmp_output_dir / "test_dir"
         test_dir.mkdir()
@@ -603,7 +611,7 @@ class TestCleanOutputPath:
         assert not test_dir.exists()
 
     def test_nonexistent_path(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path / "nonexistent"))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path / "nonexistent"))
         clean_output_path()
 
 
@@ -614,7 +622,7 @@ class TestRetryHttp:
         decorator = retry_http()
         assert decorator is not None
 
-    @patch("util.MAX_RETRIES", 2)
+    @patch("chatgpt_to_notion.shared.http.MAX_RETRIES", 2)
     @pytest.mark.asyncio
     async def test_applies_retry_logic(self):
         import errno

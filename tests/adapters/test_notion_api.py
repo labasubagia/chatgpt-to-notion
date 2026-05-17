@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import db
-from models import ChatGPTImageGeneration
-from notion import (
+from chatgpt_to_notion.adapters import sqlite_store as db
+from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+from chatgpt_to_notion.adapters.notion_api import (
     add_page_to_db,
     create_upload_img,
     get_db_data_sources,
@@ -81,11 +81,11 @@ class TestNotionDatabase:
 
     async def test_is_page_exists_in_db(self, mock_aiohttp_session, isolated_db):
         """Should check if page exists in database."""
-        with patch("notion.get_db_data_sources", new_callable=AsyncMock) as mock_get_ds:
+        with patch("chatgpt_to_notion.adapters.notion_api.get_db_data_sources", new_callable=AsyncMock) as mock_get_ds:
             mock_get_ds.return_value = [{"id": "ds_123"}]
 
             with patch(
-                "notion.query_data_source", new_callable=AsyncMock
+                "chatgpt_to_notion.adapters.notion_api.query_data_source", new_callable=AsyncMock
             ) as mock_query:
                 mock_query.return_value = {
                     "results": [
@@ -104,11 +104,11 @@ class TestNotionDatabase:
 
     async def test_is_page_exists_not_found(self, mock_aiohttp_session, isolated_db):
         """Should return False if page not found."""
-        with patch("notion.get_db_data_sources", new_callable=AsyncMock) as mock_get_ds:
+        with patch("chatgpt_to_notion.adapters.notion_api.get_db_data_sources", new_callable=AsyncMock) as mock_get_ds:
             mock_get_ds.return_value = [{"id": "ds_123"}]
 
             with patch(
-                "notion.query_data_source", new_callable=AsyncMock
+                "chatgpt_to_notion.adapters.notion_api.query_data_source", new_callable=AsyncMock
             ) as mock_query:
                 mock_query.return_value = {"results": []}
 
@@ -214,7 +214,7 @@ class TestNotionUploadAllImages:
 
     async def test_upload_all_images_success(self, monkeypatch, tmp_path):
         """Should upload all images to Notion."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
 
         images_dir = tmp_path / image_folder
@@ -244,11 +244,11 @@ class TestNotionUploadAllImages:
         ]
 
         with patch(
-            "notion.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.adapters.notion_api.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = False
 
-            with patch("notion.add_page_to_db", new_callable=AsyncMock) as mock_add:
+            with patch("chatgpt_to_notion.adapters.notion_api.add_page_to_db", new_callable=AsyncMock) as mock_add:
                 mock_add.return_value = {"id": "page_123"}
 
                 await upload_all_images_to_notion(
@@ -262,7 +262,7 @@ class TestNotionUploadAllImages:
 
     async def test_upload_all_images_skip_existing(self, monkeypatch, tmp_path):
         """Should skip images that already exist in Notion."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
 
         images_dir = tmp_path / image_folder
@@ -282,11 +282,11 @@ class TestNotionUploadAllImages:
         ]
 
         with patch(
-            "notion.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.adapters.notion_api.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = True
 
-            with patch("notion.add_page_to_db", new_callable=AsyncMock) as mock_add:
+            with patch("chatgpt_to_notion.adapters.notion_api.add_page_to_db", new_callable=AsyncMock) as mock_add:
                 await upload_all_images_to_notion(
                     generations=generations,
                     db_id="test_db",
@@ -298,7 +298,7 @@ class TestNotionUploadAllImages:
 
     async def test_upload_all_images_skips_uploaded_at(self, monkeypatch, tmp_path, isolated_db):
         """Should skip Notion API when uploaded_at is already set."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
@@ -319,9 +319,9 @@ class TestNotionUploadAllImages:
         generations = [gen]
 
         with patch(
-            "notion.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.adapters.notion_api.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
-            with patch("notion.add_page_to_db", new_callable=AsyncMock) as mock_add:
+            with patch("chatgpt_to_notion.adapters.notion_api.add_page_to_db", new_callable=AsyncMock) as mock_add:
                 await upload_all_images_to_notion(
                     generations=generations,
                     db_id="test_db",
@@ -337,7 +337,7 @@ class TestNotionUploadAllImages:
         self, monkeypatch, tmp_path, isolated_db
     ):
         """Should check Notion API when check_notion_api is set."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
@@ -358,10 +358,10 @@ class TestNotionUploadAllImages:
         generations = [gen]
 
         with patch(
-            "notion.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.adapters.notion_api.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = True
-            with patch("notion.add_page_to_db", new_callable=AsyncMock) as mock_add:
+            with patch("chatgpt_to_notion.adapters.notion_api.add_page_to_db", new_callable=AsyncMock) as mock_add:
                 await upload_all_images_to_notion(
                     generations=generations,
                     db_id="test_db",
@@ -378,7 +378,7 @@ class TestNotionUploadAllImages:
         self, monkeypatch, tmp_path, isolated_db
     ):
         """Should mark uploaded_at after successful upload."""
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
@@ -398,10 +398,10 @@ class TestNotionUploadAllImages:
         generations = [gen]
 
         with patch(
-            "notion.is_page_exists_in_db", new_callable=AsyncMock
+            "chatgpt_to_notion.adapters.notion_api.is_page_exists_in_db", new_callable=AsyncMock
         ) as mock_exists:
             mock_exists.return_value = False
-            with patch("notion.add_page_to_db", new_callable=AsyncMock) as mock_add:
+            with patch("chatgpt_to_notion.adapters.notion_api.add_page_to_db", new_callable=AsyncMock) as mock_add:
                 mock_add.return_value = {"id": "page_123"}
                 await upload_all_images_to_notion(
                     generations=generations,

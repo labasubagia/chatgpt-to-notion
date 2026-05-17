@@ -1,7 +1,7 @@
 [project]
-name = "chatgpt-image-cli"
+name = "chatgpt_to_notion"
 version = "0.1.0"
-description = "CLI tool for managing and backing up ChatGPT-generated images"
+description = "CLI tool for uploading ChatGPT image history into Notion"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -17,15 +17,17 @@ dependencies = [
 ]
 
 [project.scripts]
-chatgpt-image-cli = "main:app"
-sora = "main:app"
+chatgpt-to-notion = "chatgpt_to_notion.cli.app:app"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-py-modules = ["main", "chatgpt", "notion", "img", "util", "models"]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
 
 [dependency-groups]
 dev = [
@@ -42,6 +44,7 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
@@ -59,7 +62,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
 ignore = ["UP017"]  # timezone.utc is more compatible than datetime.UTC
 
 [tool.coverage.run]
-source = ["."]
+source = ["src/chatgpt_to_notion"]
 omit = ["tests/*", ".venv/*"]
 
 [tool.coverage.report]

@@ -1,3 +1,5 @@
+"""Image metadata helpers."""
+
 import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -7,8 +9,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 from tqdm import tqdm
 
-from models import ImageGeneration
-from util import MAX_RETRIES
+from ..domain.models import ImageGeneration
+from ..shared.constants import MAX_RETRIES
 
 
 def edit_png_info(
@@ -16,10 +18,9 @@ def edit_png_info(
 ) -> None:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
-    with Image.open(file_path) as img:
+    with Image.open(file_path) as image:
         metadata = PngInfo()
-        for key, value in img.info.items():
-            # Only add string keys with string/int values, skip tuples and other types
+        for key, value in image.info.items():
             if not isinstance(key, str):
                 continue
             if isinstance(value, str):
@@ -27,58 +28,36 @@ def edit_png_info(
             elif isinstance(value, int):
                 metadata.add_text(key, str(value))
         for key, value in payload.items():
-            if overwrite or key not in img.info:
+            if overwrite or key not in image.info:
                 metadata.add_text(key, value)
-        img.save(file_path, pnginfo=metadata)
+        image.save(file_path, pnginfo=metadata)
 
 
 def get_png_prompt(file_path: str) -> str | None:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
-    with Image.open(file_path) as img:
-        prompt = img.info.get("Prompt")
+    with Image.open(file_path) as image:
+        prompt = image.info.get("Prompt")
         return prompt if isinstance(prompt, str) else None
 
 
 def add_prompt_to_image_single(generation: ImageGeneration, folder: str) -> None:
-    """Add prompt text metadata to a single PNG image."""
-    file_name = f"{generation.id}.png"
-    file_path = Path(folder) / file_name
+    file_path = Path(folder) / f"{generation.id}.png"
     if not file_path.exists():
         return
-
     if get_png_prompt(str(file_path)) == generation.prompt:
         return
-
-    edit_png_info(
-        str(file_path),
-        payload={"Prompt": generation.prompt},
-    )
+    edit_png_info(str(file_path), payload={"Prompt": generation.prompt})
 
 
 def add_prompt_to_images(
     generations: Sequence[ImageGeneration], folder: str, max_workers: int = 10
 ) -> None:
-    """Add prompt text metadata to PNG images.
-
-    This function adds prompt text metadata to all PNG images listed in the
-    given list of generations.
-
-    How to read file result:
-
-    `$ exiftool -Prompt <file_path>`
-
-    Example:
-
-    `$ exiftool -Prompt images/gen_01k2pct920ebyte8a69jyds5ds.png`
-    """
-
     total = len(generations)
     pbar = tqdm(total=total, desc="Adding prompts to images")
 
     def add_prompt(row: ImageGeneration):
-        file_name = f"{row.id}.png"
-        file_path = Path(folder) / file_name
+        file_path = Path(folder) / f"{row.id}.png"
         if not os.path.exists(file_path):
             pbar.write(f"⚠️  {file_path} not found, skipped")
             pbar.update(1)
@@ -90,15 +69,12 @@ def add_prompt_to_images(
                     pbar.write(f"⏭️  {file_path} skipped, prompt unchanged")
                     pbar.update(1)
                     break
-                edit_png_info(
-                    str(file_path),
-                    payload={"Prompt": row.prompt},
-                )
+                edit_png_info(str(file_path), payload={"Prompt": row.prompt})
                 pbar.write(f"✅ {file_path}")
                 pbar.update(1)
                 break
-            except Exception as e:
-                pbar.write(f"⚠️  {file_path} edit error: {e}, retrying...")
+            except Exception as exc:
+                pbar.write(f"⚠️  {file_path} edit error: {exc}, retrying...")
         else:
             pbar.write(f"❌ {file_path} edit failed after {MAX_RETRIES} retries")
             pbar.update(1)

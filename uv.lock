@@ -177,7 +177,7 @@ wheels = [
 ]
 
 [[package]]
-name = "chatgpt-image-cli"
+name = "chatgpt-to-notion"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -13,7 +13,7 @@ class ImageGeneration(Protocol):
 
 
 class ChatGPTImageGeneration(BaseModel):
-    """Image generation from ChatGPT DALL-E."""
+    """Image generation from ChatGPT."""
 
     model_config = ConfigDict(extra="forbid")
 
