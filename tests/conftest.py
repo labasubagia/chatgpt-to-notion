@@ -163,23 +163,6 @@ def make_mock_response(json_data, status=200):
     return MockResp(json_data, status)
 
 
-@pytest.fixture(autouse=True)
-def reset_caches():
-    """Reset module caches before each test."""
-    # Import here to avoid circular imports
-    import notion
-    
-    # Clear caches
-    notion._db_data_sources_cache.clear()
-    notion._db_page_cache.clear()
-    
-    yield
-    
-    # Cleanup after test
-    notion._db_data_sources_cache.clear()
-    notion._db_page_cache.clear()
-
-
 @pytest.fixture
 def sample_image_bytes():
     """Return minimal valid PNG image bytes."""
@@ -195,3 +178,20 @@ def sample_image_bytes():
         0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,  # IEND chunk
         0x42, 0x60, 0x82,
     ])
+
+
+@pytest.fixture
+def isolated_db(tmp_path, monkeypatch):
+    """Provide an isolated SQLite DB for tests that use db module functions."""
+    import db
+
+    db_path = tmp_path / "isolated_test.db"
+    db.init_db(db_path)
+
+    original = db._get_connection
+    monkeypatch.setattr(
+        db, "_get_connection",
+        lambda p=None: original(db_path),
+    )
+
+    return db_path

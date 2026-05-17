@@ -8,10 +8,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import db
 from models import ChatGPTImageGeneration
 from notion import (
-    _db_data_sources_cache,
-    _db_page_cache,
     add_page_to_db,
     create_upload_img,
     get_db_data_sources,
@@ -51,7 +50,7 @@ class TestNotionHeaders:
 class TestNotionDatabase:
     """Tests for Notion database operations."""
 
-    async def test_get_db_data_sources(self, mock_aiohttp_session):
+    async def test_get_db_data_sources(self, mock_aiohttp_session, isolated_db):
         """Should fetch database data sources."""
         mock_aiohttp_session._responses = [
             make_mock_response({"data_sources": [{"id": "ds_123"}]})
@@ -62,10 +61,9 @@ class TestNotionDatabase:
         assert len(sources) == 1
         assert sources[0]["id"] == "ds_123"
 
-    async def test_get_db_data_sources_uses_cache(self, mock_aiohttp_session):
-        """Should use cache for repeated calls."""
-        _db_data_sources_cache.clear()
-        _db_data_sources_cache["test_db"] = [{"id": "cached_ds"}]
+    async def test_get_db_data_sources_uses_cache(self, mock_aiohttp_session, isolated_db):
+        """Should use SQLite cache for repeated calls."""
+        db.set_cached_data_sources("test_db", [{"id": "cached_ds"}])
 
         sources = await get_db_data_sources(mock_aiohttp_session, "test_db")
 
@@ -81,7 +79,7 @@ class TestNotionDatabase:
         assert "results" in result
         assert len(result["results"]) == 1
 
-    async def test_is_page_exists_in_db(self, mock_aiohttp_session):
+    async def test_is_page_exists_in_db(self, mock_aiohttp_session, isolated_db):
         """Should check if page exists in database."""
         with patch("notion.get_db_data_sources", new_callable=AsyncMock) as mock_get_ds:
             mock_get_ds.return_value = [{"id": "ds_123"}]
@@ -104,7 +102,7 @@ class TestNotionDatabase:
                 )
                 assert exists is True
 
-    async def test_is_page_exists_not_found(self, mock_aiohttp_session):
+    async def test_is_page_exists_not_found(self, mock_aiohttp_session, isolated_db):
         """Should return False if page not found."""
         with patch("notion.get_db_data_sources", new_callable=AsyncMock) as mock_get_ds:
             mock_get_ds.return_value = [{"id": "ds_123"}]
@@ -118,16 +116,6 @@ class TestNotionDatabase:
                     mock_aiohttp_session, "test_db_123", "nonexistent.png"
                 )
                 assert exists is False
-
-    async def test_is_page_exists_uses_cache(self, mock_aiohttp_session):
-        """Should use cache for repeated checks."""
-        _db_page_cache.clear()
-        _db_page_cache.add("cached_image.png")
-
-        exists = await is_page_exists_in_db(
-            mock_aiohttp_session, "test_db_123", "cached_image.png"
-        )
-        assert exists is True
 
 
 @pytest.mark.integration
@@ -185,12 +173,12 @@ class TestNotionUpload:
         img_path.write_bytes(sample_image_bytes)
 
         mock_aiohttp_session._responses = [
-            make_mock_response({"id": "upload_123"}),  # create_upload_img
+            make_mock_response({"id": "upload_123"}),
             make_mock_response(
                 {"id": "upload_123", "status": "complete"}
-            ),  # send_upload_img
+            ),
             make_mock_response(
-                {  # add_page_to_db
+                {
                     "id": "page_123",
                     "properties": {
                         "Prompt": {"rich_text": [{"text": {"content": "Test prompt"}}]}
@@ -220,42 +208,15 @@ class TestNotionUpload:
             )
 
 
-class TestNotionCaching:
-    """Tests for Notion caching behavior."""
-
-    def test_data_sources_cache_populated(self, mock_config_toml):
-        """Data sources cache should be populated."""
-        _db_data_sources_cache.clear()
-        _db_data_sources_cache["test_db"] = [{"id": "ds_123"}]
-
-        assert "test_db" in _db_data_sources_cache
-
-    def test_page_cache_populated(self, mock_config_toml):
-        """Page cache should be populated."""
-        _db_page_cache.clear()
-        _db_page_cache.add("test_image.png")
-
-        assert "test_image.png" in _db_page_cache
-
-    def test_cache_cleared_by_fixture(self):
-        """Caches should be cleared by reset_caches fixture."""
-        assert len(_db_data_sources_cache) == 0
-        assert len(_db_page_cache) == 0
-
-
 @pytest.mark.integration
 class TestNotionUploadAllImages:
     """Tests for upload_all_images_to_notion function."""
 
     async def test_upload_all_images_success(self, monkeypatch, tmp_path):
         """Should upload all images to Notion."""
-        from unittest.mock import AsyncMock, patch
-
-        # Use relative path within tmp_path
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
 
-        # Create test image files
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
         (images_dir / "img_123.png").write_bytes(b"fake png")
@@ -301,12 +262,9 @@ class TestNotionUploadAllImages:
 
     async def test_upload_all_images_skip_existing(self, monkeypatch, tmp_path):
         """Should skip images that already exist in Notion."""
-        from unittest.mock import AsyncMock, patch
-
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
 
-        # Create test image file
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
         (images_dir / "img_123.png").write_bytes(b"fake png")
@@ -338,40 +296,27 @@ class TestNotionUploadAllImages:
                 mock_exists.assert_called_once()
                 mock_add.assert_not_called()
 
-    async def test_upload_all_images_skips_uploaded_at_csv(self, monkeypatch, tmp_path):
+    async def test_upload_all_images_skips_uploaded_at(self, monkeypatch, tmp_path, isolated_db):
         """Should skip Notion API when uploaded_at is already set."""
-        from unittest.mock import AsyncMock, patch
-
-        import pandas as pd
-
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
         (images_dir / "img_123.png").write_bytes(b"fake png")
-        history_dir = tmp_path / "history"
-        history_dir.mkdir()
-        pd.DataFrame(
-            [
-                {
-                    "id": "img_123",
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "uploaded_at": "2026-05-14T01:00:00+00:00",
-                }
-            ]
-        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
 
-        generations = [
-            ChatGPTImageGeneration(
-                created_at="2026-05-14T00:00:00+00:00",
-                id="img_123",
-                conversation_id="conv_1",
-                message_id="msg_1",
-                asset_pointer="asset_1",
-                url="https://example.com/img.png",
-                prompt="Test prompt",
-            )
-        ]
+        gen = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_123",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/img.png",
+            prompt="Test prompt",
+        )
+        db.upsert_generations("default", [gen])
+        db.mark_uploaded("default", {"img_123"})
+
+        generations = [gen]
 
         with patch(
             "notion.is_page_exists_in_db", new_callable=AsyncMock
@@ -382,47 +327,35 @@ class TestNotionUploadAllImages:
                     db_id="test_db",
                     image_folder=image_folder,
                     dataset="history/default_chatgpt.csv",
+                    options=type("Options", (), {"account": "default"})(),
                 )
 
                 mock_exists.assert_not_called()
                 mock_add.assert_not_called()
 
-    async def test_upload_all_images_check_notion_api_bypasses_uploaded_at_csv(
-        self, monkeypatch, tmp_path
+    async def test_upload_all_images_check_notion_api_bypasses_uploaded_at(
+        self, monkeypatch, tmp_path, isolated_db
     ):
         """Should check Notion API when check_notion_api is set."""
-        from unittest.mock import AsyncMock, patch
-
-        import pandas as pd
-
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
         (images_dir / "img_123.png").write_bytes(b"fake png")
-        history_dir = tmp_path / "history"
-        history_dir.mkdir()
-        pd.DataFrame(
-            [
-                {
-                    "id": "img_123",
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "uploaded_at": "2026-05-14T01:00:00+00:00",
-                }
-            ]
-        ).to_csv(history_dir / "default_chatgpt.csv", index=False)
 
-        generations = [
-            ChatGPTImageGeneration(
-                created_at="2026-05-14T00:00:00+00:00",
-                id="img_123",
-                conversation_id="conv_1",
-                message_id="msg_1",
-                asset_pointer="asset_1",
-                url="https://example.com/img.png",
-                prompt="Test prompt",
-            )
-        ]
+        gen = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_123",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/img.png",
+            prompt="Test prompt",
+        )
+        db.upsert_generations("default", [gen])
+        db.mark_uploaded("default", {"img_123"})
+
+        generations = [gen]
 
         with patch(
             "notion.is_page_exists_in_db", new_callable=AsyncMock
@@ -435,48 +368,34 @@ class TestNotionUploadAllImages:
                     image_folder=image_folder,
                     dataset="history/default_chatgpt.csv",
                     check_notion_api=True,
+                    options=type("Options", (), {"account": "default"})(),
                 )
 
                 mock_exists.assert_called_once()
                 mock_add.assert_not_called()
 
     async def test_upload_all_images_marks_uploaded_at_after_upload(
-        self, monkeypatch, tmp_path
+        self, monkeypatch, tmp_path, isolated_db
     ):
         """Should mark uploaded_at after successful upload."""
-        from unittest.mock import AsyncMock, patch
-
-        import pandas as pd
-
         monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_path))
         image_folder = "images"
         images_dir = tmp_path / image_folder
         images_dir.mkdir()
         (images_dir / "img_123.png").write_bytes(b"fake png")
-        history_dir = tmp_path / "history"
-        history_dir.mkdir()
-        dataset_path = history_dir / "default_chatgpt.csv"
-        pd.DataFrame(
-            [
-                {
-                    "id": "img_123",
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "uploaded_at": "",
-                }
-            ]
-        ).to_csv(dataset_path, index=False)
 
-        generations = [
-            ChatGPTImageGeneration(
-                created_at="2026-05-14T00:00:00+00:00",
-                id="img_123",
-                conversation_id="conv_1",
-                message_id="msg_1",
-                asset_pointer="asset_1",
-                url="https://example.com/img.png",
-                prompt="Test prompt",
-            )
-        ]
+        gen = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_123",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/img.png",
+            prompt="Test prompt",
+        )
+        db.upsert_generations("default", [gen])
+
+        generations = [gen]
 
         with patch(
             "notion.is_page_exists_in_db", new_callable=AsyncMock
@@ -489,7 +408,13 @@ class TestNotionUploadAllImages:
                     db_id="test_db",
                     image_folder=image_folder,
                     dataset="history/default_chatgpt.csv",
+                    options=type("Options", (), {"account": "default"})(),
                 )
 
-        history = pd.read_csv(dataset_path)
-        assert history.loc[0, "uploaded_at"]
+        conn = db._get_connection()
+        row = conn.execute(
+            "SELECT uploaded_at FROM image_generations WHERE id = ?",
+            ("img_123",),
+        ).fetchone()
+        conn.close()
+        assert row["uploaded_at"] != ""

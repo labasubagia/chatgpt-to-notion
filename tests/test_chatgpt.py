@@ -4,9 +4,9 @@ Integration tests for chatgpt.py using pure mocking.
 No real API calls are made. All external dependencies are mocked.
 """
 
-import pandas as pd
 import pytest
 
+import db
 import chatgpt
 from chatgpt import (
     delete_conversation,
@@ -253,77 +253,71 @@ class TestChatGPTImageGenerations:
 
 
 class TestChatGPTHistoryDataset:
-    """Tests for loading ChatGPT generations from history CSV."""
+    """Tests for loading ChatGPT generations from history."""
 
     def test_loads_unuploaded_generations_from_dataset(
-        self, tmp_output_dir, monkeypatch
+        self, isolated_db, monkeypatch
     ):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
-        dataset_path = tmp_output_dir / "history" / "default_chatgpt.csv"
-        dataset_path.parent.mkdir(parents=True)
-        pd.DataFrame(
-            [
-                {
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "id": "img_1",
-                    "conversation_id": "conv_1",
-                    "message_id": "msg_1",
-                    "asset_pointer": "asset_1",
-                    "url": "https://example.com/1.png",
-                    "prompt": "Prompt 1",
-                    "uploaded_at": "",
-                },
-                {
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "id": "img_2",
-                    "conversation_id": "conv_2",
-                    "message_id": "msg_2",
-                    "asset_pointer": "asset_2",
-                    "url": "https://example.com/2.png",
-                    "prompt": "Prompt 2",
-                    "uploaded_at": "2026-05-14T01:00:00+00:00",
-                },
-            ]
-        ).to_csv(dataset_path, index=False)
+        from models import ChatGPTImageGeneration
 
-        generations = load_image_generations_from_dataset("history/default_chatgpt.csv")
+        gen_1 = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_1",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/1.png",
+            prompt="Prompt 1",
+        )
+        gen_2 = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_2",
+            conversation_id="conv_2",
+            message_id="msg_2",
+            asset_pointer="asset_2",
+            url="https://example.com/2.png",
+            prompt="Prompt 2",
+        )
+        db.upsert_generations("default", [gen_1, gen_2])
+        db.mark_uploaded("default", {"img_2"})
+
+        generations = load_image_generations_from_dataset(
+            "history/default_chatgpt.csv",
+            options=type("Options", (), {"account": "default"})(),
+        )
 
         assert [generation.id for generation in generations] == ["img_1"]
 
     def test_loads_all_generations_when_include_uploaded(
-        self, tmp_output_dir, monkeypatch
+        self, isolated_db, monkeypatch
     ):
-        monkeypatch.setattr("util.OUTPUT_PATH", str(tmp_output_dir))
-        dataset_path = tmp_output_dir / "history" / "default_chatgpt.csv"
-        dataset_path.parent.mkdir(parents=True)
-        pd.DataFrame(
-            [
-                {
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "id": "img_1",
-                    "conversation_id": "conv_1",
-                    "message_id": "msg_1",
-                    "asset_pointer": "asset_1",
-                    "url": "https://example.com/1.png",
-                    "prompt": "Prompt 1",
-                    "uploaded_at": "",
-                },
-                {
-                    "created_at": "2026-05-14T00:00:00+00:00",
-                    "id": "img_2",
-                    "conversation_id": "conv_2",
-                    "message_id": "msg_2",
-                    "asset_pointer": "asset_2",
-                    "url": "https://example.com/2.png",
-                    "prompt": "Prompt 2",
-                    "uploaded_at": "2026-05-14T01:00:00+00:00",
-                },
-            ]
-        ).to_csv(dataset_path, index=False)
+        from models import ChatGPTImageGeneration
+
+        gen_1 = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_1",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/1.png",
+            prompt="Prompt 1",
+        )
+        gen_2 = ChatGPTImageGeneration(
+            created_at="2026-05-14T00:00:00+00:00",
+            id="img_2",
+            conversation_id="conv_2",
+            message_id="msg_2",
+            asset_pointer="asset_2",
+            url="https://example.com/2.png",
+            prompt="Prompt 2",
+        )
+        db.upsert_generations("default", [gen_1, gen_2])
+        db.mark_uploaded("default", {"img_2"})
 
         generations = load_image_generations_from_dataset(
             "history/default_chatgpt.csv",
             include_uploaded=True,
+            options=type("Options", (), {"account": "default"})(),
         )
 
         assert [generation.id for generation in generations] == ["img_1", "img_2"]
@@ -768,6 +762,7 @@ class TestChatGPTUploadToNotionComprehensive:
             include_uploaded=True,
             keep_days=None,
             timezone_name=None,
+            options=None,
         )
         mock_fetch.assert_not_called()
         mock_save.assert_not_called()

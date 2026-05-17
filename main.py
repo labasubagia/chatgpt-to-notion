@@ -75,6 +75,9 @@ def account_status(
     ] = None,
 ) -> None:
     """Show which accounts are ready to generate new data."""
+    import db
+
+    db.init_db()
     today_rows, yesterday_rows = util.get_account_activity_statuses(
         config_path=config,
         timezone_name=timezone,
@@ -126,7 +129,11 @@ def upload_to_notion(
     ] = False,
     all: Annotated[
         bool,
-        typer.Option(help="Load all data from CSV (not just today's)"),
+        typer.Option(help="Load all data from history (not just today's)"),
+    ] = False,
+    no_cache: Annotated[
+        bool,
+        typer.Option(help="Bypass SQLite cache and fetch fresh from API"),
     ] = False,
     limit: Annotated[
         int, typer.Option(help="Limit number of image generations to process")
@@ -199,6 +206,7 @@ def upload_to_notion(
                 limit=limit,
                 keep_days=effective_keep_days,
                 timezone_name=timezone,
+                no_cache=no_cache,
                 options=options,
             )
         )
