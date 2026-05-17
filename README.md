@@ -149,3 +149,10 @@ uv run pytest
 uv run mypy .
 uv run ruff check .
 ```
+
+## Documentation
+
+Comprehensive specification and architecture documentation can be found in the [docs](docs) directory:
+- [Product Requirement Document (PRD)](docs/requirement.md): Vision, user goals, and functional sync pillars.
+- [Technical Requirements Document (TRD)](docs/technical.md): Asynchronous tech stack, SQLite index schema, technology-agnostic synchronization logic flowcharts, and account status/cooldown calculation algorithms.
+
