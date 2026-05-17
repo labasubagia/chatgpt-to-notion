@@ -461,13 +461,14 @@ async def upload_to_notion_single(
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
+    if not account:
+        raise ValueError("account is required")
+
     resolved_image_folder = resolve_image_folder(image_folder, options)
 
     db.init_db()
 
     if from_history:
-        if not account:
-            raise ValueError("account is required when from_history=True")
         generations = load_image_generations(
             account=account,
             include_uploaded=check_notion_api,
@@ -510,6 +511,8 @@ async def upload_to_notion_single(
                         if await is_page_exists_in_db(
                             notion_session, db_id, file_name, options=options
                         ):
+                            async with db_lock:
+                                mark_generations_uploaded(account, {gen.id}, options)
                             uploaded_ids.add(gen.id)
                             pbar.write(f"⏭️  {file_name} skipped, already in Notion")
                             return
@@ -535,12 +538,8 @@ async def upload_to_notion_single(
                                 model="ChatGPT",
                                 options=options,
                             )
-
-                            if account:
-                                async with db_lock:
-                                    mark_generations_uploaded(
-                                        account, {gen.id}, options
-                                    )
+                            async with db_lock:
+                                mark_generations_uploaded(account, {gen.id}, options)
                             uploaded_ids.add(gen.id)
 
                         pbar.write(f"✅ {file_name}")
