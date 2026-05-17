@@ -475,9 +475,12 @@ class TestSaveToDataset:
         assert "No generations to save" in captured.out
 
     def test_saves_to_db(self, isolated_db, monkeypatch):
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
         data = [
             ChatGPTImageGeneration(
-                created_at="2026-05-14T00:00:00+00:00",
+                created_at=now.isoformat(),
                 id="test123",
                 conversation_id="conv_1",
                 message_id="msg_1",

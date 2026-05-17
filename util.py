@@ -57,6 +57,7 @@ def save_to_dataset(
     import db
 
     db.upsert_generations(account, generations)
+    db.delete_old_generations(account, keep_days=keep_days)
 
     today_count = len(
         [g for g in generations if _is_within_days(g.created_at, display_days)]
