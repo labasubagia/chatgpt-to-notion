@@ -169,12 +169,9 @@ async def fetch_image_generations(
         items = data.get("items", [])
         api_ids = {item["id"] for item in items}
 
-        existing = db.get_generations(
-            account, include_uploaded=True, ids_filter=api_ids
-        )
-        existing_map = {g.id: g for g in existing}
+        existing_ids = db.get_existing_ids(account, api_ids)
 
-        new_items = [item for item in items if item["id"] not in existing_map]
+        new_items = [item for item in items if item["id"] not in existing_ids]
 
         if new_items:
             pbar = tqdm(total=len(new_items), desc="Fetching new generation details")
@@ -226,11 +223,8 @@ async def fetch_image_generations(
             ]
 
             await db.async_upsert_generations(account, new_generations)
-            for g in new_generations:
-                existing_map[g.id] = g
 
-        result = sorted(existing_map.values(), key=lambda x: x.created_at)
-        return result
+        return db.get_generations(account, include_uploaded=True, ids_filter=api_ids)
 
 
 def load_image_generations(

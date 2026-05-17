@@ -190,6 +190,65 @@ class TestMarkUploaded:
         db.mark_uploaded("test_account", set(), tmp_db_path)
 
 
+class TestGetExistingIds:
+    def test_returns_matching_ids(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        now = datetime.now(timezone.utc)
+        gens = [
+            ChatGPTImageGeneration(
+                created_at=now.isoformat(),
+                id=f"g{i}",
+                conversation_id="c1",
+                message_id=f"m{i}",
+                asset_pointer=f"a{i}",
+                url=f"https://example.com/{i}.png",
+                prompt="test",
+            )
+            for i in range(1, 4)
+        ]
+        db.upsert_generations("acc", gens, db_path=tmp_db_path)
+
+        result = db.get_existing_ids("acc", {"g1", "g3", "g99"}, db_path=tmp_db_path)
+        assert result == {"g1", "g3"}
+
+    def test_returns_empty_when_none_match(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        db.upsert_generations("acc", [gen], db_path=tmp_db_path)
+
+        result = db.get_existing_ids("acc", {"g99"}, db_path=tmp_db_path)
+        assert result == set()
+
+    def test_returns_empty_for_empty_input(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        result = db.get_existing_ids("acc", set(), db_path=tmp_db_path)
+        assert result == set()
+
+    def test_respects_account_boundary(self, tmp_db_path):
+        db.init_db(tmp_db_path)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        db.upsert_generations("acc_a", [gen], db_path=tmp_db_path)
+
+        result = db.get_existing_ids("acc_b", {"g1"}, db_path=tmp_db_path)
+        assert result == set()
+
+
 class TestDeleteOldGenerations:
     def test_deletes_rows_older_than_keep_days(self, tmp_db_path, sample_generations):
         db.init_db(tmp_db_path)

@@ -174,6 +174,24 @@ def get_uploaded_ids(
         conn.close()
 
 
+def get_existing_ids(
+    account: str, ids: set[str], db_path: Path | None = None
+) -> set[str]:
+    if not ids:
+        return set()
+    conn = _get_connection(db_path)
+    try:
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT id FROM image_generations"
+            f" WHERE account = ? AND id IN ({placeholders})",
+            (account, *ids),
+        ).fetchall()
+        return {row["id"] for row in rows}
+    finally:
+        conn.close()
+
+
 def mark_uploaded(
     account: str,
     generation_ids: set[str],
