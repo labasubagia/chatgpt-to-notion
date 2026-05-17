@@ -159,7 +159,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
         assert mock_upload.call_args.kwargs["account"] == "default"
-        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_check_notion_api_flag(
@@ -196,7 +196,7 @@ class TestCLICommands:
 
         assert result.exit_code == 0
         assert mock_upload.call_args.kwargs["from_history"] is True
-        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_verify_history_flag(
