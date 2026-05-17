@@ -30,7 +30,7 @@ from util import (
     resolve_config,
     resolve_image_folder,
     retry_http,
-    save_to_dataset,
+    save_generations,
     should_retry_http,
 )
 
@@ -491,11 +491,11 @@ class TestAccountActivityStatus:
         assert yesterday_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"
 
 
-class TestSaveToDataset:
-    """Tests for save_to_dataset function."""
+class TestSaveGenerations:
+    """Tests for save_generations function."""
 
     def test_empty_data_skips(self, capsys):
-        save_to_dataset("test", [])
+        save_generations("test", [])
         captured = capsys.readouterr()
         assert "No generations to save" in captured.out
 
@@ -514,7 +514,7 @@ class TestSaveToDataset:
                 prompt="test prompt",
             )
         ]
-        save_to_dataset("default", data)
+        save_generations("default", data)
 
         result = db.get_generations("default", include_uploaded=True)
         assert len(result) == 1

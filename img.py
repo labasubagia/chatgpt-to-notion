@@ -62,7 +62,7 @@ def add_prompt_to_images(
     """Add prompt text metadata to PNG images.
 
     This function adds prompt text metadata to all PNG images listed in the
-    given dataset CSV file.
+    given list of generations.
 
     How to read file result:
 

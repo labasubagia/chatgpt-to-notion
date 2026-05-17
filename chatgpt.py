@@ -22,7 +22,7 @@ from util import (
     mark_generations_uploaded,
     resolve_image_folder,
     retry_http,
-    save_to_dataset,
+    save_generations,
 )
 
 BASE_URL = "https://chatgpt.com/backend-api"
@@ -233,7 +233,7 @@ async def fetch_image_generations(
         return result
 
 
-def load_image_generations_from_dataset(
+def load_image_generations(
     account: str,
     include_uploaded: bool = False,
     keep_days: int | None = None,
@@ -358,7 +358,7 @@ async def upload_to_notion(
     if from_history:
         if not account:
             raise ValueError("account is required when from_history=True")
-        generations = load_image_generations_from_dataset(
+        generations = load_image_generations(
             account=account,
             include_uploaded=check_notion_api,
             keep_days=keep_days,
@@ -375,7 +375,7 @@ async def upload_to_notion(
         return
 
     if account and not from_history:
-        save_to_dataset(account=account, data=generations, options=options)
+        save_generations(account=account, data=generations, options=options)
 
     await download_all_images(
         generations=generations,
@@ -474,7 +474,7 @@ async def upload_to_notion_single(
     if from_history:
         if not account:
             raise ValueError("account is required when from_history=True")
-        generations = load_image_generations_from_dataset(
+        generations = load_image_generations(
             account=account,
             include_uploaded=check_notion_api,
             keep_days=keep_days,
@@ -491,7 +491,7 @@ async def upload_to_notion_single(
         return
 
     if account and not from_history:
-        save_to_dataset(account=account, data=generations, options=options)
+        save_generations(account=account, data=generations, options=options)
 
     uploaded_ids = get_uploaded_generation_ids(account, options)
     db_lock = asyncio.Lock()

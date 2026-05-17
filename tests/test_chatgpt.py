@@ -18,7 +18,7 @@ from chatgpt import (
     get_headers,
     get_image_generations,
     get_prompt_from_image_node_in_conversation,
-    load_image_generations_from_dataset,
+    load_image_generations,
 )
 from tests.conftest import make_mock_response
 
@@ -323,7 +323,7 @@ class TestChatGPTImageGenerations:
 class TestChatGPTHistoryDataset:
     """Tests for loading ChatGPT generations from history."""
 
-    def test_loads_unuploaded_generations_from_dataset(
+    def test_loads_unuploaded_generations(
         self, isolated_db, monkeypatch
     ):
         from models import ChatGPTImageGeneration
@@ -349,7 +349,7 @@ class TestChatGPTHistoryDataset:
         db.upsert_generations("default", [gen_1, gen_2])
         db.mark_uploaded("default", {"img_2"})
 
-        generations = load_image_generations_from_dataset(
+        generations = load_image_generations(
             "default",
             options=type("Options", (), {"account": "default"})(),
         )
@@ -382,7 +382,7 @@ class TestChatGPTHistoryDataset:
         db.upsert_generations("default", [gen_1, gen_2])
         db.mark_uploaded("default", {"img_2"})
 
-        generations = load_image_generations_from_dataset(
+        generations = load_image_generations(
             "default",
             include_uploaded=True,
             options=type("Options", (), {"account": "default"})(),
@@ -772,7 +772,7 @@ class TestChatGPTUploadToNotionComprehensive:
                     with patch(
                         "chatgpt.upload_all_images_to_notion", new_callable=AsyncMock
                     ):
-                        with patch("chatgpt.save_to_dataset") as mock_save:
+                        with patch("chatgpt.save_generations") as mock_save:
                             await chatgpt.upload_to_notion(
                                 image_folder=image_folder,
                                 db_id="test_db",
@@ -805,7 +805,7 @@ class TestChatGPTUploadToNotionComprehensive:
             )
         ]
 
-        with patch("chatgpt.load_image_generations_from_dataset") as mock_load:
+        with patch("chatgpt.load_image_generations") as mock_load:
             mock_load.return_value = generations
             with patch(
                 "chatgpt.fetch_image_generations", new_callable=AsyncMock
@@ -816,7 +816,7 @@ class TestChatGPTUploadToNotionComprehensive:
                             "chatgpt.upload_all_images_to_notion",
                             new_callable=AsyncMock,
                         ) as mock_upload:
-                            with patch("chatgpt.save_to_dataset") as mock_save:
+                            with patch("chatgpt.save_generations") as mock_save:
                                 await chatgpt.upload_to_notion(
                                     image_folder=image_folder,
                                     db_id="test_db",

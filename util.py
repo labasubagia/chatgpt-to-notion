@@ -36,7 +36,7 @@ DEFAULT_CONFIG_PATH = "config.toml"
 console = Console(width=120)
 
 
-def save_to_dataset(
+def save_generations(
     account: str,
     data: Sequence[dict] | Sequence[BaseModel],
     keep_days: int = 2,
@@ -44,7 +44,7 @@ def save_to_dataset(
     options: RuntimeOptions | None = None,
 ) -> None:
     if len(data) == 0:
-        print("No generations to save to dataset.")
+        print("No generations to save.")
         return
 
     dict_data: list[dict]
@@ -62,7 +62,9 @@ def save_to_dataset(
     today_count = len(
         [g for g in generations if _is_within_days(g.created_at, display_days)]
     )
-    print(f"✅ Saved dataset for account '{account}' (Total Today: {today_count})\n")
+    print(
+        f"✅ Saved generations for account '{account}' (Total Today: {today_count})\n"
+    )
 
 
 def _is_within_days(created_at: str, days: int) -> bool:
