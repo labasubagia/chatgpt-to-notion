@@ -14,7 +14,7 @@ from ..adapters import chatgpt_api, sqlite_store
 from ..adapters.config_loader import get_provider_context
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_REQUESTS
-from ..shared.http import get_http_timeout, raise_for_status_with_detail
+from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
 from ..shared.logging import get_logger
 
 logger = get_logger("history")
@@ -64,6 +64,7 @@ def mark_generations_uploaded(account: str | None, generation_ids: set[str]) -> 
     sqlite_store.mark_uploaded(account, generation_ids)
 
 
+@retry_http()
 async def download_image(
     session: aiohttp.ClientSession,
     url: str,
