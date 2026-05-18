@@ -12,6 +12,7 @@ from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS
 from ..shared.http import get_http_timeout
+from . import history_service
 from .history_service import (
     download_all_images,
     fetch_image_generations,
@@ -250,13 +251,23 @@ async def upload_to_notion_single(
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
-    ):
+    ) as chatgpt_session:
         async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
 
             async def process_one(generation: ChatGPTImageGeneration):
                 async with semaphore:
                     file_name = f"{generation.id}.png"
                     try:
+                        file_path = Path(resolved_image_folder) / file_name
+                        if not file_path.exists():
+                            await history_service.download_image(
+                                chatgpt_session,
+                                generation.url,
+                                str(file_path),
+                                headers=chatgpt_api.get_headers(options),
+                            )
+                            pbar.write(f"✅  {file_name} downloaded")
+
                         if generation.id in uploaded_ids and not check_notion_api:
                             pbar.write(f"⏭️  {file_name} skipped, already uploaded")
                             return
@@ -269,14 +280,6 @@ async def upload_to_notion_single(
                             uploaded_ids.add(generation.id)
                             pbar.write(f"⏭️  {file_name} skipped, already in Notion")
                             return
-
-                        file_path = Path(resolved_image_folder) / file_name
-                        if not file_path.exists():
-                            await download_all_images(
-                                [generation],
-                                str(resolved_image_folder),
-                                options=options,
-                            )
 
                         if add_prompt_to_image:
                             add_prompt_to_image_single(

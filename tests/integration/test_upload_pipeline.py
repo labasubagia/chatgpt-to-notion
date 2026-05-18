@@ -1007,6 +1007,9 @@ class TestChatGPTUploadToNotionSingle:
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
+        (tmp_path / "images").mkdir(exist_ok=True)
+        (tmp_path / "images" / "gen_123.png").write_bytes(b"dummy")
+
         generations = [
             ChatGPTImageGeneration(
                 created_at="2024-01-15T10:30:00.000000+00:00",
@@ -1028,7 +1031,7 @@ class TestChatGPTUploadToNotionSingle:
                 mock_uploaded.return_value = {"gen_123"}
 
                 with patch(
-                    "chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock
+                     "chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock
                 ) as mock_download:
                     with patch("chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock):
                         await chatgpt.upload_to_notion_single(
@@ -1054,6 +1057,9 @@ class TestChatGPTUploadToNotionSingle:
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         image_folder = str(tmp_path / "images")
+        (tmp_path / "images").mkdir(exist_ok=True)
+        (tmp_path / "images" / "gen_123.png").write_bytes(b"dummy")
+
         generations = [
             ChatGPTImageGeneration(
                 created_at="2024-01-15T10:30:00.000000+00:00",
