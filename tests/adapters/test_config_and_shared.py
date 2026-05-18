@@ -265,6 +265,49 @@ class TestTomlConfig:
 
         assert provider.headers["User-Agent"] == "SharedAgent/1.0"
 
+    def test_cookie_string_resolves_and_decodes(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[shared]",
+                    'cookie_string_base64 = "Y29va2llX3NoYXJlZA=="', # "cookie_shared"
+                    "",
+                    "[accounts.personal]",
+                    'authorization_token = "token_personal"',
+                    "",
+                    "[accounts.override]",
+                    'authorization_token = "token_override"',
+                    'cookie_string_base64 = "Y29va2llX292ZXJyaWRl"', # "cookie_override"
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        # 1. Test shared default resolution & decoding
+        provider_personal = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+        assert provider_personal.headers["Cookie"] == "cookie_shared"
+
+        # 2. Test account-level override resolution & decoding
+        provider_override = get_provider_context("chatgpt", RuntimeOptions(account="override"))
+        assert provider_override.headers["Cookie"] == "cookie_override"
+
+    def test_cookie_string_invalid_base64(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[accounts.personal]",
+                    'authorization_token = "token_personal"',
+                    'cookie_string_base64 = "not-valid-base64!"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(ValueError, match="Invalid base64 in cookie_string_base64"):
+            get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+
     def test_get_account_names_from_toml(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
         config_path.write_text(

@@ -96,6 +96,7 @@ def register(app: typer.Typer) -> None:
                 "NOTION_API_KEY",
                 "CHATGPT_AUTHORIZATION_TOKEN",
                 "CHATGPT_USER_AGENT",
+                "CHATGPT_COOKIE_STRING",
             ]
             if db_id is None:
                 required_vars.append("NOTION_DATABASE_ID")

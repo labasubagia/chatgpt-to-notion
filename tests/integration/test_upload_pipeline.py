@@ -44,8 +44,23 @@ class TestChatGPTHeaders:
         assert "Content-Type" in headers
         assert headers["Content-Type"] == "application/json"
 
-    def test_headers_do_not_require_cookie(self, mock_config_toml):
-        """Headers should not include a Cookie entry."""
+    def test_headers_do_not_require_cookie(self, tmp_path, monkeypatch):
+        """Headers should not include a Cookie entry if not configured."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[shared]
+user_agent = "TestAgent/1.0"
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+[accounts.default]
+authorization_token = "test_token_abc"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
         headers = get_headers()
         assert isinstance(headers, dict)
         assert "Authorization" in headers

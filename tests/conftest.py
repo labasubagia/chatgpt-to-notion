@@ -88,6 +88,7 @@ def mock_config_toml(tmp_path, monkeypatch):
         """
 [shared]
 user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
 [notion]
 api_key = "secret_test_notion_key"

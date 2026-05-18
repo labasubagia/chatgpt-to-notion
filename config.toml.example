@@ -1,5 +1,6 @@
 [shared]
 user_agent = "Mozilla/5.0 ..."
+cookie_string_base64 = "b2FpLWRpZD1..."
 # Optional: override default output locations (use ~ for home directory)
 # history_folder = "~/data/chatgpt/image_history"
 # image_folder = "~/Desktop/images"

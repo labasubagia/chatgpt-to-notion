@@ -1,5 +1,6 @@
 """Configuration loading and resolution."""
 
+import base64
 import tomllib
 from pathlib import Path
 
@@ -61,7 +62,12 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
     return ResolvedConfig(
         account_name=account_name,
         account=account.model_copy(
-            update={"user_agent": account.user_agent or shared.user_agent}
+            update={
+                "user_agent": account.user_agent or shared.user_agent,
+                "cookie_string_base64": (
+                    account.cookie_string_base64 or shared.cookie_string_base64
+                ),
+            }
         ),
         notion=notion,
         history_folder=history_folder,
@@ -79,6 +85,14 @@ def get_provider_context(
         "User-Agent": (resolved.account.user_agent or "").strip(),
         "Content-Type": "application/json",
     }
+    cookie_b64 = resolved.account.cookie_string_base64
+    if cookie_b64:
+        try:
+            cookie_b64 = cookie_b64.strip()
+            decoded_cookie = base64.b64decode(cookie_b64).decode("utf-8")
+            headers["Cookie"] = decoded_cookie
+        except Exception as e:
+            raise ValueError(f"Invalid base64 in cookie_string_base64: {e}") from e
     return ProviderContext(
         provider="chatgpt",
         headers=headers,
@@ -119,6 +133,9 @@ def validate_runtime_config(
                     missing.append(key)
             case "CHATGPT_USER_AGENT":
                 if not (resolved.account.user_agent or "").strip():
+                    missing.append(key)
+            case "CHATGPT_COOKIE_STRING":
+                if not (resolved.account.cookie_string_base64 or "").strip():
                     missing.append(key)
     if missing:
         raise ValueError(f"Missing required configuration values: {', '.join(missing)}")

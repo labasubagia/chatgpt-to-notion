@@ -34,7 +34,7 @@ Ensure that your integration has proper read/write connection access to your dat
 
 ## 2. Acquiring ChatGPT Credentials
 
-Because this synchronizer fetches generation records from your account history directly, it requires your private session authentication token.
+Because this synchronizer fetches generation records from your account history directly, it requires your private session credentials.
 
 ### How to Retrieve your Session Authorization Token:
 1. Open your web browser (Chrome, Firefox, or Brave) and open **Developer Tools** (Press `F12` or `Ctrl + Shift + I` / `Cmd + Opt + I` on macOS).
@@ -46,8 +46,32 @@ Because this synchronizer fetches generation records from your account history d
 7. Copy the entire token string **WITHOUT** the leading `'Bearer '` prefix.
    - *Example Header*: `Authorization: Bearer eyJhbGciOiJSUzI1...`
    - *Correct Value to Copy*: `eyJhbGciOiJSUzI1...`
-8. Scroll further down the request headers and locate your **`User-Agent`** string (e.g., `Mozilla/5.0...`). Copy this value as well.
+
+### How to Retrieve your User-Agent String:
+1. In the same request headers list inside Developer Tools, scroll down to locate the **`User-Agent`** header string (e.g., `Mozilla/5.0...`).
+2. Copy this entire string.
    - **Note**: The `User-Agent` is placed under the global `[shared]` configuration block. You only need to acquire **one** global User-Agent string to be shared across all of your pooled accounts!
+
+### How to Retrieve and Encode your Session Cookie String:
+To prevent request rejections from ChatGPT's updated backend security, you must also provide your session cookie, encoded in **Base64**.
+
+1. In the same **Network** request header list inside Developer Tools (e.g., for the `conversations` request), locate the **`Cookie`** header under **Request Headers**.
+2. Copy the entire raw cookie value string (which starts with something like `oai-did=...; __Secure-next-auth.session-token=...`).
+3. Encode this raw cookie string to Base64 using one of the following methods:
+   - **Method A: Using CLI / Terminal**
+     * *Linux / macOS*: Run the following command (substituting `YOUR_RAW_COOKIE_STRING`):
+       ```bash
+       echo -n "YOUR_RAW_COOKIE_STRING" | base64 -w 0
+       ```
+     * *Windows (PowerShell)*: Run the following command (substituting `YOUR_RAW_COOKIE_STRING`):
+       ```powershell
+       [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("YOUR_RAW_COOKIE_STRING"))
+       ```
+   - **Method B: Using a Web Tool**
+     * Visit [https://www.base64encode.org/](https://www.base64encode.org/).
+     * Paste the raw cookie string into the input box.
+     * Click **Encode** and copy the resulting base64-encoded string.
+4. Keep the base64-encoded string secure—you will add it to the `config.toml` file next.
 
 ---
 
@@ -64,6 +88,8 @@ Populate the configuration file with your acquired tokens and database credentia
 ```toml
 [shared]
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
+# Base64-encoded cookie string to be used across all accounts by default
+cookie_string_base64 = "b2FpLWRpZD1..." 
 
 [notion]
 api_key = "secret_yourNotionIntegrationTokenHere"
@@ -75,6 +101,8 @@ authorization_token = "eyJhbGciOiJSUzI1..." # ChatGPT Auth token (excluding 'Bea
 
 [accounts.work]
 authorization_token = "eyJhbGciOiJSUzI1_other..."
+# Optional: per-account cookie string override
+cookie_string_base64 = "b3RoZXJfY29va2ll..." 
 notion_database_id = "optional_override_database_id" # Sync work images to a separate database
 ```
 
