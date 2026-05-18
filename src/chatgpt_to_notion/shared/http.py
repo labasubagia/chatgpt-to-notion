@@ -41,7 +41,7 @@ async def raise_for_status_with_detail(response: aiohttp.ClientResponse) -> None
         raise DetailedHTTPError(response.status, response.reason or "", body)
 
 
-def should_retry_http(exception: Exception) -> bool:
+def should_retry_http(exception: BaseException) -> bool:
     if isinstance(exception, DetailedHTTPError):
         return http_retryable(exception.status)
     if isinstance(exception, aiohttp.ClientResponseError):

@@ -21,7 +21,7 @@ For detailed information on Product and Technical specifications:
 - `uv sync`: install runtime and dev dependencies into `.venv`.
 - `uv run pytest`: run the full test suite.
 - `uv run pytest tests/test_main.py`: run a focused test file.
-- `uv run mypy .`: run static type checking.
+- `uv run pyrefly check src/`: run static type checking.
 - `uv run ruff check .`: run lint checks.
 - `make upload_to_notion`: run the CLI upload flow with the default debug image folder.
 - `uv run chatgpt-to-notion --help`: inspect the current CLI surface.

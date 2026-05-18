@@ -146,7 +146,7 @@ project/
 
 ```bash
 uv run pytest
-uv run mypy .
+uv run pyrefly check src/
 uv run ruff check .
 ```
 

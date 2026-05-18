@@ -6,8 +6,10 @@ repos:
         args: []
       - id: ruff-check
         args: [--extend-select, I, --fix]
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.1
+  - repo: local
     hooks:
-      - id: mypy
-        additional_dependencies: [pydantic>=2.12.5, pandas>=3.0.0, types-requests]
+      - id: pyrefly-check
+        name: Pyrefly (type checking)
+        entry: uv run pyrefly check
+        language: system
+        pass_filenames: false
