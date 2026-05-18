@@ -2,7 +2,19 @@
 
 ## Project Structure & Module Organization
 
-Top-level Python modules hold the application code: `main.py` contains the Typer CLI, `chatgpt.py` handles ChatGPT history/download flows, `notion.py` wraps Notion uploads, `img.py` writes PNG metadata, `util.py` contains shared helpers, `models.py` defines Pydantic models, and `db.py` manages SQLite storage. Tests live under `tests/` and mirror the module layout with files such as `tests/test_main.py` and `tests/test_chatgpt.py`. Example configuration lives in `config.toml.example`.
+The application is structured as a clean, layered pythonic package under `src/chatgpt_to_notion/`:
+- `cli/`: Typer CLI application entry point and command routers (`app.py`, `commands/`).
+- `services/`: Main business logic pipeline coordinators (e.g. `history_service.py`, `account_status_service.py`).
+- `adapters/`: External integration bridges (e.g. `chatgpt_api.py` for ChatGPT, `notion_api.py` for Notion, and `sqlite_store.py` for SQLite datastore).
+- `shared/`: Utility helper tools (e.g. `logging.py`, `http.py`, `time.py`).
+
+Tests reside under `tests/` and mirror this modular package architecture (e.g. `tests/adapters/test_chatgpt_api.py`, `tests/shared/test_logging.py`).
+Example configuration is provided in `config.toml.example`.
+
+For detailed information on Product and Technical specifications:
+- Refer to [docs/requirement.md](docs/requirement.md) for the Product Requirement Document (PRD).
+- Refer to [docs/technical.md](docs/technical.md) for the Technical Requirements Document (TRD).
+- Refer to [docs/user_guide.md](docs/user_guide.md) for the User Playbook & Deployment Guide (Credential acquisition and scheduling).
 
 ## Build, Test, and Development Commands
 
@@ -12,7 +24,7 @@ Top-level Python modules hold the application code: `main.py` contains the Typer
 - `uv run mypy .`: run static type checking.
 - `uv run ruff check .`: run lint checks.
 - `make upload_to_notion`: run the CLI upload flow with the default debug image folder.
-- `python main.py --help`: inspect the current CLI surface.
+- `uv run chatgpt-to-notion --help`: inspect the current CLI surface.
 
 ## Coding Style & Naming Conventions
 

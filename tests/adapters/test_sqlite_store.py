@@ -345,9 +345,13 @@ class TestGetActivityStats:
     def test_returns_stats_for_date(self, tmp_db_path):
         sqlite_store.init_db(tmp_db_path)
         now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        cooldown = today_start - timedelta(hours=1)
+
         gens = [
             ChatGPTImageGeneration(
-                created_at=(now - timedelta(hours=h)).isoformat(),
+                created_at=(today_start + timedelta(hours=h)).isoformat(),
                 id=f"g{h}",
                 conversation_id="c1",
                 message_id=f"m{h}",
@@ -358,10 +362,6 @@ class TestGetActivityStats:
             for h in range(1, 5)
         ]
         sqlite_store.upsert_generations("acc", gens, db_path=tmp_db_path)
-
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1)
-        cooldown = now - timedelta(days=1)
 
         stats = sqlite_store.get_activity_stats(
             "acc",
