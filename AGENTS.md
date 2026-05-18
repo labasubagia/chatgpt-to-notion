@@ -14,6 +14,7 @@ Example configuration is provided in `config.toml.example`.
 For detailed information on Product and Technical specifications:
 - Refer to [docs/requirement.md](docs/requirement.md) for the Product Requirement Document (PRD).
 - Refer to [docs/technical.md](docs/technical.md) for the Technical Requirements Document (TRD).
+- Refer to [docs/user_guide.md](docs/user_guide.md) for the User Playbook & Deployment Guide (Credential acquisition and scheduling).
 
 ## Build, Test, and Development Commands
 
