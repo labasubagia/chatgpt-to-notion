@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import asyncio
+
 import aiohttp
 import pytest
 
@@ -779,6 +781,29 @@ class TestDownloadImage:
             await download_image(
                 mock_session, "http://example.com/img.png", str(file_path)
             )
+
+    @patch("chatgpt_to_notion.shared.http.MAX_RETRIES", 2)
+    @pytest.mark.asyncio
+    async def test_retry_on_timeout(self, tmp_path):
+        mock_response = self.MockDownloadResponse(content=b"retry_image_data")
+
+        call_count = 0
+
+        def get_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise asyncio.TimeoutError("Connection timed out")
+            return self.MockContext(mock_response)
+
+        mock_session = MagicMock()
+        mock_session.get.side_effect = get_side_effect
+
+        file_path = tmp_path / "test.png"
+        await download_image(mock_session, "http://example.com/img.png", str(file_path))
+
+        assert call_count == 2
+        assert file_path.read_bytes() == b"retry_image_data"
 
 
 class TestConstants:

@@ -165,6 +165,27 @@ class TestNotionUpload:
                 mock_aiohttp_session, "upload_123", "/nonexistent/file.png"
             )
 
+    async def test_send_upload_img_already_uploaded(
+        self, mock_aiohttp_session, sample_image_bytes, tmp_path
+    ):
+        """Should return successfully if the file is already uploaded on Notion."""
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(sample_image_bytes)
+
+        mock_aiohttp_session._responses = [
+            make_mock_response(
+                {"object": "error", "message": "File upload already uploaded"},
+                status=400,
+                reason="Bad Request",
+                text_data='{"object":"error","status":400,"code":"validation_error","message":"File upload with ID `upload_123` has a status of `uploaded`."}',
+            )
+        ]
+
+        result = await send_upload_img(
+            mock_aiohttp_session, "upload_123", str(img_path)
+        )
+        assert result == {"id": "upload_123", "status": "complete"}
+
     async def test_add_page_to_db(
         self, mock_aiohttp_session, sample_image_bytes, tmp_path
     ):

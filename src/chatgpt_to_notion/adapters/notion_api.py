@@ -11,7 +11,12 @@ from tqdm.asyncio import tqdm
 
 from ..domain.models import ImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS
-from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
+from ..shared.http import (
+    DetailedHTTPError,
+    get_http_timeout,
+    raise_for_status_with_detail,
+    retry_http,
+)
 from ..shared.logging import get_logger
 from .config_loader import get_notion_context
 from .filesystem import get_output_path
@@ -128,16 +133,29 @@ async def send_upload_img(
     with open(file_path, "rb") as file_obj:
         data = aiohttp.FormData()
         data.add_field("file", file_obj, filename=file_name, content_type="image/png")
-        async with session.post(
-            f"{BASE_URL}/v1/file_uploads/{file_upload_id}/send",
-            headers={
-                "Authorization": notion_headers["Authorization"],
-                "Notion-Version": notion_headers["Notion-Version"],
-            },
-            data=data,
-        ) as response:
-            await raise_for_status_with_detail(response)
-            return await response.json()
+        try:
+            async with session.post(
+                f"{BASE_URL}/v1/file_uploads/{file_upload_id}/send",
+                headers={
+                    "Authorization": notion_headers["Authorization"],
+                    "Notion-Version": notion_headers["Notion-Version"],
+                },
+                data=data,
+            ) as response:
+                await raise_for_status_with_detail(response)
+                return await response.json()
+        except DetailedHTTPError as exc:
+            if (
+                exc.status == 400
+                and "has a status of" in exc.body
+                and "uploaded" in exc.body
+            ):
+                logger.info(
+                    "File upload %s already marked as uploaded on Notion. Proceeding.",
+                    file_upload_id,
+                )
+                return {"id": file_upload_id, "status": "complete"}
+            raise
 
 
 @retry_http()

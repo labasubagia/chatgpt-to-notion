@@ -1,11 +1,9 @@
 """HTTP helper utilities."""
 
 import asyncio
-import logging
 
 import aiohttp
 from tenacity import (
-    before_sleep_log,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -59,12 +57,58 @@ def should_retry_http(exception: BaseException) -> bool:
     return False
 
 
+def before_sleep_custom(retry_state) -> None:
+    import os
+
+    fn_name = retry_state.fn.__name__ if retry_state.fn else "unknown"
+    wait_time = retry_state.idle_for
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+
+    ctx = ""
+    args = retry_state.args or ()
+    kwargs = retry_state.kwargs or {}
+
+    file_path = kwargs.get("file_path")
+    if not file_path:
+        if len(args) > 2 and isinstance(args[2], str):
+            file_path = args[2]
+        else:
+            for arg in args:
+                if isinstance(arg, str) and (
+                    arg.endswith(".png") or "/" in arg or "\\" in arg
+                ):
+                    file_path = arg
+                    break
+
+    if file_path:
+        ctx = f" [{os.path.basename(file_path)}]"
+    else:
+        for key in ["conversation_id", "db_id", "query"]:
+            if key in kwargs:
+                ctx = f" [{kwargs[key]}]"
+                break
+        if not ctx:
+            for arg in args:
+                if isinstance(arg, str) and len(arg) > 5 and not arg.startswith("http"):
+                    ctx = f" [{arg}]"
+                    break
+
+    logger.warning(
+        "Retrying %s%s in %s seconds as it raised %s: %s",
+        fn_name,
+        ctx,
+        wait_time,
+        type(exc).__name__ if exc else "Exception",
+        exc,
+    )
+
+
 def retry_http():
     return retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception(should_retry_http),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=before_sleep_custom,
         reraise=True,
     )
 
