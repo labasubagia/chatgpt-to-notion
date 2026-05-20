@@ -271,7 +271,6 @@ async def upload_to_notion_single(
                                 str(file_path),
                                 headers=chatgpt_api.get_headers(options),
                             )
-                            pbar.write(f"✅  {file_name} downloaded")
 
                         if generation.id in uploaded_ids and not check_notion_api:
                             pbar.write(f"⏭️  {file_name} skipped, already uploaded")
