@@ -93,14 +93,16 @@ def before_sleep_custom(retry_state) -> None:
                     ctx = f" [{arg}]"
                     break
 
-    logger.warning(
-        "Retrying %s%s in %s seconds as it raised %s: %s",
-        fn_name,
-        ctx,
-        wait_time,
-        type(exc).__name__ if exc else "Exception",
-        exc,
+    exc_type = type(exc).__name__ if exc else "Exception"
+    msg = (
+        f"Retrying {fn_name}{ctx} in {wait_time} seconds as it raised {exc_type}: {exc}"
     )
+    try:
+        from tqdm import tqdm
+
+        tqdm.write(msg)
+    except ImportError:
+        logger.warning(msg)
 
 
 def retry_http():
