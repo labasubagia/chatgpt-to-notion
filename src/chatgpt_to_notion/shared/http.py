@@ -23,11 +23,24 @@ def http_retryable(status_code: int | None) -> bool:
 
 
 class DetailedHTTPError(Exception):
-    def __init__(self, status: int, message: str, body: str):
-        super().__init__(f"HTTP {status} {message}\nResponse Body: {body}")
+    def __init__(
+        self,
+        status: int,
+        message: str,
+        body: str,
+        url: str,
+        req: aiohttp.RequestInfo,
+    ):
+        msg = (
+            f"\nURL: {url}\nHTTP {status} {message}"
+            f"\nRequest: {req}\nResponse Body: {body}"
+        )
+        super().__init__(msg)
         self.status = status
         self.message_text = message
         self.body = body
+        self.url = url
+        self.request = req
 
 
 async def raise_for_status_with_detail(response: aiohttp.ClientResponse) -> None:
@@ -36,7 +49,13 @@ async def raise_for_status_with_detail(response: aiohttp.ClientResponse) -> None
             body = await response.text()
         except Exception:
             body = "<could not read body>"
-        raise DetailedHTTPError(response.status, response.reason or "", body)
+        raise DetailedHTTPError(
+            response.status,
+            response.reason or "",
+            body,
+            str(response.url),
+            response.request_info,
+        )
 
 
 def should_retry_http(exception: BaseException) -> bool:

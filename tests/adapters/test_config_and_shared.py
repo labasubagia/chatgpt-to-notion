@@ -682,7 +682,7 @@ class TestRetryHttp:
             call_count += 1
             if call_count < 2:
                 os_error = OSError(errno.ECONNREFUSED, "Connection refused")
-                
+
                 class MockConnKey:
                     ssl = False
                     host = "localhost"
@@ -691,14 +691,14 @@ class TestRetryHttp:
                     proxy = None
                     proxy_auth = None
                     proxy_headers_hash = None
-                
+
                 raise aiohttp.ClientConnectorError(MockConnKey(), os_error)
             return "success"
 
         result = await failing_func()
         assert result == "success"
         assert call_count == 2
-        
+
         # Verify exactly one retry attempt was logged
         captured = capsys.readouterr()
         retries_logged = caplog.text.count("Retrying") + captured.out.count("Retrying") + captured.err.count("Retrying")
@@ -714,6 +714,8 @@ class TestDownloadImage:
             self.error = error
             self.status = getattr(error, "status", 200) if error else 200
             self.reason = "OK" if not error else "Error"
+            self.url = "https://mock.url"
+            self.request_info = MagicMock()
 
         def raise_for_status(self):
             if self.error:

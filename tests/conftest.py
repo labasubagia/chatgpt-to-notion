@@ -1,6 +1,7 @@
 """Pytest configuration and shared fixtures for ChatGPT CLI tests."""
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -107,71 +108,76 @@ def mock_aiohttp_session():
     """Create a mock aiohttp session for testing."""
     # Create proper async context manager mock
     class MockResponse:
-        def __init__(self, json_data, status=200, reason="OK", text_data=""):
+        def __init__(self, json_data, status=200, reason="OK", text_data="", url="https://mock.url"):
             self._json_data = json_data
             self.status = status
             self.reason = reason
             self._text_data = text_data
-        
+            self.url = url
+            self.request_info = MagicMock()
+
         async def json(self):
             return self._json_data
 
         async def text(self):
             return self._text_data
-        
+
         def raise_for_status(self):
             if self.status >= 400:
                 raise Exception(f"HTTP {self.status}")
-    
+
     class MockSession:
         def __init__(self):
             self._responses = []
-        
+
         def _mock_method(self, method, url, **kwargs):
             class ContextManager:
                 async def __aenter__(ctx_self):
                     if self._responses:
                         return self._responses.pop(0)
                     return MockResponse({})
-                
+
                 async def __aexit__(ctx_self, *args):
                     pass
             return ContextManager()
-        
+
         def get(self, url, **kwargs):
             return self._mock_method('GET', url, **kwargs)
-        
+
         def post(self, url, **kwargs):
             return self._mock_method('POST', url, **kwargs)
-        
+
         def delete(self, url, **kwargs):
             return self._mock_method('DELETE', url, **kwargs)
-        
+
         def patch(self, url, **kwargs):
             return self._mock_method('PATCH', url, **kwargs)
-    
+
     return MockSession()
 
 
-def make_mock_response(json_data, status=200, reason="OK", text_data=""):
+def make_mock_response(json_data, status=200, reason="OK", text_data="", url="https://mock.url"):
     """Helper to create mock HTTP response."""
+
     class MockResp:
-        def __init__(self, data, s, r, t):
+        def __init__(self, data, s, r, t, u):
             self._data = data
             self.status = s
             self.reason = r
             self._text_data = t
-        
+            self.url = u
+            self.request_info = MagicMock()
+
         async def json(self):
             return self._data
 
         async def text(self):
             return self._text_data
-        
+
         def raise_for_status(self):
             pass
-    
-    return MockResp(json_data, status, reason, text_data)
+
+    return MockResp(json_data, status, reason, text_data, url)
 
 
 @pytest.fixture

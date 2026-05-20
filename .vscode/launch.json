@@ -44,6 +44,19 @@
             "name": "Debug: clean_output_path",
             "request": "launch",
             "type": "debugpy"
+        },
+        {
+            "args": [
+                "upload-to-notion",
+                "--account",
+                "labasubagia22@gmail.com"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "module": "chatgpt_to_notion.cli.app",
+            "name": "Upload",
+            "request": "launch",
+            "type": "debugpy"
         }
     ],
     // Use IntelliSense to learn about possible attributes.

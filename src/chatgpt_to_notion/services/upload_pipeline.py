@@ -104,8 +104,9 @@ async def delete_conversations_after_upload(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as session:
 
-        async def delete_conv(conv_id: str, image_ids: set[str]):
+        async def delete_conv(conv_id: str):
             async with semaphore:
+                image_ids = conversation_map[conv_id]
                 remaining = image_ids - uploaded_ids
                 if remaining:
                     pbar.write(
@@ -119,13 +120,14 @@ async def delete_conversations_after_upload(
                         session, conv_id, headers=chatgpt_api.get_headers(options)
                     )
                     pbar.write(f"✅ Conversation {conv_id}")
+                    conversation_map.pop(conv_id, None)
                 except Exception as exc:
                     pbar.write(f"❌ Conversation {conv_id} failed: {exc}")
                 finally:
                     pbar.update(1)
 
         await asyncio.gather(
-            *[delete_conv(conv_id, ids) for conv_id, ids in conversation_map.items()]
+            *[delete_conv(conv_id) for conv_id in list(conversation_map.keys())]
         )
 
     pbar.close()
