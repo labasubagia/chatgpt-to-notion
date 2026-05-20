@@ -84,7 +84,7 @@ async def fetch_image_generations(
     limit: int = 100,
     options: RuntimeOptions | None = None,
     no_cache: bool = False,
-) -> list[ChatGPTImageGeneration]:
+) -> tuple[list[ChatGPTImageGeneration], list[ChatGPTImageGeneration]]:
     del no_cache
     account = options.account if options and options.account else "default"
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
@@ -158,11 +158,13 @@ async def fetch_image_generations(
             ]
             await sqlite_store.async_upsert_generations(account, new_generations)
 
-        return sqlite_store.get_generations(
+        generations = sqlite_store.get_generations(
             account,
             include_uploaded=True,
             ids_filter=api_ids,
         )
+        remote_generations = [gen for gen in generations if gen.id in api_ids]
+        return remote_generations, generations
 
 
 def load_image_generations(

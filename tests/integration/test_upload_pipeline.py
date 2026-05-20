@@ -118,11 +118,12 @@ class TestChatGPTFetchImageGenerations:
                     with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                         mock_headers.return_value = {"Authorization": "Bearer test"}
 
-                        result = await chatgpt.fetch_image_generations(
+                        remote_generations, result = await chatgpt.fetch_image_generations(
                             limit=5,
-                            options=type("Options", (), {"account": "default"})(),
+                            options=type("Options", (), {"account": "default"}),
                         )
 
+                        assert isinstance(remote_generations, list)
                         assert isinstance(result, list)
                         assert len(result) == 1
                         assert result[0].id == "img_123"
@@ -173,11 +174,12 @@ class TestChatGPTFetchImageGenerations:
                 with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                     mock_headers.return_value = {"Authorization": "Bearer test"}
 
-                    result = await chatgpt.fetch_image_generations(
+                    remote_generations, result = await chatgpt.fetch_image_generations(
                         limit=5,
                         options=type("Options", (), {"account": "default"})(),
                     )
 
+                    assert len(remote_generations) == 1
                     assert len(result) == 1
                     assert result[0].id == "img_123"
                     assert result[0].prompt == "Existing prompt"
@@ -197,11 +199,12 @@ class TestChatGPTFetchImageGenerations:
             with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                 mock_headers.return_value = {"Authorization": "Bearer test"}
 
-                result = await chatgpt.fetch_image_generations(
+                remote_generations, result = await chatgpt.fetch_image_generations(
                     limit=5,
                     options=type("Options", (), {"account": "default"})(),
                 )
 
+                assert remote_generations == []
                 assert result == []
 
 
@@ -218,13 +221,15 @@ class TestChatGPTUploadToNotion:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = [
-                {
-                    "id": "img_123",
-                    "url": "https://example.com/image.png",
-                    "prompt": "Test prompt",
-                }
-            ]
+            mock_fetch.return_value = ([],
+                [
+                    {
+                        "id": "img_123",
+                        "url": "https://example.com/image.png",
+                        "prompt": "Test prompt",
+                    }
+                ],
+            )
 
             with patch(
                 "chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock
@@ -262,7 +267,7 @@ class TestChatGPTUploadToNotion:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = []
+            mock_fetch.return_value = ([], [])
 
             with patch(
                 "chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock
@@ -774,13 +779,15 @@ class TestChatGPTUploadToNotionComprehensive:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = [
-                {
-                    "id": "img_123",
-                    "url": "https://example.com/image.png",
-                    "prompt": "Test",
-                }
-            ]
+            mock_fetch.return_value = ([],
+                [
+                    {
+                        "id": "img_123",
+                        "url": "https://example.com/image.png",
+                        "prompt": "Test",
+                    }
+                ],
+            )
 
             with patch("chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock):
                 with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images"):
@@ -873,7 +880,7 @@ class TestChatGPTUploadToNotionComprehensive:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch("chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock):
                 with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_images"):
@@ -914,7 +921,7 @@ class TestChatGPTUploadToNotionComprehensive:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch(
                 "chatgpt_to_notion.services.upload_pipeline.download_all_images", new_callable=AsyncMock
@@ -965,7 +972,7 @@ class TestChatGPTUploadToNotionSingle:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
@@ -1025,7 +1032,7 @@ class TestChatGPTUploadToNotionSingle:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = {"gen_123"}
@@ -1075,7 +1082,7 @@ class TestChatGPTUploadToNotionSingle:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
@@ -1151,7 +1158,7 @@ class TestChatGPTUploadToNotionSingle:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()
@@ -1229,7 +1236,7 @@ class TestChatGPTUploadToNotionSingle:
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = generations
+            mock_fetch.return_value = (generations, generations)
 
             with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
                 mock_uploaded.return_value = set()

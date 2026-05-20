@@ -150,6 +150,7 @@ async def upload_to_notion(
     resolved_image_folder = resolve_image_folder(image_folder, options)
     sqlite_store.init_db()
 
+    remote_generations: list[ChatGPTImageGeneration] = []
     if from_history:
         if not account:
             raise ValueError("account is required when from_history=True")
@@ -161,7 +162,7 @@ async def upload_to_notion(
             options=options,
         )
     else:
-        generations = await fetch_image_generations(
+        remote_generations, generations = await fetch_image_generations(
             limit=limit,
             options=options,
             no_cache=no_cache,
@@ -193,9 +194,12 @@ async def upload_to_notion(
             options=options,
         )
 
+    if len(remote_generations) <= 0:
+        return
+
     if remove_in_chatgpt:
         await delete_conversation_of_image_generation_uploaded_to_notion(
-            generations=generations,
+            generations=remote_generations,
             db_id=db_id,
             options=options,
         )
@@ -222,6 +226,7 @@ async def upload_to_notion_single(
     resolved_image_folder = resolve_image_folder(image_folder, options)
     sqlite_store.init_db()
 
+    remote_generations: list[ChatGPTImageGeneration] = []
     if from_history:
         generations = load_image_generations(
             account=account,
@@ -231,7 +236,7 @@ async def upload_to_notion_single(
             options=options,
         )
     else:
-        generations = await fetch_image_generations(
+        remote_generations, generations = await fetch_image_generations(
             limit=limit,
             options=options,
             no_cache=no_cache,
@@ -312,9 +317,12 @@ async def upload_to_notion_single(
     pbar.close()
     print()
 
+    if len(remote_generations) <= 0:
+        return
+
     if remove_in_chatgpt:
         await delete_conversations_after_upload(
-            generations=generations,
+            generations=remote_generations,
             db_id=db_id,
             account=account,
             uploaded_ids=uploaded_ids,
