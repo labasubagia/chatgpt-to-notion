@@ -710,7 +710,7 @@ class TestDownloadImage:
 
     class MockDownloadResponse:
         def __init__(self, content: bytes = b"data", error: Exception | None = None):
-            self.content = content
+            self._content = content
             self.error = error
             self.status = getattr(error, "status", 200) if error else 200
             self.reason = "OK" if not error else "Error"
@@ -722,14 +722,24 @@ class TestDownloadImage:
                 raise self.error
 
         async def read(self):
-            return self.content
+            return self._content
 
         async def text(self):
             return "mock error body"
 
+    class MockStream:
+        def __init__(self, content: bytes):
+            self._content = content
+
+        async def iter_chunked(self, chunk_size):
+            for i in range(0, len(self._content), chunk_size):
+                yield self._content[i : i + chunk_size]
+
     class MockContext:
         def __init__(self, response):
             self.response = response
+            if hasattr(response, '_content'):
+                response.content = TestDownloadImage.MockStream(response._content)
 
         async def __aenter__(self):
             return self.response
