@@ -99,8 +99,10 @@ async def delete_conversations_after_upload(
 ) -> None:
     del account
     conversation_map: dict[str, set[str]] = defaultdict(set)
+    generation_urls: dict[str, str] = {}
     for generation in generations:
         conversation_map[generation.conversation_id].add(generation.id)
+        generation_urls[generation.id] = generation.url
 
     if not conversation_map:
         return
@@ -126,7 +128,8 @@ async def delete_conversations_after_upload(
                 try:
                     if check_notion_api:
                         for image_id in image_ids:
-                            file_name = f"{image_id}.png"
+                            ext = image_ext_from_url(generation_urls.get(image_id, ""))
+                            file_name = f"{image_id}{ext}"
                             exists = await is_page_exists_in_db(
                                 chatgpt_session,
                                 db_id,

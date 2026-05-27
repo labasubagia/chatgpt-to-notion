@@ -220,7 +220,7 @@ async def add_page_to_db(
         content_type=content_type,
     )
 
-    normalized_prompt = str(prompt).strip()
+    normalized_prompt = (prompt or "").strip()
     normalized_prompt = normalized_prompt.replace("\r\n", "\n")
     normalized_prompt = normalized_prompt.replace("\r", "\n")
 
