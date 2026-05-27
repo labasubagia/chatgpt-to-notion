@@ -1,6 +1,8 @@
 """Image metadata helpers."""
 
 import os
+import tempfile
+import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -30,7 +32,17 @@ def edit_png_info(
         for key, value in payload.items():
             if overwrite or key not in image.info:
                 metadata.add_text(key, value)
-        image.save(file_path, pnginfo=metadata)
+        dir_path = os.path.dirname(file_path) or "."
+        fd, tmp_path = tempfile.mkstemp(suffix=".png", dir=dir_path)
+        try:
+            image.save(tmp_path, pnginfo=metadata)
+            os.replace(tmp_path, file_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 def get_png_prompt(file_path: str) -> str | None:
@@ -63,7 +75,7 @@ def add_prompt_to_images(
             pbar.update(1)
             return
 
-        for _ in range(MAX_RETRIES):
+        for attempt in range(MAX_RETRIES):
             try:
                 if get_png_prompt(str(file_path)) == row.prompt:
                     pbar.write(f"⏭️  {file_path} skipped, prompt unchanged")
@@ -74,6 +86,8 @@ def add_prompt_to_images(
                 pbar.update(1)
                 break
             except Exception as exc:
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2**attempt)
                 pbar.write(f"⚠️  {file_path} edit error: {exc}, retrying...")
         else:
             pbar.write(f"❌ {file_path} edit failed after {MAX_RETRIES} retries")

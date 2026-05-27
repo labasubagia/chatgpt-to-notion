@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import tempfile
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,8 +14,17 @@ from tqdm.asyncio import tqdm
 from ..adapters import chatgpt_api, sqlite_store
 from ..adapters.config_loader import get_provider_context
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
-from ..shared.constants import MAX_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_REQUESTS
-from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
+from ..shared.constants import (
+    MAX_CONCURRENT_DOWNLOADS,
+    MAX_CONCURRENT_REQUESTS,
+    image_ext_from_url,
+)
+from ..shared.http import (
+    get_download_timeout,
+    get_http_timeout,
+    raise_for_status_with_detail,
+    retry_http,
+)
 from ..shared.logging import get_logger
 
 logger = get_logger("history")
@@ -36,12 +46,14 @@ def save_generations(
         print("No generations to save.")
         return
 
-    if data and isinstance(data[0], BaseModel):
-        dict_data = [item.model_dump() for item in data if isinstance(item, BaseModel)]
-    else:
-        dict_data = [item for item in data if isinstance(item, dict)]
-
-    generations = [ChatGPTImageGeneration(**item) for item in dict_data]
+    generations: list[ChatGPTImageGeneration] = []
+    for item in data:
+        if isinstance(item, ChatGPTImageGeneration):
+            generations.append(item)
+        elif isinstance(item, BaseModel):
+            generations.append(ChatGPTImageGeneration(**item.model_dump()))
+        elif isinstance(item, dict):
+            generations.append(ChatGPTImageGeneration(**item))
     sqlite_store.upsert_generations(account, generations)
     sqlite_store.delete_old_generations(account, keep_days=keep_days)
 
@@ -71,9 +83,21 @@ async def download_image(
     file_path: str,
     headers: dict[str, str] | None = None,
 ) -> None:
-    async with session.get(url, headers=headers or {}) as response:
-        await raise_for_status_with_detail(response)
-        Path(file_path).write_bytes(await response.read())
+    dir_path = os.path.dirname(file_path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_path)
+    try:
+        async with session.get(url, headers=headers or {}) as response:
+            await raise_for_status_with_detail(response)
+            with os.fdopen(fd, "wb") as f:
+                async for chunk in response.content.iter_chunked(8192):
+                    f.write(chunk)
+        os.replace(tmp_path, file_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
@@ -193,43 +217,43 @@ async def download_all_images(
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
     download_path = Path(download_folder)
 
-    success_count = 0
-    skipped_count = 0
-    failed_count = 0
+    results: list[str] = []
 
     async with aiohttp.ClientSession(
-        headers=get_headers(options), timeout=get_http_timeout()
+        headers=get_headers(options), timeout=get_download_timeout()
     ) as session:
 
-        async def download(row: ChatGPTImageGeneration):
-            nonlocal success_count, skipped_count, failed_count
+        async def download(row: ChatGPTImageGeneration) -> str:
             async with semaphore:
-                file_name = f"{row.id}.png"
+                ext = image_ext_from_url(row.url)
+                file_name = f"{row.id}{ext}"
                 file_path = download_path / file_name
 
                 if os.path.exists(file_path):
                     pbar.write(f"⏭️  {file_name} skipped, already exists")
-                    skipped_count += 1
                     pbar.update(1)
-                    return
+                    return "skipped"
 
                 try:
                     await download_image(
                         session, row.url, str(file_path), headers=get_headers(options)
                     )
                     pbar.write(f"✅ {file_name}")
-                    success_count += 1
+                    pbar.update(1)
+                    return "success"
                 except Exception as exc:
                     pbar.write(f"❌ {file_name} failed: {exc}")
                     logger.exception("Failed to download %s", file_name)
-                    failed_count += 1
-                finally:
                     pbar.update(1)
+                    return "failed"
 
-        await asyncio.gather(*[download(row) for row in generations])
+        results = await asyncio.gather(*[download(row) for row in generations])
 
     pbar.close()
 
+    success_count = results.count("success")
+    skipped_count = results.count("skipped")
+    failed_count = results.count("failed")
     logger.info(
         "Download summary: %d success, %d skipped, %d failed",
         success_count,

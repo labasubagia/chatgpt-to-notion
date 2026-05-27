@@ -106,7 +106,7 @@ def get_conversation_mapping_key_by_asset_pointer(
 def get_prompt_from_image_node_in_conversation(
     data: dict[str, Any], start_node_id: str, asset_pointer: str
 ) -> str | None:
-    mapping = data["mapping"]
+    mapping = data.get("mapping", {})
     current_id: str | None = start_node_id
     if current_id not in mapping:
         current_id = get_conversation_mapping_key_by_asset_pointer(data, asset_pointer)

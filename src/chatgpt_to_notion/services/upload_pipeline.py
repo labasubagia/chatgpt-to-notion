@@ -10,7 +10,7 @@ from tqdm.asyncio import tqdm
 from ..adapters import chatgpt_api, notion_api, sqlite_store
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
-from ..shared.constants import MAX_CONCURRENT_REQUESTS
+from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
 from ..shared.http import get_http_timeout
 from . import history_service
 from .history_service import (
@@ -45,34 +45,41 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
     options: RuntimeOptions | None = None,
 ) -> None:
     conversation_map: dict[str, set[str]] = defaultdict(set)
+    generation_urls: dict[str, str] = {}
     for generation in generations:
         conversation_map[generation.conversation_id].add(generation.id)
+        generation_urls[generation.id] = generation.url
 
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as session:
 
         async def delete_by_id(conversation_id: str, image_ids: set[str]):
-            try:
-                for image_id in image_ids:
-                    file_name = f"{image_id}.png"
-                    exists = await is_page_exists_in_db(
-                        session, db_id, file_name, options=options
-                    )
-                    if not exists:
-                        pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
-                        return
+            async with semaphore:
+                try:
+                    for image_id in image_ids:
+                        ext = image_ext_from_url(generation_urls.get(image_id, ""))
+                        file_name = f"{image_id}{ext}"
+                        exists = await is_page_exists_in_db(
+                            session, db_id, file_name, options=options
+                        )
+                        if not exists:
+                            pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
+                            return
 
-                await delete_conversation(
-                    session, conversation_id, headers=chatgpt_api.get_headers(options)
-                )
-                pbar.write(f"✅ Conversation ID {conversation_id}")
-            except Exception as exc:
-                pbar.write(f"❌ Conversation ID {conversation_id} failed: {exc}")
-            finally:
-                pbar.update(1)
+                    await delete_conversation(
+                        session,
+                        conversation_id,
+                        headers=chatgpt_api.get_headers(options),
+                    )
+                    pbar.write(f"✅ Conversation ID {conversation_id}")
+                except Exception as exc:
+                    pbar.write(f"❌ Conversation ID {conversation_id} failed: {exc}")
+                finally:
+                    pbar.update(1)
 
         await asyncio.gather(
             *[delete_by_id(conv_id, ids) for conv_id, ids in conversation_map.items()]
@@ -87,9 +94,10 @@ async def delete_conversations_after_upload(
     db_id: str,
     account: str | None,
     uploaded_ids: set[str],
+    check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
-    del db_id, account
+    del account, check_notion_api
     conversation_map: dict[str, set[str]] = defaultdict(set)
     for generation in generations:
         conversation_map[generation.conversation_id].add(generation.id)
@@ -102,7 +110,7 @@ async def delete_conversations_after_upload(
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
-    ) as session:
+    ) as chatgpt_session:
 
         async def delete_conv(conv_id: str):
             async with semaphore:
@@ -117,7 +125,9 @@ async def delete_conversations_after_upload(
                     return
                 try:
                     await delete_conversation(
-                        session, conv_id, headers=chatgpt_api.get_headers(options)
+                        chatgpt_session,
+                        conv_id,
+                        headers=chatgpt_api.get_headers(options),
                     )
                     pbar.write(f"✅ Conversation {conv_id}")
                     conversation_map.pop(conv_id, None)
@@ -263,7 +273,8 @@ async def upload_to_notion_single(
 
             async def process_one(generation: ChatGPTImageGeneration):
                 async with semaphore:
-                    file_name = f"{generation.id}.png"
+                    ext = image_ext_from_url(generation.url)
+                    file_name = f"{generation.id}{ext}"
                     try:
                         file_path = Path(resolved_image_folder) / file_name
                         if not file_path.exists():
@@ -274,16 +285,18 @@ async def upload_to_notion_single(
                                 headers=chatgpt_api.get_headers(options),
                             )
 
-                        if generation.id in uploaded_ids and not check_notion_api:
-                            pbar.write(f"⏭️  {file_name} skipped, already uploaded")
-                            return
+                        # Claim the ID under lock to prevent duplicate uploads
+                        async with db_lock:
+                            if generation.id in uploaded_ids and not check_notion_api:
+                                pbar.write(f"⏭️  {file_name} skipped, already uploaded")
+                                return
+                            uploaded_ids.add(generation.id)
 
                         if await is_page_exists_in_db(
                             notion_session, db_id, file_name, options=options
                         ):
                             async with db_lock:
                                 mark_generations_uploaded(account, {generation.id})
-                            uploaded_ids.add(generation.id)
                             pbar.write(f"⏭️  {file_name} skipped, already in Notion")
                             return
 
@@ -304,9 +317,11 @@ async def upload_to_notion_single(
 
                         async with db_lock:
                             mark_generations_uploaded(account, {generation.id})
-                        uploaded_ids.add(generation.id)
                         pbar.write(f"✅ {file_name} uploaded")
                     except Exception as exc:
+                        # Release the claim so another attempt can retry
+                        async with db_lock:
+                            uploaded_ids.discard(generation.id)
                         pbar.write(f"❌ {file_name} failed: {exc}")
                     finally:
                         pbar.update(1)
@@ -327,5 +342,6 @@ async def upload_to_notion_single(
             db_id=db_id,
             account=account,
             uploaded_ids=uploaded_ids,
+            check_notion_api=check_notion_api,
             options=options,
         )

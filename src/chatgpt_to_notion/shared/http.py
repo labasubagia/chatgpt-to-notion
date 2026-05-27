@@ -1,6 +1,7 @@
 """HTTP helper utilities."""
 
 import asyncio
+import os
 
 import aiohttp
 from tenacity import (
@@ -77,8 +78,6 @@ def should_retry_http(exception: BaseException) -> bool:
 
 
 def before_sleep_custom(retry_state) -> None:
-    import os
-
     fn_name = retry_state.fn.__name__ if retry_state.fn else "unknown"
     wait_time = retry_state.idle_for
     exc = retry_state.outcome.exception() if retry_state.outcome else None
@@ -136,3 +135,9 @@ def retry_http():
 
 def get_http_timeout() -> aiohttp.ClientTimeout:
     return aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
+
+
+def get_download_timeout() -> aiohttp.ClientTimeout:
+    from .constants import DOWNLOAD_TIMEOUT_SECONDS
+
+    return aiohttp.ClientTimeout(total=DOWNLOAD_TIMEOUT_SECONDS)
