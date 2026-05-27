@@ -94,6 +94,10 @@ async def download_image(
         os.replace(tmp_path, file_path)
     except BaseException:
         try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
             os.unlink(tmp_path)
         except OSError:
             pass

@@ -109,7 +109,8 @@ def register(app: typer.Typer) -> None:
                 total=total_accounts,
             )
             effective_db_id = db_id or resolved.notion.database_id
-            assert effective_db_id is not None, "db_id must be provided"
+            if effective_db_id is None:
+                raise typer.BadParameter("db_id must be provided")
             effective_from_history = from_history or verify_history
             effective_check_notion_api = check_notion_api or verify_history
             if effective_from_history and not all:

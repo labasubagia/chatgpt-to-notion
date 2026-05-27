@@ -86,9 +86,12 @@ def add_prompt_to_images(
                 pbar.update(1)
                 break
             except Exception as exc:
-                if attempt < MAX_RETRIES - 1:
+                is_last = attempt == MAX_RETRIES - 1
+                if not is_last:
                     time.sleep(2**attempt)
-                pbar.write(f"⚠️  {file_path} edit error: {exc}, retrying...")
+                    pbar.write(f"⚠️  {file_path} edit error: {exc}, retrying...")
+                else:
+                    pbar.write(f"❌ {file_path} edit error: {exc}")
         else:
             pbar.write(f"❌ {file_path} edit failed after {MAX_RETRIES} retries")
             pbar.update(1)

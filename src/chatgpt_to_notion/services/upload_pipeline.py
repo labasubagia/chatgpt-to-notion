@@ -97,7 +97,7 @@ async def delete_conversations_after_upload(
     check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
-    del account, check_notion_api
+    del account
     conversation_map: dict[str, set[str]] = defaultdict(set)
     for generation in generations:
         conversation_map[generation.conversation_id].add(generation.id)
@@ -124,6 +124,22 @@ async def delete_conversations_after_upload(
                     pbar.update(1)
                     return
                 try:
+                    if check_notion_api:
+                        for image_id in image_ids:
+                            file_name = f"{image_id}.png"
+                            exists = await is_page_exists_in_db(
+                                chatgpt_session,
+                                db_id,
+                                file_name,
+                                options=options,
+                            )
+                            if not exists:
+                                pbar.write(
+                                    f"⏭️  Conversation {conv_id} skipped, "
+                                    f"{file_name} not found in Notion"
+                                )
+                                pbar.update(1)
+                                return
                     await delete_conversation(
                         chatgpt_session,
                         conv_id,
