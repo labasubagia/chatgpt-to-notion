@@ -19,6 +19,7 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
+from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
 from .config_loader import get_notion_context
 from .filesystem import get_output_path
 from .sqlite_store import (
@@ -256,9 +257,11 @@ async def upload_all_images_to_notion(
     account: str | None = None,
     check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
+    fail_log_path: Path | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
+    counter = StageCounter("Uploaded")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     uploaded_generation_ids = get_uploaded_ids(account) if account else set()
 
@@ -267,25 +270,27 @@ async def upload_all_images_to_notion(
         image_folder_path = get_output_path(image_folder)
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
-        failed_count = 0
 
         async def upload(
             generation_id: str,
             prompt: str | None,
             generation_url: str = "",
         ) -> str | None:
-            nonlocal failed_count
             async with semaphore:
                 ext = image_ext_from_url(generation_url)
                 file_name = f"{generation_id}{ext}"
                 if generation_id in uploaded_generation_ids and not check_notion_api:
-                    pbar.write(f"⏭️  {file_name} skipped, marked uploaded")
+                    counter.add("skipped")
+                    if is_verbose():
+                        pbar.write(f"⏭️  {file_name} skipped, marked uploaded")
                     pbar.update(1)
                     return None
 
                 file_path = image_folder_path / file_name
                 if not os.path.exists(file_path):
-                    pbar.write(f"⚠️  {file_name} not found, skipped")
+                    counter.add("skipped")
+                    if is_verbose():
+                        pbar.write(f"⚠️  {file_name} not found, skipped")
                     pbar.update(1)
                     return None
 
@@ -293,7 +298,9 @@ async def upload_all_images_to_notion(
                     if await is_page_exists_in_db(
                         session, db_id, file_name, options=options
                     ):
-                        pbar.write(f"⏭️  {file_name} skipped, already exists")
+                        counter.add("skipped")
+                        if is_verbose():
+                            pbar.write(f"⏭️  {file_name} skipped, already exists")
                         return generation_id
                     await add_page_to_db(
                         session,
@@ -303,12 +310,20 @@ async def upload_all_images_to_notion(
                         model="ChatGPT",
                         options=options,
                     )
-                    pbar.write(f"✅ {file_name} uploaded")
+                    counter.add("success")
+                    if is_verbose():
+                        pbar.write(f"✅ {file_name} uploaded")
                     return generation_id
                 except Exception as exc:
-                    failed_count += 1
-                    pbar.write(f"❌ {file_name} failed: {exc}")
+                    counter.add("failed")
+                    if is_verbose():
+                        pbar.write(f"❌ {file_name} failed: {exc}")
                     logger.exception("Failed to upload %s", file_name)
+                    if fail_log_path:
+                        write_fail_log(
+                            fail_log_path,
+                            {"stage": "upload", "file": file_name, "error": str(exc)},
+                        )
                     return None
                 finally:
                     pbar.update(1)
@@ -323,8 +338,8 @@ async def upload_all_images_to_notion(
             )
         finally:
             pbar.close()
-            if failed_count > 0:
-                logger.warning("%d upload(s) failed", failed_count)
+            if not is_verbose():
+                print(counter.summary_line())
             if account:
                 successful_ids = {
                     generation_id for generation_id in uploaded_results if generation_id

@@ -9,6 +9,15 @@ from PIL import Image
 
 from chatgpt_to_notion.services.image_service import add_prompt_to_images, edit_png_info, get_png_prompt
 from chatgpt_to_notion.shared.constants import MAX_RETRIES
+from chatgpt_to_notion.shared.verbosity import SIMPLE, VERBOSE, set_verbosity
+
+
+@pytest.fixture(autouse=True)
+def _set_verbose_for_tests():
+    """Set VERBOSE mode so per-file output assertions work."""
+    set_verbosity(VERBOSE)
+    yield
+    set_verbosity(SIMPLE)
 
 
 class TestEditPngInfo:

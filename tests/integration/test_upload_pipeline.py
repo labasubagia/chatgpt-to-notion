@@ -8,6 +8,7 @@ import pytest
 
 from chatgpt_to_notion.adapters import sqlite_store as db
 from chatgpt_to_notion.services import upload_pipeline as chatgpt
+from chatgpt_to_notion.shared.verbosity import SIMPLE, VERBOSE, set_verbosity
 from chatgpt_to_notion.services.upload_pipeline import (
     delete_conversation,
     delete_conversation_of_image_generation_uploaded_to_notion,
@@ -22,6 +23,14 @@ from chatgpt_to_notion.services.upload_pipeline import (
     load_image_generations,
 )
 from tests.conftest import make_mock_response
+
+
+@pytest.fixture(autouse=True)
+def _set_verbose_for_tests():
+    """Set VERBOSE mode so per-file output assertions work."""
+    set_verbosity(VERBOSE)
+    yield
+    set_verbosity(SIMPLE)
 
 
 @pytest.mark.integration

@@ -26,6 +26,7 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
+from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
 
 logger = get_logger("history")
 
@@ -128,6 +129,7 @@ async def fetch_image_generations(
 
         if new_items:
             pbar = tqdm(total=len(new_items), desc="Fetching new generation details")
+            counter = StageCounter("Fetched")
 
             async def fetch_generation_details(
                 image_generation: dict[str, object],
@@ -150,7 +152,9 @@ async def fetch_image_generations(
                             created_at_value,
                             tz=timezone.utc,
                         ).isoformat(timespec="microseconds")
-                        pbar.write(f"✅ img ID {image_generation['id']}")
+                        if is_verbose():
+                            pbar.write(f"✅ img ID {image_generation['id']}")
+                        counter.add("success")
                         return ChatGPTImageGeneration(
                             created_at=created_at,
                             id=str(image_generation["id"]),
@@ -161,7 +165,11 @@ async def fetch_image_generations(
                             prompt=prompt or "",
                         )
                     except Exception as exc:
-                        pbar.write(f"❌ img ID {image_generation['id']} failed: {exc}")
+                        counter.add("failed")
+                        if is_verbose():
+                            pbar.write(
+                                f"❌ img ID {image_generation['id']} failed: {exc}"
+                            )
                         logger.exception(
                             "Failed to fetch image generation %s",
                             image_generation["id"],
@@ -175,6 +183,8 @@ async def fetch_image_generations(
                 return_exceptions=True,
             )
             pbar.close()
+            if not is_verbose():
+                print(counter.summary_line())
             print()
 
             new_generations = [
@@ -215,9 +225,11 @@ async def download_all_images(
     generations: list[ChatGPTImageGeneration],
     download_folder: str,
     options: RuntimeOptions | None = None,
+    fail_log_path: Path | None = None,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Downloading images")
+    counter = StageCounter("Downloaded")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
     download_path = Path(download_folder)
 
@@ -234,7 +246,9 @@ async def download_all_images(
                 file_path = download_path / file_name
 
                 if os.path.exists(file_path):
-                    pbar.write(f"⏭️  {file_name} skipped, already exists")
+                    counter.add("skipped")
+                    if is_verbose():
+                        pbar.write(f"⏭️  {file_name} skipped, already exists")
                     pbar.update(1)
                     return "skipped"
 
@@ -242,26 +256,33 @@ async def download_all_images(
                     await download_image(
                         session, row.url, str(file_path), headers=get_headers(options)
                     )
-                    pbar.write(f"✅ {file_name}")
+                    counter.add("success")
+                    if is_verbose():
+                        pbar.write(f"✅ {file_name}")
                     pbar.update(1)
                     return "success"
                 except Exception as exc:
-                    pbar.write(f"❌ {file_name} failed: {exc}")
+                    counter.add("failed")
+                    if is_verbose():
+                        pbar.write(f"❌ {file_name} failed: {exc}")
                     logger.exception("Failed to download %s", file_name)
+                    if fail_log_path:
+                        write_fail_log(
+                            fail_log_path,
+                            {"stage": "download", "file": file_name, "error": str(exc)},
+                        )
                     pbar.update(1)
                     return "failed"
 
         results = await asyncio.gather(*[download(row) for row in generations])
 
     pbar.close()
-
-    success_count = results.count("success")
-    skipped_count = results.count("skipped")
-    failed_count = results.count("failed")
+    if not is_verbose():
+        print(counter.summary_line())
     logger.info(
         "Download summary: %d success, %d skipped, %d failed",
-        success_count,
-        skipped_count,
-        failed_count,
+        results.count("success"),
+        results.count("skipped"),
+        results.count("failed"),
     )
     print()

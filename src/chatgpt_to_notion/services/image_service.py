@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from ..domain.models import ImageGeneration
 from ..shared.constants import MAX_RETRIES
+from ..shared.verbosity import StageCounter, is_verbose
 
 
 def edit_png_info(
@@ -67,33 +68,45 @@ def add_prompt_to_images(
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Adding prompts to images")
+    counter = StageCounter("Prompts added")
 
     def add_prompt(row: ImageGeneration):
         file_path = Path(folder) / f"{row.id}.png"
         if not os.path.exists(file_path):
-            pbar.write(f"⚠️  {file_path} not found, skipped")
+            counter.add("skipped")
+            if is_verbose():
+                pbar.write(f"⚠️  {file_path} not found, skipped")
             pbar.update(1)
             return
 
         for attempt in range(MAX_RETRIES):
             try:
                 if get_png_prompt(str(file_path)) == row.prompt:
-                    pbar.write(f"⏭️  {file_path} skipped, prompt unchanged")
+                    counter.add("skipped")
+                    if is_verbose():
+                        pbar.write(f"⏭️  {file_path} skipped, prompt unchanged")
                     pbar.update(1)
                     break
                 edit_png_info(str(file_path), payload={"Prompt": row.prompt})
-                pbar.write(f"✅ {file_path}")
+                counter.add("success")
+                if is_verbose():
+                    pbar.write(f"✅ {file_path}")
                 pbar.update(1)
                 break
             except Exception as exc:
                 is_last = attempt == MAX_RETRIES - 1
                 if not is_last:
                     time.sleep(2**attempt)
-                    pbar.write(f"⚠️  {file_path} edit error: {exc}, retrying...")
+                    if is_verbose():
+                        pbar.write(f"⚠️  {file_path} edit error: {exc}, retrying...")
                 else:
-                    pbar.write(f"❌ {file_path} edit error: {exc}")
+                    counter.add("failed")
+                    if is_verbose():
+                        pbar.write(f"❌ {file_path} edit error: {exc}")
         else:
-            pbar.write(f"❌ {file_path} edit failed after {MAX_RETRIES} retries")
+            counter.add("failed")
+            if is_verbose():
+                pbar.write(f"❌ {file_path} edit failed after {MAX_RETRIES} retries")
             pbar.update(1)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -102,4 +115,6 @@ def add_prompt_to_images(
             future.result()
 
     pbar.close()
+    if not is_verbose():
+        print(counter.summary_line())
     print()

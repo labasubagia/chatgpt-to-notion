@@ -13,6 +13,7 @@ from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
 from ..shared.http import get_http_timeout
 from ..shared.logging import get_logger
+from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
 from . import history_service
 from .history_service import (
     download_all_images,
@@ -58,14 +59,13 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
 
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    failed_count = 0
+    counter = StageCounter("Deleted")
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as session:
 
         async def delete_by_id(conversation_id: str, image_ids: set[str]):
-            nonlocal failed_count
             async with semaphore:
                 try:
                     for image_id in image_ids:
@@ -75,7 +75,11 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                             session, db_id, file_name, options=options
                         )
                         if not exists:
-                            pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
+                            counter.add("skipped")
+                            if is_verbose():
+                                pbar.write(
+                                    f"⏭️  {file_name} not found in Notion, skipped"
+                                )
                             return
 
                     await delete_conversation(
@@ -83,10 +87,15 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                         conversation_id,
                         headers=chatgpt_api.get_headers(options),
                     )
-                    pbar.write(f"✅ Conversation ID {conversation_id}")
+                    counter.add("success")
+                    if is_verbose():
+                        pbar.write(f"✅ Conversation ID {conversation_id}")
                 except Exception as exc:
-                    failed_count += 1
-                    pbar.write(f"❌ Conversation ID {conversation_id} failed: {exc}")
+                    counter.add("failed")
+                    if is_verbose():
+                        pbar.write(
+                            f"❌ Conversation ID {conversation_id} failed: {exc}"
+                        )
                     logger.exception(
                         "Failed to delete conversation %s", conversation_id
                     )
@@ -99,8 +108,8 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
         )
 
     pbar.close()
-    if failed_count > 0:
-        logger.warning("%d conversation deletion(s) failed", failed_count)
+    if not is_verbose():
+        print(counter.summary_line())
     print()
 
 
@@ -124,22 +133,23 @@ async def delete_conversations_after_upload(
 
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    failed_count = 0
+    counter = StageCounter("Deleted")
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as chatgpt_session:
 
         async def delete_conv(conv_id: str):
-            nonlocal failed_count
             async with semaphore:
                 image_ids = conversation_map[conv_id]
                 remaining = image_ids - uploaded_ids
                 if remaining:
-                    pbar.write(
-                        f"⏭️  Conversation {conv_id} skipped, "
-                        f"{len(remaining)} image(s) not uploaded"
-                    )
+                    counter.add("skipped")
+                    if is_verbose():
+                        pbar.write(
+                            f"⏭️  Conversation {conv_id} skipped, "
+                            f"{len(remaining)} image(s) not uploaded"
+                        )
                     pbar.update(1)
                     return
                 try:
@@ -154,10 +164,12 @@ async def delete_conversations_after_upload(
                                 options=options,
                             )
                             if not exists:
-                                pbar.write(
-                                    f"⏭️  Conversation {conv_id} skipped, "
-                                    f"{file_name} not found in Notion"
-                                )
+                                counter.add("skipped")
+                                if is_verbose():
+                                    pbar.write(
+                                        f"⏭️  Conversation {conv_id} skipped, "
+                                        f"{file_name} not found in Notion"
+                                    )
                                 pbar.update(1)
                                 return
                     await delete_conversation(
@@ -165,10 +177,13 @@ async def delete_conversations_after_upload(
                         conv_id,
                         headers=chatgpt_api.get_headers(options),
                     )
-                    pbar.write(f"✅ Conversation {conv_id}")
+                    counter.add("success")
+                    if is_verbose():
+                        pbar.write(f"✅ Conversation {conv_id}")
                 except Exception as exc:
-                    failed_count += 1
-                    pbar.write(f"❌ Conversation {conv_id} failed: {exc}")
+                    counter.add("failed")
+                    if is_verbose():
+                        pbar.write(f"❌ Conversation {conv_id} failed: {exc}")
                     logger.exception("Failed to delete conversation %s", conv_id)
                 finally:
                     pbar.update(1)
@@ -179,8 +194,8 @@ async def delete_conversations_after_upload(
         )
 
     pbar.close()
-    if failed_count > 0:
-        logger.warning("%d conversation deletion(s) failed", failed_count)
+    if not is_verbose():
+        print(counter.summary_line())
     print()
 
 
@@ -198,6 +213,7 @@ async def upload_to_notion(
     timezone_name: str | None = None,
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
+    fail_log_path: Path | None = None,
 ) -> None:
     if not db_id:
         raise ValueError("db_id must not be empty")
@@ -234,6 +250,7 @@ async def upload_to_notion(
         generations=generations,
         download_folder=str(resolved_image_folder),
         options=options,
+        fail_log_path=fail_log_path,
     )
 
     if add_prompt_to_image:
@@ -247,6 +264,7 @@ async def upload_to_notion(
             account=account,
             check_notion_api=check_notion_api,
             options=options,
+            fail_log_path=fail_log_path,
         )
 
     if len(remote_generations) <= 0:
@@ -274,6 +292,7 @@ async def upload_to_notion_single(
     timezone_name: str | None = None,
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
+    fail_log_path: Path | None = None,
 ) -> None:
     if not account:
         raise ValueError("account is required")
@@ -310,7 +329,7 @@ async def upload_to_notion_single(
     db_lock = asyncio.Lock()
     pbar = tqdm(total=len(generations), desc="Processing files")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-    failed_count = 0
+    counter = StageCounter("Processed")
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
@@ -318,7 +337,6 @@ async def upload_to_notion_single(
         async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
 
             async def process_one(generation: ChatGPTImageGeneration):
-                nonlocal failed_count
                 async with semaphore:
                     ext = image_ext_from_url(generation.url)
                     file_name = f"{generation.id}{ext}"
@@ -335,7 +353,11 @@ async def upload_to_notion_single(
                         # Claim the ID under lock to prevent duplicate uploads
                         async with db_lock:
                             if generation.id in uploaded_ids and not check_notion_api:
-                                pbar.write(f"⏭️  {file_name} skipped, already uploaded")
+                                counter.add("skipped")
+                                if is_verbose():
+                                    pbar.write(
+                                        f"⏭️  {file_name} skipped, already uploaded"
+                                    )
                                 return
                             uploaded_ids.add(generation.id)
 
@@ -344,7 +366,9 @@ async def upload_to_notion_single(
                         ):
                             async with db_lock:
                                 mark_generations_uploaded(account, {generation.id})
-                            pbar.write(f"⏭️  {file_name} skipped, already in Notion")
+                            counter.add("skipped")
+                            if is_verbose():
+                                pbar.write(f"⏭️  {file_name} skipped, already in Notion")
                             return
 
                         if add_prompt_to_image:
@@ -364,14 +388,26 @@ async def upload_to_notion_single(
 
                         async with db_lock:
                             mark_generations_uploaded(account, {generation.id})
-                        pbar.write(f"✅ {file_name} uploaded")
+                        counter.add("uploaded")
+                        if is_verbose():
+                            pbar.write(f"✅ {file_name} uploaded")
                     except Exception as exc:
                         # Release the claim so another attempt can retry
                         async with db_lock:
                             uploaded_ids.discard(generation.id)
-                        failed_count += 1
-                        pbar.write(f"❌ {file_name} failed: {exc}")
+                        counter.add("failed")
+                        if is_verbose():
+                            pbar.write(f"❌ {file_name} failed: {exc}")
                         logger.exception("Failed to process %s", file_name)
+                        if fail_log_path:
+                            write_fail_log(
+                                fail_log_path,
+                                {
+                                    "stage": "upload",
+                                    "file": file_name,
+                                    "error": str(exc),
+                                },
+                            )
                     finally:
                         pbar.update(1)
 
@@ -381,8 +417,8 @@ async def upload_to_notion_single(
             )
 
     pbar.close()
-    if failed_count > 0:
-        logger.warning("%d file(s) failed to process", failed_count)
+    if not is_verbose():
+        print(counter.summary_line())
     print()
 
     if len(remote_generations) <= 0:

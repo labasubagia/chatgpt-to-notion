@@ -1,6 +1,7 @@
 """Upload CLI commands."""
 
 import asyncio
+from pathlib import Path
 from typing import Literal
 
 import typer
@@ -13,6 +14,7 @@ from ...adapters.config_loader import (
 from ...domain.models import RuntimeOptions
 from ...services import upload_pipeline
 from ...shared.console import print_account_log_footer, print_account_log_header
+from ...shared.verbosity import QUIET, VERBOSE, set_verbosity
 
 
 def validate_db_id(db_id: str | None) -> str | None:
@@ -81,8 +83,24 @@ def register(app: typer.Typer) -> None:
             "single",
             help="Processing mode: single (per-file, resilient) or batch (parallel)",
         ),
+        verbose: bool = typer.Option(
+            False, "--verbose", "-v", help="Show per-file output"
+        ),
+        quiet: bool = typer.Option(
+            False, "--quiet", "-q", help="Show only summary counts"
+        ),
+        fail_log: Path | None = typer.Option(  # noqa: B008
+            None, help="Write failed items to a JSONL log file"
+        ),
     ) -> None:
         """Upload image generations to Notion."""
+        if verbose and quiet:
+            raise typer.BadParameter("Cannot use --verbose and --quiet together")
+        if verbose:
+            set_verbosity(VERBOSE)
+        elif quiet:
+            set_verbosity(QUIET)
+
         target_accounts = _resolve_target_accounts(account, config)
         total_accounts = len(target_accounts)
         for index, target_account in enumerate(target_accounts, start=1):
@@ -139,6 +157,7 @@ def register(app: typer.Typer) -> None:
                     timezone_name=timezone,
                     no_cache=no_cache,
                     options=options,
+                    fail_log_path=fail_log,
                 )
             )
             print_account_log_footer(
