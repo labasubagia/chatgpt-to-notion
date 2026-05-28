@@ -380,3 +380,25 @@ async def async_set_cached_data_sources(
     db_path: Path | None = None,
 ) -> None:
     set_cached_data_sources(db_id, sources, ttl_days, db_path)
+
+
+def backup_db(backup_path: Path, db_path: Path | None = None) -> Path:
+    """Copy the database to *backup_path* using the SQLite backup API.
+
+    Uses sqlite3 ``connection.backup`` so the copy is consistent even
+    while other connections are writing (WAL mode must be active, which
+    it is via ``_get_connection``).
+    """
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+    src_conn = _get_connection(db_path)
+    try:
+        dst_conn = sqlite3.connect(str(backup_path))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+
+    return backup_path

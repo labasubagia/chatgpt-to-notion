@@ -464,3 +464,46 @@ class TestCountRecentGenerations:
         count = sqlite_store.count_recent_generations("acc", since, db_path=tmp_db_path)
         assert count == 0
 
+
+class TestBackupDb:
+    def test_backup_creates_copy(self, tmp_path, sample_generation):
+        src = tmp_path / "source.db"
+        backup = tmp_path / "backup" / "copy.db"
+
+        sqlite_store.init_db(src)
+        sqlite_store.upsert_generations("acc", [sample_generation], db_path=src)
+
+        result = sqlite_store.backup_db(backup, db_path=src)
+
+        assert result == backup
+        assert backup.exists()
+
+        conn = sqlite3.connect(str(backup))
+        row = conn.execute(
+            "SELECT COUNT(*) FROM image_generations"
+        ).fetchone()
+        conn.close()
+        assert row[0] == 1
+
+    def test_backup_creates_parent_dirs(self, tmp_path):
+        src = tmp_path / "source.db"
+        sqlite_store.init_db(src)
+
+        backup = tmp_path / "deep" / "nested" / "backup.db"
+        sqlite_store.backup_db(backup, db_path=src)
+
+        assert backup.exists()
+
+    def test_backup_with_absolute_path(self, tmp_path, sample_generation):
+        src = tmp_path / "source.db"
+        backup = (tmp_path / "abs" / "backup.db").resolve()
+
+        sqlite_store.init_db(src)
+        sqlite_store.upsert_generations("acc", [sample_generation], db_path=src)
+
+        result = sqlite_store.backup_db(backup, db_path=src)
+
+        assert result == backup
+        assert result.is_absolute()
+        assert backup.exists()
+
