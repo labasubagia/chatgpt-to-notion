@@ -84,6 +84,11 @@ class TestResolveImageFolder:
         path = resolve_image_folder(None)
         assert path == tmp_output_dir / "images"
 
+    def test_none_creates_default_directory(self, tmp_output_dir, monkeypatch):
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
+        path = resolve_image_folder(None)
+        assert path.exists()
+
     def test_absolute_path_returned_as_is(self):
         path = resolve_image_folder("/custom/absolute/path")
         assert path == Path("/custom/absolute/path")

@@ -60,7 +60,9 @@ def get_image_folder(options: RuntimeOptions | None = None) -> Path:
                 return _resolve_folder_path(resolved.image_folder, "")
         except ValueError:
             pass
-    return Path(constants.OUTPUT_PATH).resolve() / "images"
+    path = Path(constants.OUTPUT_PATH).resolve() / "images"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def resolve_image_folder(
