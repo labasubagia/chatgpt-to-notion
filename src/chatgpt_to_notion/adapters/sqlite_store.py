@@ -220,7 +220,7 @@ def mark_uploaded(
 
 def delete_old_generations(
     account: str,
-    keep_days: int = 2,
+    keep_days: int = 3,
     db_path: Path | None = None,
 ) -> int:
     cutoff = datetime.now().astimezone() - timedelta(days=keep_days)

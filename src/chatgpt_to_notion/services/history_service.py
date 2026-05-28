@@ -39,7 +39,7 @@ get_prompt_from_image_node_in_conversation = (
 def save_generations(
     account: str,
     data: Sequence[dict] | Sequence[BaseModel],
-    keep_days: int = 2,
+    keep_days: int = 3,
     display_days: int = 1,
 ) -> None:
     if len(data) == 0:
