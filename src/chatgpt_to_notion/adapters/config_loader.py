@@ -2,6 +2,7 @@
 
 import base64
 import tomllib
+from functools import lru_cache
 from pathlib import Path
 
 from ..domain.models import (
@@ -14,6 +15,7 @@ from ..domain.models import (
 from ..shared.constants import DEFAULT_CONFIG_PATH
 
 
+@lru_cache(maxsize=8)
 def _load_toml_config(config_path: str | None = None) -> AppConfig | None:
     path = Path(config_path or DEFAULT_CONFIG_PATH)
     if not path.exists():

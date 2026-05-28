@@ -117,6 +117,72 @@ class TestNotionDatabase:
                 )
                 assert exists is False
 
+    async def test_is_page_exists_malformed_page_structure(
+        self, mock_aiohttp_session, isolated_db
+    ):
+        """Should skip malformed pages without crashing."""
+        with patch(
+            "chatgpt_to_notion.adapters.notion_api.get_db_data_sources",
+            new_callable=AsyncMock,
+        ) as mock_get_ds:
+            mock_get_ds.return_value = [{"id": "ds_123"}]
+
+            with patch(
+                "chatgpt_to_notion.adapters.notion_api.query_data_source",
+                new_callable=AsyncMock,
+            ) as mock_query:
+                mock_query.return_value = {
+                    "results": [
+                        {
+                            "id": "page_bad",
+                            "properties": {
+                                "Name": {"title": []}
+                            },
+                        },
+                        {
+                            "id": "page_good",
+                            "properties": {
+                                "Name": {
+                                    "title": [
+                                        {"text": {"content": "test.png"}}
+                                    ]
+                                }
+                            },
+                        },
+                    ]
+                }
+
+                exists = await is_page_exists_in_db(
+                    mock_aiohttp_session, "test_db_123", "test.png"
+                )
+                assert exists is True
+
+    async def test_is_page_exists_missing_properties(
+        self, mock_aiohttp_session, isolated_db
+    ):
+        """Should skip pages with missing properties without crashing."""
+        with patch(
+            "chatgpt_to_notion.adapters.notion_api.get_db_data_sources",
+            new_callable=AsyncMock,
+        ) as mock_get_ds:
+            mock_get_ds.return_value = [{"id": "ds_123"}]
+
+            with patch(
+                "chatgpt_to_notion.adapters.notion_api.query_data_source",
+                new_callable=AsyncMock,
+            ) as mock_query:
+                mock_query.return_value = {
+                    "results": [
+                        {"id": "page_no_name", "properties": {}}
+                    ]
+                }
+
+                exists = await is_page_exists_in_db(
+                    mock_aiohttp_session, "test_db_123", "test.png"
+                )
+                assert exists is False
+
+
 
 @pytest.mark.integration
 class TestNotionUpload:
@@ -185,6 +251,48 @@ class TestNotionUpload:
             mock_aiohttp_session, "upload_123", str(img_path)
         )
         assert result == {"id": "upload_123", "status": "complete"}
+
+    async def test_send_upload_img_400_generic_recovery(
+        self, mock_aiohttp_session, sample_image_bytes, tmp_path
+    ):
+        """Should recover on any 400 from send endpoint, not just specific text."""
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(sample_image_bytes)
+
+        mock_aiohttp_session._responses = [
+            make_mock_response(
+                {"object": "error"},
+                status=400,
+                reason="Bad Request",
+                text_data='{"message": "Some other 400 error"}',
+            )
+        ]
+
+        result = await send_upload_img(
+            mock_aiohttp_session, "upload_123", str(img_path)
+        )
+        assert result == {"id": "upload_123", "status": "complete"}
+
+    async def test_send_upload_img_non_400_raises(
+        self, mock_aiohttp_session, sample_image_bytes, tmp_path
+    ):
+        """Should raise on non-400 errors (e.g. 403 forbidden)."""
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(sample_image_bytes)
+
+        mock_aiohttp_session._responses = [
+            make_mock_response(
+                {"message": "Forbidden"},
+                status=403,
+                reason="Forbidden",
+                text_data='{"message": "Forbidden"}',
+            )
+        ]
+
+        with pytest.raises(Exception):
+            await send_upload_img(
+                mock_aiohttp_session, "upload_123", str(img_path)
+            )
 
     async def test_add_page_to_db(
         self, mock_aiohttp_session, sample_image_bytes, tmp_path

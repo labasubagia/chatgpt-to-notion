@@ -82,6 +82,15 @@ def sample_notion_response():
 
 
 @pytest.fixture(autouse=True)
+def clear_config_cache():
+    """Clear the config cache before each test to avoid stale results."""
+    from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+    _load_toml_config.cache_clear()
+    yield
+    _load_toml_config.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def mock_config_toml(tmp_path, monkeypatch):
     """Create a TOML config and run tests from that directory."""
     config_file = tmp_path / "config.toml"

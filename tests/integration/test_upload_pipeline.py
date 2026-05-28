@@ -11,6 +11,7 @@ from chatgpt_to_notion.services import upload_pipeline as chatgpt
 from chatgpt_to_notion.services.upload_pipeline import (
     delete_conversation,
     delete_conversation_of_image_generation_uploaded_to_notion,
+    delete_conversations_after_upload,
     download_all_images,
     get_conversation_details,
     get_conversation_mapping_key_by_asset_pointer,
@@ -764,6 +765,50 @@ class TestChatGPTDeleteConversation:
 
                 # Should only delete once per conversation
                 assert mock_delete.call_count == 1
+
+    async def test_delete_conversations_after_upload_skips_when_notion_missing(
+        self, monkeypatch, capsys
+    ):
+        """Should skip deletion when check_notion_api=True and page not in Notion."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:00:00",
+                id="img_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/img1.png",
+                prompt="test 1",
+            ),
+        ]
+        uploaded_ids = {"img_1"}
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db",
+            new_callable=AsyncMock,
+        ) as mock_exists:
+            mock_exists.return_value = False
+
+            with patch(
+                "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+                new_callable=AsyncMock,
+            ) as mock_delete:
+                await delete_conversations_after_upload(
+                    generations=generations,
+                    db_id="test_db",
+                    account="test_account",
+                    uploaded_ids=uploaded_ids,
+                    check_notion_api=True,
+                )
+
+                mock_exists.assert_called()
+                mock_delete.assert_not_called()
+                captured = capsys.readouterr()
+                assert "not found in Notion" in captured.out
 
 
 @pytest.mark.integration
