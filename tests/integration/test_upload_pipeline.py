@@ -810,6 +810,101 @@ class TestChatGPTDeleteConversation:
                 captured = capsys.readouterr()
                 assert "not found in Notion" in captured.out
 
+    async def test_delete_skips_conversation_when_one_image_missing_in_notion(
+        self, monkeypatch, capsys
+    ):
+        """Should skip entire conversation if any image is missing in Notion."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:00:00+00:00",
+                id="img_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/1.png",
+                prompt="test 1",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:01:00+00:00",
+                id="img_2",
+                conversation_id="conv_1",
+                message_id="msg_2",
+                asset_pointer="asset_2",
+                url="https://example.com/2.png",
+                prompt="test 2",
+            ),
+        ]
+
+        async def exists_side_effect(session, db_id, file_name, options=None):
+            return "img_1" in file_name
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db",
+            new_callable=AsyncMock,
+            side_effect=exists_side_effect,
+        ):
+            with patch(
+                "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+                new_callable=AsyncMock,
+            ) as mock_delete:
+                await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
+                    generations, "test_db"
+                )
+
+                mock_delete.assert_not_called()
+                captured = capsys.readouterr()
+                assert "not found in Notion" in captured.out
+
+    async def test_delete_after_upload_skips_when_not_all_uploaded(
+        self, monkeypatch, capsys
+    ):
+        """Should skip conversation when only some images are uploaded."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:00:00+00:00",
+                id="img_1",
+                conversation_id="conv_1",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/1.png",
+                prompt="test 1",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:01:00+00:00",
+                id="img_2",
+                conversation_id="conv_1",
+                message_id="msg_2",
+                asset_pointer="asset_2",
+                url="https://example.com/2.png",
+                prompt="test 2",
+            ),
+        ]
+        uploaded_ids = {"img_1"}
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+            new_callable=AsyncMock,
+        ) as mock_delete:
+            await chatgpt.delete_conversations_after_upload(
+                generations=generations,
+                db_id="test_db",
+                account="test_acc",
+                uploaded_ids=uploaded_ids,
+                check_notion_api=False,
+            )
+
+            mock_delete.assert_not_called()
+            captured = capsys.readouterr()
+            assert "not uploaded" in captured.out
+
 
 @pytest.mark.integration
 class TestChatGPTUploadToNotionComprehensive:
@@ -1365,3 +1460,84 @@ class TestChatGPTUploadToNotionSingle:
 
                 # Should delete once for the conversation
                 assert mock_delete.call_count == 1
+
+    async def test_single_mode_one_failure_does_not_crash_others(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """When one upload fails, remaining items should still be processed."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        (tmp_path / "images").mkdir(exist_ok=True)
+        for name in ("ok_1", "fail", "ok_2"):
+            (tmp_path / "images" / f"{name}.png").write_bytes(b"dummy")
+
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:00:00+00:00",
+                id=name,
+                conversation_id=f"conv_{name}",
+                message_id=f"msg_{name}",
+                asset_pointer=f"asset_{name}",
+                url=f"https://example.com/{name}.png",
+                prompt=f"test {name}",
+            )
+            for name in ("ok_1", "fail", "ok_2")
+        ]
+
+        call_count = 0
+        upload_count = 0
+
+        async def mock_add_page(*args, **kwargs):
+            nonlocal call_count, upload_count
+            call_count += 1
+            # prompt is the 4th positional arg — "test fail" for the failing item
+            prompt = args[3] if len(args) > 3 else ""
+            if "fail" in str(prompt):
+                raise RuntimeError("upload exploded")
+            upload_count += 1
+            return {"id": "page_123"}
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations",
+            new_callable=AsyncMock,
+            return_value=(generations, generations),
+        ):
+            with patch(
+                "chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids",
+                return_value=set(),
+            ):
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ):
+                    with patch(
+                        "chatgpt_to_notion.services.history_service.download_image",
+                        new_callable=AsyncMock,
+                    ):
+                        with patch(
+                            "chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single",
+                        ):
+                            with patch(
+                                "chatgpt_to_notion.services.upload_pipeline.add_page_to_db",
+                                new_callable=AsyncMock,
+                                side_effect=mock_add_page,
+                            ):
+                                with patch(
+                                    "chatgpt_to_notion.services.upload_pipeline.mark_generations_uploaded",
+                                ):
+                                    await chatgpt.upload_to_notion_single(
+                                        image_folder=str(tmp_path / "images"),
+                                        db_id="test_db",
+                                        account="test_acc",
+                                        upload_to_notion=True,
+                                        add_prompt_to_image=True,
+                                        limit=10,
+                                    )
+
+        captured = capsys.readouterr()
+        assert "fail.png failed" in captured.out
+        assert call_count == 3
+        assert upload_count == 2

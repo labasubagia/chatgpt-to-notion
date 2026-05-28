@@ -12,6 +12,7 @@ from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
 from ..shared.http import get_http_timeout
+from ..shared.logging import get_logger
 from . import history_service
 from .history_service import (
     download_all_images,
@@ -22,6 +23,8 @@ from .history_service import (
     save_generations,
 )
 from .image_service import add_prompt_to_image_single, add_prompt_to_images
+
+logger = get_logger("upload_pipeline")
 
 get_conversations = chatgpt_api.get_conversations
 get_conversation_details = chatgpt_api.get_conversation_details
@@ -50,14 +53,19 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
         conversation_map[generation.conversation_id].add(generation.id)
         generation_urls[generation.id] = generation.url
 
+    if not conversation_map:
+        return
+
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    failed_count = 0
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as session:
 
         async def delete_by_id(conversation_id: str, image_ids: set[str]):
+            nonlocal failed_count
             async with semaphore:
                 try:
                     for image_id in image_ids:
@@ -77,15 +85,22 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                     )
                     pbar.write(f"✅ Conversation ID {conversation_id}")
                 except Exception as exc:
+                    failed_count += 1
                     pbar.write(f"❌ Conversation ID {conversation_id} failed: {exc}")
+                    logger.exception(
+                        "Failed to delete conversation %s", conversation_id
+                    )
                 finally:
                     pbar.update(1)
 
         await asyncio.gather(
-            *[delete_by_id(conv_id, ids) for conv_id, ids in conversation_map.items()]
+            *[delete_by_id(conv_id, ids) for conv_id, ids in conversation_map.items()],
+            return_exceptions=True,
         )
 
     pbar.close()
+    if failed_count > 0:
+        logger.warning("%d conversation deletion(s) failed", failed_count)
     print()
 
 
@@ -109,12 +124,14 @@ async def delete_conversations_after_upload(
 
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    failed_count = 0
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as chatgpt_session:
 
         async def delete_conv(conv_id: str):
+            nonlocal failed_count
             async with semaphore:
                 image_ids = conversation_map[conv_id]
                 remaining = image_ids - uploaded_ids
@@ -149,17 +166,21 @@ async def delete_conversations_after_upload(
                         headers=chatgpt_api.get_headers(options),
                     )
                     pbar.write(f"✅ Conversation {conv_id}")
-                    conversation_map.pop(conv_id, None)
                 except Exception as exc:
+                    failed_count += 1
                     pbar.write(f"❌ Conversation {conv_id} failed: {exc}")
+                    logger.exception("Failed to delete conversation %s", conv_id)
                 finally:
                     pbar.update(1)
 
         await asyncio.gather(
-            *[delete_conv(conv_id) for conv_id in list(conversation_map.keys())]
+            *[delete_conv(conv_id) for conv_id in conversation_map],
+            return_exceptions=True,
         )
 
     pbar.close()
+    if failed_count > 0:
+        logger.warning("%d conversation deletion(s) failed", failed_count)
     print()
 
 
@@ -178,6 +199,9 @@ async def upload_to_notion(
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
 ) -> None:
+    if not db_id:
+        raise ValueError("db_id must not be empty")
+
     resolved_image_folder = resolve_image_folder(image_folder, options)
     sqlite_store.init_db()
 
@@ -253,6 +277,8 @@ async def upload_to_notion_single(
 ) -> None:
     if not account:
         raise ValueError("account is required")
+    if not db_id:
+        raise ValueError("db_id must not be empty")
 
     resolved_image_folder = resolve_image_folder(image_folder, options)
     sqlite_store.init_db()
@@ -283,7 +309,8 @@ async def upload_to_notion_single(
     uploaded_ids = get_uploaded_generation_ids(account)
     db_lock = asyncio.Lock()
     pbar = tqdm(total=len(generations), desc="Processing files")
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    failed_count = 0
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
@@ -291,6 +318,7 @@ async def upload_to_notion_single(
         async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
 
             async def process_one(generation: ChatGPTImageGeneration):
+                nonlocal failed_count
                 async with semaphore:
                     ext = image_ext_from_url(generation.url)
                     file_name = f"{generation.id}{ext}"
@@ -341,15 +369,20 @@ async def upload_to_notion_single(
                         # Release the claim so another attempt can retry
                         async with db_lock:
                             uploaded_ids.discard(generation.id)
+                        failed_count += 1
                         pbar.write(f"❌ {file_name} failed: {exc}")
+                        logger.exception("Failed to process %s", file_name)
                     finally:
                         pbar.update(1)
 
             await asyncio.gather(
-                *[process_one(generation) for generation in generations]
+                *[process_one(generation) for generation in generations],
+                return_exceptions=True,
             )
 
     pbar.close()
+    if failed_count > 0:
+        logger.warning("%d file(s) failed to process", failed_count)
     print()
 
     if len(remote_generations) <= 0:
