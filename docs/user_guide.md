@@ -149,6 +149,24 @@ Removes temporary local downloaded assets or index caches safely.
   uv run chatgpt-to-notion clean-output-path
   ```
 
+### 4. `backup-db`
+Copies the local SQLite database to a target path using the SQLite backup API. Produces a consistent snapshot even if other processes are writing to the database.
+- **Source Module**: [src/chatgpt_to_notion/cli/commands/maintenance.py](requirement.md)
+- **Execution Command**:
+  ```bash
+  uv run chatgpt-to-notion backup-db <TARGET>
+  ```
+- **Arguments**:
+  - `<TARGET>`: Destination file path for the backup (required). Accepts both relative and absolute paths; parent directories are created automatically.
+- **Examples**:
+  ```bash
+  # Relative path
+  uv run chatgpt-to-notion backup-db ./backups/chatgpt.db
+
+  # Absolute path
+  uv run chatgpt-to-notion backup-db /home/user/backups/chatgpt.db
+  ```
+
 ---
 
 ## 5. Automated Scheduling & Background Operations

@@ -100,6 +100,12 @@ Clean generated output:
 uv run chatgpt-to-notion clean-output-path
 ```
 
+Backup the local SQLite database:
+
+```bash
+uv run chatgpt-to-notion backup-db ./backups/chatgpt.db
+```
+
 ## CLI Notes
 
 - Image generations are stored in a local SQLite database (`output/chatgpt.db`)
