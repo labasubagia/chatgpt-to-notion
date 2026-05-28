@@ -30,37 +30,38 @@ def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path | None = None) -> None:
-    conn = _get_connection(db_path)
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS image_generations (
-            id TEXT PRIMARY KEY,
-            created_at TEXT NOT NULL,
-            conversation_id TEXT NOT NULL,
-            message_id TEXT NOT NULL,
-            asset_pointer TEXT NOT NULL,
-            url TEXT NOT NULL,
-            prompt TEXT DEFAULT '',
-            uploaded_at TEXT DEFAULT '',
-            account TEXT DEFAULT ''
-        );
+    with _lock:
+        conn = _get_connection(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS image_generations (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                asset_pointer TEXT NOT NULL,
+                url TEXT NOT NULL,
+                prompt TEXT DEFAULT '',
+                uploaded_at TEXT DEFAULT '',
+                account TEXT DEFAULT ''
+            );
 
-        CREATE INDEX IF NOT EXISTS idx_generations_account
-            ON image_generations(account);
-        CREATE INDEX IF NOT EXISTS idx_generations_created_at
-            ON image_generations(created_at);
-        CREATE INDEX IF NOT EXISTS idx_generations_uploaded_at
-            ON image_generations(uploaded_at);
+            CREATE INDEX IF NOT EXISTS idx_generations_account
+                ON image_generations(account);
+            CREATE INDEX IF NOT EXISTS idx_generations_created_at
+                ON image_generations(created_at);
+            CREATE INDEX IF NOT EXISTS idx_generations_uploaded_at
+                ON image_generations(uploaded_at);
 
-        CREATE TABLE IF NOT EXISTS cache_data_sources (
-            db_id TEXT PRIMARY KEY,
-            data_sources_json TEXT NOT NULL,
-            expires_at TEXT NOT NULL
-        );
-        """
-    )
-    conn.commit()
-    conn.close()
+            CREATE TABLE IF NOT EXISTS cache_data_sources (
+                db_id TEXT PRIMARY KEY,
+                data_sources_json TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.commit()
+        conn.close()
 
 
 def upsert_generations(
@@ -221,7 +222,7 @@ def delete_old_generations(
     keep_days: int = 2,
     db_path: Path | None = None,
 ) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+    cutoff = datetime.now().astimezone() - timedelta(days=keep_days)
     with _lock:
         conn = _get_connection(db_path)
         try:
