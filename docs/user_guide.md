@@ -167,6 +167,24 @@ Copies the local SQLite database to a target path using the SQLite backup API. P
   uv run chatgpt-to-notion backup-db /home/user/backups/chatgpt.db
   ```
 
+### 5. `restore-db`
+Overwrites the local SQLite database with a backup file. Uses the SQLite backup API for a consistent copy, then replaces the target atomically via `os.replace`.
+- **Source Module**: [src/chatgpt_to_notion/cli/commands/maintenance.py](requirement.md)
+- **Execution Command**:
+  ```bash
+  uv run chatgpt-to-notion restore-db <SOURCE>
+  ```
+- **Arguments**:
+  - `<SOURCE>`: Path to the backup file to restore from (required). Raises `FileNotFoundError` if the file does not exist.
+- **Examples**:
+  ```bash
+  # Relative path
+  uv run chatgpt-to-notion restore-db ./backups/chatgpt.db
+
+  # Absolute path
+  uv run chatgpt-to-notion restore-db /home/user/backups/chatgpt.db
+  ```
+
 ---
 
 ## 5. Automated Scheduling & Background Operations

@@ -1,6 +1,7 @@
 """SQLite persistence layer for image generations and API caches."""
 
 import json
+import os
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -402,3 +403,39 @@ def backup_db(backup_path: Path, db_path: Path | None = None) -> Path:
         src_conn.close()
 
     return backup_path
+
+
+def restore_db(backup_path: Path, db_path: Path | None = None) -> Path:
+    """Overwrite the database at *db_path* with *backup_path*.
+
+    Uses sqlite3 ``connection.backup`` for a consistent copy, then
+    replaces the target in-place.  If the target already exists it is
+    overwritten atomically via ``os.replace``.
+    """
+    if not backup_path.exists():
+        raise FileNotFoundError(f"Backup file not found: {backup_path}")
+
+    target = db_path or _get_db_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    tmp = target.with_suffix(".tmp")
+    try:
+        backup_conn = sqlite3.connect(str(backup_path))
+        try:
+            tmp_conn = sqlite3.connect(str(tmp))
+            try:
+                backup_conn.backup(tmp_conn)
+            finally:
+                tmp_conn.close()
+        finally:
+            backup_conn.close()
+
+        os.replace(str(tmp), str(target))
+    except BaseException:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+    return target

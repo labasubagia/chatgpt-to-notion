@@ -106,6 +106,12 @@ Backup the local SQLite database:
 uv run chatgpt-to-notion backup-db ./backups/chatgpt.db
 ```
 
+Restore the local SQLite database from a backup:
+
+```bash
+uv run chatgpt-to-notion restore-db ./backups/chatgpt.db
+```
+
 ## CLI Notes
 
 - Image generations are stored in a local SQLite database (`output/chatgpt.db`)

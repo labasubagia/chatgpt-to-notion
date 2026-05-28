@@ -507,3 +507,80 @@ class TestBackupDb:
         assert result.is_absolute()
         assert backup.exists()
 
+
+class TestRestoreDb:
+    def test_restore_replaces_database(self, tmp_path, sample_generation):
+        backup = tmp_path / "backup.db"
+        target = tmp_path / "target.db"
+
+        sqlite_store.init_db(backup)
+        sqlite_store.upsert_generations("acc", [sample_generation], db_path=backup)
+
+        result = sqlite_store.restore_db(backup, db_path=target)
+
+        assert result == target
+        assert target.exists()
+
+        conn = sqlite3.connect(str(target))
+        row = conn.execute("SELECT COUNT(*) FROM image_generations").fetchone()
+        conn.close()
+        assert row[0] == 1
+
+    def test_restore_overwrites_existing_database(self, tmp_path):
+        backup = tmp_path / "backup.db"
+        target = tmp_path / "target.db"
+
+        # Create a target with different data
+        sqlite_store.init_db(target)
+        gen_old = ChatGPTImageGeneration(
+            created_at="2024-01-01T00:00:00+00:00",
+            id="old_gen",
+            conversation_id="conv_old",
+            message_id="msg_old",
+            asset_pointer="asset_old",
+            url="https://example.com/old.png",
+            prompt="old",
+        )
+        sqlite_store.upsert_generations("acc", [gen_old], db_path=target)
+
+        # Create backup with new data
+        gen_new = ChatGPTImageGeneration(
+            created_at="2024-01-02T00:00:00+00:00",
+            id="new_gen",
+            conversation_id="conv_new",
+            message_id="msg_new",
+            asset_pointer="asset_new",
+            url="https://example.com/new.png",
+            prompt="new",
+        )
+        sqlite_store.init_db(backup)
+        sqlite_store.upsert_generations("acc", [gen_new], db_path=backup)
+
+        sqlite_store.restore_db(backup, db_path=target)
+
+        conn = sqlite3.connect(str(target))
+        row = conn.execute(
+            "SELECT id FROM image_generations"
+        ).fetchone()
+        conn.close()
+        assert row[0] == "new_gen"
+
+    def test_restore_missing_backup_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="Backup file not found"):
+            sqlite_store.restore_db(
+                tmp_path / "nonexistent.db",
+                db_path=tmp_path / "target.db",
+            )
+
+    def test_restore_creates_parent_dirs(self, tmp_path, sample_generation):
+        backup = tmp_path / "backup.db"
+        target = tmp_path / "deep" / "nested" / "target.db"
+
+        sqlite_store.init_db(backup)
+        sqlite_store.upsert_generations("acc", [sample_generation], db_path=backup)
+
+        result = sqlite_store.restore_db(backup, db_path=target)
+
+        assert result == target
+        assert target.exists()
+
