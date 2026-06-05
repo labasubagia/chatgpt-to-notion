@@ -13,7 +13,12 @@ from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
 from ..shared.http import exc_detail, get_http_timeout
 from ..shared.logging import get_logger
-from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
+from ..shared.verbosity import (
+    StageCounter,
+    is_verbose,
+    log_service_error,
+    write_fail_log,
+)
 from . import history_service
 from .history_service import (
     download_all_images,
@@ -96,19 +101,11 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                         pbar.write(
                             f"❌ Conversation ID {conversation_id} failed: {exc}"
                         )
-                    detail = exc_detail(exc)
-                    if is_verbose():
-                        logger.exception(
-                            "Failed to delete conversation %s\n%s",
-                            conversation_id,
-                            detail,
-                        )
-                    else:
-                        logger.error(
-                            "Failed to delete conversation %s: %s",
-                            conversation_id,
-                            detail,
-                        )
+                    log_service_error(
+                        logger,
+                        "Failed to delete conversation " + conversation_id,
+                        exc_detail(exc),
+                    )
                 finally:
                     pbar.update(1)
 
@@ -194,19 +191,11 @@ async def delete_conversations_after_upload(
                     counter.add("failed")
                     if is_verbose():
                         pbar.write(f"❌ Conversation {conv_id} failed: {exc}")
-                    detail = exc_detail(exc)
-                    if is_verbose():
-                        logger.exception(
-                            "Failed to delete conversation %s\n%s",
-                            conv_id,
-                            detail,
-                        )
-                    else:
-                        logger.error(
-                            "Failed to delete conversation %s: %s",
-                            conv_id,
-                            detail,
-                        )
+                    log_service_error(
+                        logger,
+                        "Failed to delete conversation " + conv_id,
+                        exc_detail(exc),
+                    )
                 finally:
                     pbar.update(1)
 
@@ -421,15 +410,11 @@ async def upload_to_notion_single(
                         counter.add("failed")
                         if is_verbose():
                             pbar.write(f"❌ {file_name} failed: {exc}")
-                        detail = exc_detail(exc)
-                        if is_verbose():
-                            logger.exception(
-                                "Failed to process %s\n%s",
-                                file_name,
-                                detail,
-                            )
-                        else:
-                            logger.error("Failed to process %s: %s", file_name, detail)
+                        log_service_error(
+                            logger,
+                            "Failed to process " + file_name,
+                            exc_detail(exc),
+                        )
                         if fail_log_path:
                             write_fail_log(
                                 fail_log_path,

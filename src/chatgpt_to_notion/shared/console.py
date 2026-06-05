@@ -1,12 +1,24 @@
 """Console utilities."""
 
+import asyncio
 import logging
 
 from rich.console import Console
 from rich.rule import Rule
 
+from .http import DetailedHTTPError
+
 logger = logging.getLogger(__name__)
 console = Console()
+
+
+def safe_async_run(coro) -> bool:
+    try:
+        asyncio.run(coro)
+        return True
+    except DetailedHTTPError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        return False
 
 
 def print_account_log_header(

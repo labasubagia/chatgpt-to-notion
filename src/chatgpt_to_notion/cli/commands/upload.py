@@ -1,6 +1,5 @@
 """Upload CLI commands."""
 
-import asyncio
 from pathlib import Path
 from typing import Literal
 
@@ -13,7 +12,11 @@ from ...adapters.config_loader import (
 )
 from ...domain.models import RuntimeOptions
 from ...services import upload_pipeline
-from ...shared.console import print_account_log_footer, print_account_log_header
+from ...shared.console import (
+    print_account_log_footer,
+    print_account_log_header,
+    safe_async_run,
+)
 from ...shared.verbosity import QUIET, VERBOSE, set_verbosity
 
 
@@ -143,7 +146,7 @@ def register(app: typer.Typer) -> None:
                 if mode == "single"
                 else upload_pipeline.upload_to_notion
             )
-            asyncio.run(
+            ok = safe_async_run(
                 upload_fn(
                     image_folder=image_folder,
                     db_id=effective_db_id,
@@ -160,6 +163,8 @@ def register(app: typer.Typer) -> None:
                     fail_log_path=fail_log,
                 )
             )
+            if not ok:
+                continue
             print_account_log_footer(
                 action="Upload To Notion",
                 account_name=resolved.account_name,

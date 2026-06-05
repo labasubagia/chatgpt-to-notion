@@ -27,7 +27,12 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
-from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
+from ..shared.verbosity import (
+    StageCounter,
+    is_verbose,
+    log_service_error,
+    write_fail_log,
+)
 
 logger = get_logger("history")
 
@@ -171,19 +176,12 @@ async def fetch_image_generations(
                             pbar.write(
                                 f"❌ img ID {image_generation['id']} failed: {exc}"
                             )
-                        detail = exc_detail(exc)
-                        if is_verbose():
-                            logger.exception(
-                                "Failed to fetch image generation %s\n%s",
-                                image_generation["id"],
-                                detail,
-                            )
-                        else:
-                            logger.error(
-                                "Failed to fetch image generation %s: %s",
-                                image_generation["id"],
-                                detail,
-                            )
+                        log_service_error(
+                            logger,
+                            f"Failed to fetch image generation "
+                            f"{image_generation['id']}",
+                            exc_detail(exc),
+                        )
                         return None
                     finally:
                         pbar.update(1)
@@ -275,15 +273,11 @@ async def download_all_images(
                     counter.add("failed")
                     if is_verbose():
                         pbar.write(f"❌ {file_name} failed: {exc}")
-                    detail = exc_detail(exc)
-                    if is_verbose():
-                        logger.exception(
-                            "Failed to download %s\n%s",
-                            file_name,
-                            detail,
-                        )
-                    else:
-                        logger.error("Failed to download %s: %s", file_name, detail)
+                    log_service_error(
+                        logger,
+                        "Failed to download " + file_name,
+                        exc_detail(exc),
+                    )
                     if fail_log_path:
                         write_fail_log(
                             fail_log_path,

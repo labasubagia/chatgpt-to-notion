@@ -20,7 +20,12 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
-from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
+from ..shared.verbosity import (
+    StageCounter,
+    is_verbose,
+    log_service_error,
+    write_fail_log,
+)
 from .config_loader import get_notion_context
 from .filesystem import get_output_path
 from .sqlite_store import (
@@ -319,15 +324,11 @@ async def upload_all_images_to_notion(
                     counter.add("failed")
                     if is_verbose():
                         pbar.write(f"❌ {file_name} failed: {exc}")
-                    detail = exc_detail(exc)
-                    if is_verbose():
-                        logger.exception(
-                            "Failed to upload %s\n%s",
-                            file_name,
-                            detail,
-                        )
-                    else:
-                        logger.error("Failed to upload %s: %s", file_name, detail)
+                    log_service_error(
+                        logger,
+                        "Failed to upload " + file_name,
+                        exc_detail(exc),
+                    )
                     if fail_log_path:
                         write_fail_log(
                             fail_log_path,

@@ -1,6 +1,7 @@
 """Verbosity levels and structured output helpers."""
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,20 @@ class StageCounter:
         if parts:
             return f"{self.label}: {', '.join(parts)}"
         return f"{self.label}: nothing to do"
+
+
+def log_service_error(
+    logger: logging.Logger,
+    message: str,
+    detail: str,
+    exc: BaseException | None = None,
+) -> None:
+    if is_verbose():
+        logger.exception("%s\n%s", message, detail)
+    elif exc:
+        logger.error("%s: %s", message, exc)
+    else:
+        logger.error("%s: %s", message, detail)
 
 
 def write_fail_log(path: Path, entry: dict[str, Any]) -> None:
