@@ -37,12 +37,16 @@ from chatgpt_to_notion.shared.constants import (
     MAX_RETRIES,
     OUTPUT_PATH,
 )
+from tests.conftest import make_mock_response
+
 from chatgpt_to_notion.shared.http import (
+    DetailedHTTPError,
+    exc_detail,
     get_http_timeout,
     http_retryable,
+    raise_for_status_with_detail,
     retry_http,
     should_retry_http,
-    DetailedHTTPError,
 )
 from chatgpt_to_notion.shared.time import resolve_timezone
 
@@ -822,6 +826,132 @@ class TestDownloadImage:
 
         assert call_count == 2
         assert file_path.read_bytes() == b"retry_image_data"
+
+
+class TestRaiseForStatusWithDetail:
+    """Tests for raise_for_status_with_detail and DetailedHTTPError formatting."""
+
+    @pytest.mark.asyncio
+    async def test_json_error_response(self):
+        """Should capture JSON error body in DetailedHTTPError."""
+        response = make_mock_response(
+            {"error": "not_found"},
+            status=404,
+            reason="Not Found",
+            text_data='{"error": "not_found"}',
+            url="https://api.example.com/resource",
+        )
+        with pytest.raises(DetailedHTTPError) as exc_info:
+            await raise_for_status_with_detail(response)
+        exc = exc_info.value
+        assert exc.status == 404
+        assert exc.message_text == "Not Found"
+        assert exc.body == '{"error": "not_found"}'
+        assert "HTTP 404 Not Found" in str(exc)
+        assert "api.example.com" in str(exc)
+        assert "not_found" in str(exc)
+
+    @pytest.mark.asyncio
+    async def test_html_error_response(self):
+        """Should handle HTML error body."""
+        html_body = "<html><body><h1>500 Server Error</h1></body></html>"
+        response = make_mock_response(
+            {},
+            status=500,
+            reason="Internal Server Error",
+            text_data=html_body,
+            url="https://api.example.com/error",
+        )
+        with pytest.raises(DetailedHTTPError) as exc_info:
+            await raise_for_status_with_detail(response)
+        exc = exc_info.value
+        assert exc.status == 500
+        assert "Internal Server Error" in str(exc)
+        assert "<html>" in str(exc)
+
+    @pytest.mark.asyncio
+    async def test_no_error_below_400(self):
+        """Should not raise for 2xx/3xx responses."""
+        response = make_mock_response({"ok": True}, status=200, reason="OK")
+        await raise_for_status_with_detail(response)
+
+    @pytest.mark.asyncio
+    async def test_long_body_truncated(self):
+        """Should truncate body longer than 500 chars in __str__."""
+        long_body = "x" * 1000
+        response = make_mock_response(
+            {},
+            status=400,
+            reason="Bad Request",
+            text_data=long_body,
+            url="https://api.example.com",
+        )
+        with pytest.raises(DetailedHTTPError) as exc_info:
+            await raise_for_status_with_detail(response)
+        str_repr = str(exc_info.value)
+        assert "..." in str_repr
+
+    def test_str_sanitizes_url(self):
+        """__str__ should strip query params with signatures from URL."""
+        url = "https://chatgpt.com/estuary/content?id=file_123&sig=abc123"
+        req = MagicMock()
+        req.headers = {}
+        req.method = "GET"
+        req.url = url
+        exc = DetailedHTTPError(404, "Not Found", '{"detail":"not found"}', url, req)
+        str_repr = str(exc)
+        assert "sig=" not in str_repr
+        assert "file_123" not in str_repr
+
+    def test_str_excludes_headers(self):
+        """__str__ should not contain request headers."""
+        url = "https://api.example.com/data"
+        req = MagicMock()
+        req.headers = {"Authorization": "Bearer secret", "Cookie": "session=abc"}
+        req.method = "GET"
+        req.url = url
+        exc = DetailedHTTPError(403, "Forbidden", '{"error":"forbidden"}', url, req)
+        str_repr = str(exc)
+        assert "Bearer" not in str_repr
+        assert "Authorization" not in str_repr
+        assert "Cookie" not in str_repr
+
+    def test_full_detail_redacts_sensitive_headers(self):
+        """full_detail() should redact sensitive headers."""
+        req = MagicMock()
+        req.headers = {
+            "Authorization": "Bearer secret_token",
+            "Cookie": "session_id=abc123",
+            "Content-Type": "application/json",
+        }
+        req.method = "GET"
+        req.url = "https://api.example.com/data"
+        exc = DetailedHTTPError(
+            403, "Forbidden", '{"error":"forbidden"}', "https://api.example.com/data", req
+        )
+        detail = exc.full_detail()
+        assert "<REDACTED>" in detail
+        assert "secret_token" not in detail
+        assert "session_id" not in detail
+        assert "application/json" in detail
+
+    def test_exc_detail_with_detailed_http_error(self):
+        """exc_detail() should return full_detail for DetailedHTTPError."""
+        req = MagicMock()
+        req.headers = {}
+        req.method = "GET"
+        req.url = "https://api.example.com/data"
+        exc = DetailedHTTPError(404, "Not Found", '{"error":"not found"}', "https://api.example.com/data", req)
+        result = exc_detail(exc)
+        assert "HTTP 404 Not Found" in result
+        assert "Request:" in result
+        assert "Response Body:" in result
+
+    def test_exc_detail_with_regular_exception(self):
+        """exc_detail() should return str() for regular exceptions."""
+        exc = ValueError("something went wrong")
+        result = exc_detail(exc)
+        assert result == "something went wrong"
 
 
 class TestConstants:

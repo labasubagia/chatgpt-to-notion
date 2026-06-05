@@ -11,7 +11,7 @@ from ..adapters import chatgpt_api, notion_api, sqlite_store
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
-from ..shared.http import get_http_timeout
+from ..shared.http import exc_detail, get_http_timeout
 from ..shared.logging import get_logger
 from ..shared.verbosity import StageCounter, is_verbose, write_fail_log
 from . import history_service
@@ -96,9 +96,19 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                         pbar.write(
                             f"❌ Conversation ID {conversation_id} failed: {exc}"
                         )
-                    logger.exception(
-                        "Failed to delete conversation %s", conversation_id
-                    )
+                    detail = exc_detail(exc)
+                    if is_verbose():
+                        logger.exception(
+                            "Failed to delete conversation %s\n%s",
+                            conversation_id,
+                            detail,
+                        )
+                    else:
+                        logger.error(
+                            "Failed to delete conversation %s: %s",
+                            conversation_id,
+                            detail,
+                        )
                 finally:
                     pbar.update(1)
 
@@ -184,7 +194,19 @@ async def delete_conversations_after_upload(
                     counter.add("failed")
                     if is_verbose():
                         pbar.write(f"❌ Conversation {conv_id} failed: {exc}")
-                    logger.exception("Failed to delete conversation %s", conv_id)
+                    detail = exc_detail(exc)
+                    if is_verbose():
+                        logger.exception(
+                            "Failed to delete conversation %s\n%s",
+                            conv_id,
+                            detail,
+                        )
+                    else:
+                        logger.error(
+                            "Failed to delete conversation %s: %s",
+                            conv_id,
+                            detail,
+                        )
                 finally:
                     pbar.update(1)
 
@@ -341,15 +363,6 @@ async def upload_to_notion_single(
                     ext = image_ext_from_url(generation.url)
                     file_name = f"{generation.id}{ext}"
                     try:
-                        file_path = Path(resolved_image_folder) / file_name
-                        if not file_path.exists():
-                            await history_service.download_image(
-                                chatgpt_session,
-                                generation.url,
-                                str(file_path),
-                                headers=chatgpt_api.get_headers(options),
-                            )
-
                         # Claim the ID under lock to prevent duplicate uploads
                         async with db_lock:
                             if generation.id in uploaded_ids and not check_notion_api:
@@ -361,6 +374,7 @@ async def upload_to_notion_single(
                                 return
                             uploaded_ids.add(generation.id)
 
+                        # Check Notion first — if already there, skip download entirely
                         if await is_page_exists_in_db(
                             notion_session, db_id, file_name, options=options
                         ):
@@ -370,6 +384,15 @@ async def upload_to_notion_single(
                             if is_verbose():
                                 pbar.write(f"⏭️  {file_name} skipped, already in Notion")
                             return
+
+                        file_path = Path(resolved_image_folder) / file_name
+                        if not file_path.exists():
+                            await history_service.download_image(
+                                chatgpt_session,
+                                generation.url,
+                                str(file_path),
+                                headers=chatgpt_api.get_headers(options),
+                            )
 
                         if add_prompt_to_image:
                             add_prompt_to_image_single(
@@ -398,7 +421,15 @@ async def upload_to_notion_single(
                         counter.add("failed")
                         if is_verbose():
                             pbar.write(f"❌ {file_name} failed: {exc}")
-                        logger.exception("Failed to process %s", file_name)
+                        detail = exc_detail(exc)
+                        if is_verbose():
+                            logger.exception(
+                                "Failed to process %s\n%s",
+                                file_name,
+                                detail,
+                            )
+                        else:
+                            logger.error("Failed to process %s: %s", file_name, detail)
                         if fail_log_path:
                             write_fail_log(
                                 fail_log_path,

@@ -1259,6 +1259,61 @@ class TestChatGPTUploadToNotionSingle:
                             captured = capsys.readouterr()
                             assert "skipped, already in Notion" in captured.out
 
+    async def test_upload_to_notion_single_skips_download_when_in_notion(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """Should skip download when image already in Notion, even if file missing."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        (tmp_path / "images").mkdir(exist_ok=True)
+        # Intentionally do NOT create the local image file
+
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_123",
+                conversation_id="conv_abc",
+                message_id="msg_def",
+                asset_pointer="asset_ghi",
+                url="https://example.com/image.png",
+                prompt="Test prompt",
+            )
+        ]
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = (generations, generations)
+
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = set()
+
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
+                ) as mock_exists:
+                    mock_exists.return_value = True
+
+                    with patch(
+                        "chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock
+                    ) as mock_download:
+                        with patch("chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock):
+                            await chatgpt.upload_to_notion_single(
+                                image_folder=image_folder,
+                                db_id="test_db",
+                                account="test_account",
+                                upload_to_notion=True,
+                                remove_in_chatgpt=False,
+                                add_prompt_to_image=True,
+                                limit=5,
+                            )
+
+                            mock_download.assert_not_called()
+                            captured = capsys.readouterr()
+                            assert "skipped, already in Notion" in captured.out
+
     async def test_upload_to_notion_single_deletes_only_when_all_uploaded(
         self, monkeypatch, tmp_path, capsys
     ):

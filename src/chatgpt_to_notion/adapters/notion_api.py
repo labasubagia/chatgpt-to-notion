@@ -14,6 +14,7 @@ from ..domain.models import ImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
 from ..shared.http import (
     DetailedHTTPError,
+    exc_detail,
     get_http_timeout,
     raise_for_status_with_detail,
     retry_http,
@@ -318,7 +319,15 @@ async def upload_all_images_to_notion(
                     counter.add("failed")
                     if is_verbose():
                         pbar.write(f"❌ {file_name} failed: {exc}")
-                    logger.exception("Failed to upload %s", file_name)
+                    detail = exc_detail(exc)
+                    if is_verbose():
+                        logger.exception(
+                            "Failed to upload %s\n%s",
+                            file_name,
+                            detail,
+                        )
+                    else:
+                        logger.error("Failed to upload %s: %s", file_name, detail)
                     if fail_log_path:
                         write_fail_log(
                             fail_log_path,

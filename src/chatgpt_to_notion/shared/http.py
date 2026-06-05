@@ -12,9 +12,11 @@ from tenacity import (
 )
 
 from .constants import HTTP_TIMEOUT_SECONDS, MAX_RETRIES
-from .logging import get_logger
+from .logging import get_logger, redact_headers, safe_url
 
 logger = get_logger("http")
+
+_BODY_MAX_LEN = 500
 
 
 def http_retryable(status_code: int | None) -> bool:
@@ -32,16 +34,38 @@ class DetailedHTTPError(Exception):
         url: str,
         req: aiohttp.RequestInfo,
     ):
-        msg = (
-            f"\nURL: {url}\nHTTP {status} {message}"
-            f"\nRequest: {req}\nResponse Body: {body}"
-        )
-        super().__init__(msg)
         self.status = status
         self.message_text = message
         self.body = body
         self.url = url
         self.request = req
+        super().__init__(f"HTTP {status} {message}".strip())
+
+    def __str__(self) -> str:
+        body = self.body
+        if len(body) > _BODY_MAX_LEN:
+            body = body[:_BODY_MAX_LEN] + "..."
+        return (
+            f"HTTP {self.status} {self.message_text}\n"
+            f"URL: {safe_url(self.url)}\n"
+            f"Response: {body}"
+        ).strip()
+
+    def full_detail(self) -> str:
+        req_headers = redact_headers(dict(self.request.headers))
+        return (
+            f"HTTP {self.status} {self.message_text}\n"
+            f"URL: {self.url}\n"
+            f"Request: method={self.request.method} url={self.request.url} "
+            f"headers={req_headers}\n"
+            f"Response Body: {self.body}"
+        ).strip()
+
+
+def exc_detail(exc: BaseException) -> str:
+    if isinstance(exc, DetailedHTTPError):
+        return exc.full_detail()
+    return str(exc)
 
 
 async def raise_for_status_with_detail(response: aiohttp.ClientResponse) -> None:

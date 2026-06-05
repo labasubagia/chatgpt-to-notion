@@ -20,6 +20,7 @@ from ..shared.constants import (
     image_ext_from_url,
 )
 from ..shared.http import (
+    exc_detail,
     get_download_timeout,
     get_http_timeout,
     raise_for_status_with_detail,
@@ -170,10 +171,19 @@ async def fetch_image_generations(
                             pbar.write(
                                 f"❌ img ID {image_generation['id']} failed: {exc}"
                             )
-                        logger.exception(
-                            "Failed to fetch image generation %s",
-                            image_generation["id"],
-                        )
+                        detail = exc_detail(exc)
+                        if is_verbose():
+                            logger.exception(
+                                "Failed to fetch image generation %s\n%s",
+                                image_generation["id"],
+                                detail,
+                            )
+                        else:
+                            logger.error(
+                                "Failed to fetch image generation %s: %s",
+                                image_generation["id"],
+                                detail,
+                            )
                         return None
                     finally:
                         pbar.update(1)
@@ -265,7 +275,15 @@ async def download_all_images(
                     counter.add("failed")
                     if is_verbose():
                         pbar.write(f"❌ {file_name} failed: {exc}")
-                    logger.exception("Failed to download %s", file_name)
+                    detail = exc_detail(exc)
+                    if is_verbose():
+                        logger.exception(
+                            "Failed to download %s\n%s",
+                            file_name,
+                            detail,
+                        )
+                    else:
+                        logger.error("Failed to download %s: %s", file_name, detail)
                     if fail_log_path:
                         write_fail_log(
                             fail_log_path,
