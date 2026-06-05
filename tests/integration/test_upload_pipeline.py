@@ -914,6 +914,61 @@ class TestChatGPTDeleteConversation:
             captured = capsys.readouterr()
             assert "not uploaded" in captured.out
 
+    async def test_delete_after_upload_multi_image_same_conv(
+        self, monkeypatch, capsys
+    ):
+        """Should delete conversation exactly once when all images uploaded."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:00:00+00:00",
+                id="img_a",
+                conversation_id="conv_1",
+                message_id="msg_a",
+                asset_pointer="asset_a",
+                url="https://example.com/a.png",
+                prompt="test a",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:01:00+00:00",
+                id="img_b",
+                conversation_id="conv_1",
+                message_id="msg_b",
+                asset_pointer="asset_b",
+                url="https://example.com/b.png",
+                prompt="test b",
+            ),
+            ChatGPTImageGeneration(
+                created_at="2024-01-01T00:02:00+00:00",
+                id="img_c",
+                conversation_id="conv_1",
+                message_id="msg_c",
+                asset_pointer="asset_c",
+                url="https://example.com/c.png",
+                prompt="test c",
+            ),
+        ]
+        uploaded_ids = {"img_a", "img_b", "img_c"}
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+            new_callable=AsyncMock,
+        ) as mock_delete:
+            await chatgpt.delete_conversations_after_upload(
+                generations=generations,
+                db_id="test_db",
+                account="test_acc",
+                uploaded_ids=uploaded_ids,
+                check_notion_api=False,
+            )
+
+            assert mock_delete.call_count == 1
+            captured = capsys.readouterr()
+            assert "Conversation conv_1" in captured.out
+
 
 @pytest.mark.integration
 class TestChatGPTUploadToNotionComprehensive:
