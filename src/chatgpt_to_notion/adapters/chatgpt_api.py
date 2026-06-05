@@ -65,6 +65,10 @@ async def delete_conversation(
         headers=headers or get_headers(),
         json={"is_visible": False},
     ) as response:
+        if response.status == 404:
+            body = await response.text()
+            if "conversation_deleted" in body:
+                return {"already_deleted": True}
         await raise_for_status_with_detail(response)
         return await response.json()
 

@@ -72,6 +72,37 @@ class TestChatGPTApiOperations:
         res = await delete_conversation(mock_aiohttp_session, "conv_123")
         assert res["success"] is True
 
+    async def test_delete_conversation_already_deleted(self, mock_aiohttp_session):
+        """Should treat 404 'conversation_deleted' as success (already deleted)."""
+        mock_response = make_mock_response(
+            {},
+            status=404,
+            reason="Not Found",
+            text_data=(
+                '{"detail":{"message":"Conversation has been deleted.'
+                'Start a new chat.","code":"conversation_deleted","can_retry":false}}'
+            ),
+        )
+        mock_aiohttp_session._responses = [mock_response]
+
+        res = await delete_conversation(mock_aiohttp_session, "conv_123")
+        assert res == {"already_deleted": True}
+
+    async def test_delete_conversation_404_other(self, mock_aiohttp_session):
+        """Should still raise on 404 without 'conversation_deleted' signal."""
+        mock_response = make_mock_response(
+            {},
+            status=404,
+            reason="Not Found",
+            text_data="Conversation not found",
+        )
+        mock_aiohttp_session._responses = [mock_response]
+
+        with pytest.raises(DetailedHTTPError) as exc_info:
+            await delete_conversation(mock_aiohttp_session, "conv_123")
+        assert exc_info.value.status == 404
+        assert "Conversation not found" in str(exc_info.value)
+
     async def test_get_image_generations_success(self, mock_aiohttp_session):
         """Should fetch image generation records successfully."""
         mock_response = make_mock_response({"items": [{"id": "gen_1"}]})
