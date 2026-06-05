@@ -56,7 +56,8 @@ def register(app: typer.Typer) -> None:
             timezone_name=timezone,
         )
         user_tz = resolve_timezone(timezone_name=timezone)
+        tz_label = getattr(user_tz, "key", str(user_tz))
         current_time = datetime.now().astimezone(user_tz).strftime("%Y-%m-%d %H:%M:%S")
-        print(f"Current Time: {current_time}")
+        print(f"Current Time: {current_time} ({tz_label})")
         _print_activity_table(today_rows, title="Today")
         _print_activity_table(yesterday_rows, title="Yesterday")
