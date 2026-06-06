@@ -454,7 +454,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert len(today_rows) == 0
         assert yesterday_rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"

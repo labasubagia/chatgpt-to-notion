@@ -336,9 +336,21 @@ async def upload_to_notion_single(
     if account and not from_history:
         save_generations(account=account, data=generations)
 
+    # Group generations by conversation
+    conversation_map: dict[str, list[ChatGPTImageGeneration]] = defaultdict(list)
+    for g in generations:
+        conversation_map[g.conversation_id].append(g)
+
+    # Conversations eligible for deletion: all images came from API this run
+    eligible_convos: set[str] = set()
+    if remove_in_chatgpt and remote_generations:
+        remote_gen_ids = {g.id for g in remote_generations}
+        for conv_id, images in conversation_map.items():
+            if all(g.id in remote_gen_ids for g in images):
+                eligible_convos.add(conv_id)
+
     uploaded_ids = get_uploaded_generation_ids(account)
-    db_lock = asyncio.Lock()
-    pbar = tqdm(total=len(generations), desc="Processing files")
+    pbar = tqdm(total=len(conversation_map), desc="Processing conversations")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     counter = StageCounter("Processed")
 
@@ -347,32 +359,24 @@ async def upload_to_notion_single(
     ) as chatgpt_session:
         async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
 
-            async def process_one(generation: ChatGPTImageGeneration):
-                async with semaphore:
-                    ext = image_ext_from_url(generation.url)
-                    file_name = f"{generation.id}{ext}"
-                    try:
-                        # Claim the ID under lock to prevent duplicate uploads
-                        async with db_lock:
-                            if generation.id in uploaded_ids and not check_notion_api:
-                                counter.add("skipped")
-                                if is_verbose():
-                                    pbar.write(
-                                        f"⏭️  {file_name} skipped, already uploaded"
-                                    )
-                                return
-                            uploaded_ids.add(generation.id)
+            async def process_one(generation: ChatGPTImageGeneration) -> bool:
+                ext = image_ext_from_url(generation.url)
+                file_name = f"{generation.id}{ext}"
+                try:
+                    async with semaphore:
+                        if generation.id in uploaded_ids and not check_notion_api:
+                            if is_verbose():
+                                pbar.write(f"⏭️  {file_name} skipped, already uploaded")
+                            return True
 
-                        # Check Notion first — if already there, skip download entirely
                         if await is_page_exists_in_db(
                             notion_session, db_id, file_name, options=options
                         ):
-                            async with db_lock:
-                                mark_generations_uploaded(account, {generation.id})
-                            counter.add("skipped")
+                            mark_generations_uploaded(account, {generation.id})
+                            uploaded_ids.add(generation.id)
                             if is_verbose():
                                 pbar.write(f"⏭️  {file_name} skipped, already in Notion")
-                            return
+                            return True
 
                         file_path = Path(resolved_image_folder) / file_name
                         if not file_path.exists():
@@ -398,37 +402,68 @@ async def upload_to_notion_single(
                                 options=options,
                             )
 
-                        async with db_lock:
-                            mark_generations_uploaded(account, {generation.id})
-                        counter.add("uploaded")
+                        mark_generations_uploaded(account, {generation.id})
+                        uploaded_ids.add(generation.id)
                         if is_verbose():
                             pbar.write(f"✅ {file_name} uploaded")
-                    except Exception as exc:
-                        # Release the claim so another attempt can retry
-                        async with db_lock:
-                            uploaded_ids.discard(generation.id)
-                        counter.add("failed")
-                        if is_verbose():
-                            pbar.write(f"❌ {file_name} failed: {exc}")
-                        log_service_error(
-                            logger,
-                            "Failed to process " + file_name,
-                            exc_detail(exc),
+                        return True
+                except Exception as exc:
+                    log_service_error(
+                        logger,
+                        "Failed to process " + file_name,
+                        exc_detail(exc),
+                    )
+                    if fail_log_path:
+                        write_fail_log(
+                            fail_log_path,
+                            {
+                                "stage": "upload",
+                                "file": file_name,
+                                "error": str(exc),
+                            },
                         )
-                        if fail_log_path:
-                            write_fail_log(
-                                fail_log_path,
-                                {
-                                    "stage": "upload",
-                                    "file": file_name,
-                                    "error": str(exc),
-                                },
+                    return False
+
+            async def process_conversation(
+                conv_id: str, images: list[ChatGPTImageGeneration]
+            ) -> None:
+                results = await asyncio.gather(
+                    *[process_one(g) for g in images],
+                    return_exceptions=True,
+                )
+                all_ok = all(r is True for r in results)
+                if all_ok:
+                    if remove_in_chatgpt and conv_id in eligible_convos:
+                        try:
+                            await delete_conversation(
+                                chatgpt_session,
+                                conv_id,
+                                headers=chatgpt_api.get_headers(options),
                             )
-                    finally:
-                        pbar.update(1)
+                            if is_verbose():
+                                pbar.write(f"✅ Conversation {conv_id} deleted")
+                        except Exception as exc:
+                            log_service_error(
+                                logger,
+                                "Failed to delete conversation " + conv_id,
+                                exc_detail(exc),
+                            )
+                    counter.add("success")
+                else:
+                    failed = sum(1 for r in results if r is not True)
+                    if is_verbose():
+                        pbar.write(
+                            f"⚠️  Conversation {conv_id} skipped, "
+                            f"{failed} image(s) failed"
+                        )
+                    counter.add("failed")
+                pbar.update(1)
 
             await asyncio.gather(
-                *[process_one(generation) for generation in generations],
+                *[
+                    process_conversation(conv_id, images)
+                    for conv_id, images in conversation_map.items()
+                ],
                 return_exceptions=True,
             )
 
@@ -436,16 +471,3 @@ async def upload_to_notion_single(
     if not is_verbose():
         print(counter.summary_line())
     print()
-
-    if len(remote_generations) <= 0:
-        return
-
-    if remove_in_chatgpt:
-        await delete_conversations_after_upload(
-            generations=remote_generations,
-            db_id=db_id,
-            account=account,
-            uploaded_ids=uploaded_ids,
-            check_notion_api=check_notion_api,
-            options=options,
-        )

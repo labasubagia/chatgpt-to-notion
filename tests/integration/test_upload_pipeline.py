@@ -1453,6 +1453,67 @@ class TestChatGPTUploadToNotionSingle:
                                         captured = capsys.readouterr()
                                         assert "skipped" in captured.out
 
+    async def test_upload_to_notion_single_remove_false_skips_deletion(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        """Should not delete conversation when remove_in_chatgpt=False, even if all images uploaded."""
+        from unittest.mock import AsyncMock, patch
+
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+
+        image_folder = str(tmp_path / "images")
+        generations = [
+            ChatGPTImageGeneration(
+                created_at="2024-01-15T10:30:00.000000+00:00",
+                id="gen_1",
+                conversation_id="conv_abc",
+                message_id="msg_1",
+                asset_pointer="asset_1",
+                url="https://example.com/1.png",
+                prompt="Test 1",
+            ),
+        ]
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = (generations, generations)
+
+            with patch("chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids") as mock_uploaded:
+                mock_uploaded.return_value = set()
+
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock
+                ) as mock_exists:
+                    mock_exists.return_value = False
+
+                    with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock):
+                        with patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single"):
+                            with patch(
+                                "chatgpt_to_notion.services.upload_pipeline.add_page_to_db",
+                                new_callable=AsyncMock,
+                                return_value={"id": "page_123"},
+                            ):
+                                with patch("chatgpt_to_notion.services.upload_pipeline.mark_generations_uploaded"):
+                                    with patch(
+                                        "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+                                        new_callable=AsyncMock,
+                                    ) as mock_delete:
+                                        await chatgpt.upload_to_notion_single(
+                                            image_folder=image_folder,
+                                            db_id="test_db",
+                                            account="test_account",
+                                            upload_to_notion=True,
+                                            remove_in_chatgpt=False,
+                                            add_prompt_to_image=True,
+                                            limit=5,
+                                        )
+
+                                        mock_delete.assert_not_called()
+                                        captured = capsys.readouterr()
+                                        assert "Conversation conv_abc" not in captured.out
+                                        assert "deleted" not in captured.out
+
     async def test_upload_to_notion_single_resume_after_failure(
         self, monkeypatch, tmp_path
     ):
@@ -1657,6 +1718,6 @@ class TestChatGPTUploadToNotionSingle:
                                     )
 
         captured = capsys.readouterr()
-        assert "fail.png failed" in captured.out
+        assert "Conversation conv_fail skipped" in captured.out
         assert call_count == 3
         assert upload_count == 2
