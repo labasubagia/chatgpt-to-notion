@@ -1,8 +1,12 @@
 """ChatGPT API adapter."""
 
+import asyncio
+import json
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
+from tqdm.asyncio import tqdm
 
 from ..domain.models import RuntimeOptions
 from ..shared.http import raise_for_status_with_detail, retry_http
@@ -131,3 +135,127 @@ def get_prompt_from_image_node_in_conversation(
         current_id = node.get("parent")
 
     return None
+
+
+def _parse_sse_events(body: str) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+
+    def _try_append(raw: str) -> None:
+        s = raw.strip()
+        if s and s != "[DONE]":
+            try:
+                results.append(json.loads(s))
+            except json.JSONDecodeError:
+                pass
+
+    for event in body.split("\n\n"):
+        data_lines: list[str] = []
+        for line in event.strip().split("\n"):
+            if line.startswith("data: "):
+                data_lines.append(line[6:])
+            elif line.startswith(("event: ", "id: ", "retry: ")):
+                continue
+            else:
+                data_lines.append(line)
+        if data_lines:
+            _try_append("".join(data_lines))
+    if not results and body.strip():
+        for line in body.strip().split("\n"):
+            _try_append(line)
+    return results
+
+
+@retry_http()
+async def get_library_images(
+    session: aiohttp.ClientSession,
+    query: str | None = None,
+    headers: dict[str, str] | None = None,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, str] = {"categories": "image"}
+    if query:
+        params["q"] = query
+    if cursor:
+        params["cursor"] = cursor
+    async with session.get(
+        f"{BASE_URL}/files/library/nodes",
+        headers=headers or get_headers(),
+        params=params,
+    ) as response:
+        await raise_for_status_with_detail(response)
+        return await response.json()
+
+
+@retry_http()
+async def delete_library_file(
+    session: aiohttp.ClientSession,
+    item: dict[str, Any],
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    item_id = item["id"]
+    params = {
+        "file_id": item["file_id"],
+        "parent_directory_id": item["parent_directory_id"],
+        "file_name": item["name"],
+        "soft_delete": "true",
+    }
+    async with session.post(
+        f"{BASE_URL}/files/library/files/{item_id}/delete_stream",
+        headers=headers or get_headers(),
+        params=params,
+    ) as response:
+        if response.status == 404:
+            return {"already_deleted": True}
+        await raise_for_status_with_detail(response)
+        body = await response.text()
+        events = _parse_sse_events(body)
+        return {"success": True, "events": events}
+
+
+def extract_file_id_from_thumbnail_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    id_value = parse_qs(parsed.query).get("id")
+    if not id_value:
+        return None
+    parts = id_value[0].split("#")
+    return parts[1] if len(parts) > 1 else None
+
+
+async def remove_library_images_by_query(
+    session: aiohttp.ClientSession,
+    query: str | None = None,
+    headers: dict[str, str] | None = None,
+    max_concurrent: int = 10,
+) -> int:
+    headers = headers or get_headers()
+    total_deleted = 0
+    cursor: str | None = None
+    label = f"Removing images matching '{query}'" if query else "Removing all images"
+    pbar = tqdm(desc=label, unit=" item")
+
+    async def _delete_one(item: dict[str, Any], sem: asyncio.Semaphore) -> None:
+        async with sem:
+            try:
+                await delete_library_file(session, item, headers)
+            except Exception:
+                raise
+            finally:
+                pbar.update(1)
+
+    try:
+        while True:
+            data = await get_library_images(session, query, headers, cursor)
+            items = data.get("items", [])
+            if not items:
+                break
+
+            semaphore = asyncio.Semaphore(max_concurrent)
+            await asyncio.gather(*[_delete_one(item, semaphore) for item in items])
+            total_deleted += len(items)
+            cursor = data.get("cursor")
+            if not cursor:
+                break
+    finally:
+        pbar.close()
+
+    return total_deleted
