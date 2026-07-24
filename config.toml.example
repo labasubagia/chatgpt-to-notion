@@ -4,6 +4,7 @@ cookie_string_base64 = "b2FpLWRpZD1..."
 # Optional: override default output locations (use ~ for home directory)
 # history_folder = "~/data/chatgpt/image_history"
 # image_folder = "~/Desktop/images"
+# delete_library_queries = ["query1", "query2"]
 
 [notion]
 api_key = "secret_xxx"

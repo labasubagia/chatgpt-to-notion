@@ -60,6 +60,9 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
     shared = app_config.shared
     history_folder = account.history_folder or shared.history_folder
     image_folder = account.image_folder or shared.image_folder
+    delete_library_queries = (
+        account.delete_library_queries or shared.delete_library_queries
+    )
 
     return ResolvedConfig(
         account_name=account_name,
@@ -74,6 +77,7 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
         notion=notion,
         history_folder=history_folder,
         image_folder=image_folder,
+        delete_library_queries=delete_library_queries,
     )
 
 

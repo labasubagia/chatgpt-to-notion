@@ -6,6 +6,7 @@ import aiohttp
 import typer
 
 from ...adapters.chatgpt_api import get_headers, remove_library_images_by_query
+from ...adapters.config_loader import get_account_names
 from ...adapters.filesystem import clean_output_path
 from ...adapters.sqlite_store import backup_db, restore_db
 from ...domain.models import RuntimeOptions
@@ -60,13 +61,18 @@ def register(app: typer.Typer) -> None:
         """Remove images from ChatGPT library, optionally filtered by query."""
 
         async def run() -> None:
-            options = RuntimeOptions(config_path=config, account=account)
-            headers = get_headers(options)
-            async with aiohttp.ClientSession() as session:
-                total = await remove_library_images_by_query(
-                    session, query=query, headers=headers, max_concurrent=max_concurrent
-                )
-            label = f"'{query}'" if query else "(all images)"
-            print(f"Removed {total} images matching {label}")
+            target_accounts = [account] if account else get_account_names(config)
+            for target_account in target_accounts:
+                options = RuntimeOptions(config_path=config, account=target_account)
+                headers = get_headers(options)
+                async with aiohttp.ClientSession() as session:
+                    total = await remove_library_images_by_query(
+                        session,
+                        query=query,
+                        headers=headers,
+                        max_concurrent=max_concurrent,
+                    )
+                label = f"'{query}'" if query else "(all images)"
+                print(f"[{target_account}] Removed {total} images matching {label}")
 
         safe_async_run(run())

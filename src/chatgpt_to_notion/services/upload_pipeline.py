@@ -8,6 +8,7 @@ import aiohttp
 from tqdm.asyncio import tqdm
 
 from ..adapters import chatgpt_api, notion_api, sqlite_store
+from ..adapters.config_loader import resolve_config
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
@@ -31,6 +32,23 @@ from .history_service import (
 from .image_service import add_prompt_to_image_single, add_prompt_to_images
 
 logger = get_logger("upload_pipeline")
+
+get_conversations = chatgpt_api.get_conversations
+
+
+async def _remove_library_images(options: RuntimeOptions | None) -> None:
+    resolved = resolve_config(options)
+    if not resolved.delete_library_queries:
+        return
+    headers = chatgpt_api.get_headers(options)
+    async with aiohttp.ClientSession(
+        headers=headers, timeout=get_http_timeout()
+    ) as session:
+        for query in resolved.delete_library_queries:
+            await chatgpt_api.remove_library_images_by_query(
+                session, query=query, headers=headers
+            )
+
 
 get_conversations = chatgpt_api.get_conversations
 get_conversation_details = chatgpt_api.get_conversation_details
@@ -215,6 +233,7 @@ async def upload_to_notion(
     db_id: str,
     upload_to_notion: bool = True,
     remove_in_chatgpt: bool = False,
+    remove_in_chatgpt_library: bool = True,
     add_prompt_to_image: bool = True,
     account: str | None = None,
     check_notion_api: bool = False,
@@ -252,6 +271,8 @@ async def upload_to_notion(
 
     if not generations:
         print("No generations found.")
+        if remove_in_chatgpt_library:
+            await _remove_library_images(options)
         return
 
     if account and not from_history:
@@ -279,6 +300,8 @@ async def upload_to_notion(
         )
 
     if len(remote_generations) <= 0:
+        if remove_in_chatgpt_library:
+            await _remove_library_images(options)
         return
 
     if remove_in_chatgpt:
@@ -288,12 +311,16 @@ async def upload_to_notion(
             options=options,
         )
 
+    if remove_in_chatgpt_library:
+        await _remove_library_images(options)
+
 
 async def upload_to_notion_single(
     image_folder: str | None,
     db_id: str,
     upload_to_notion: bool = True,
     remove_in_chatgpt: bool = False,
+    remove_in_chatgpt_library: bool = True,
     add_prompt_to_image: bool = True,
     account: str | None = None,
     check_notion_api: bool = False,
@@ -331,6 +358,8 @@ async def upload_to_notion_single(
 
     if not generations:
         print("No generations found.")
+        if remove_in_chatgpt_library:
+            await _remove_library_images(options)
         return
 
     if account and not from_history:
@@ -471,3 +500,6 @@ async def upload_to_notion_single(
     if not is_verbose():
         print(counter.summary_line())
     print()
+
+    if remove_in_chatgpt_library:
+        await _remove_library_images(options)

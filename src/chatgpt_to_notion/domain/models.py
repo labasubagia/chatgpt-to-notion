@@ -47,6 +47,7 @@ class AccountConfig(BaseModel):
     notion_database_id: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
+    delete_library_queries: list[str] = []
 
 
 class SharedAccountConfig(BaseModel):
@@ -58,6 +59,7 @@ class SharedAccountConfig(BaseModel):
     cookie_string_base64: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
+    delete_library_queries: list[str] = []
 
 
 class AppConfig(BaseModel):
@@ -80,6 +82,7 @@ class ResolvedConfig(BaseModel):
     notion: NotionConfig
     history_folder: str | None = None
     image_folder: str | None = None
+    delete_library_queries: list[str] = []
 
 
 class RuntimeOptions(BaseModel):
