@@ -59,7 +59,7 @@ def register(app: typer.Typer) -> None:
             False, help="Whether to remove uploaded items after upload"
         ),
         remove_in_chatgpt_library: bool = typer.Option(
-            True, help="Whether to remove images from ChatGPT library after upload"
+            False, help="Whether to remove images from ChatGPT library after upload"
         ),
         check_notion_api: bool = typer.Option(
             True, help="Check Notion API even when uploaded_at is already set"
