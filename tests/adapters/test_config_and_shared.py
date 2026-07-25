@@ -343,7 +343,7 @@ class TestAccountActivityStatus:
     """Tests for account readiness status."""
 
     def test_no_data_is_ready(self, isolated_db, monkeypatch):
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC")
 
         assert today_rows[0]["Account"] == "default"
         assert today_rows[0]["Next Wait"] == "Ready"
@@ -368,7 +368,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert today_rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
         assert yesterday_rows[0]["Ready Generate?"] == "✅"
@@ -390,7 +390,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert len(today_rows) == 0
         assert yesterday_rows[0]["Ready Generate?"] == "⚠️  (5/8 to wait)"
@@ -412,7 +412,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert len(today_rows) == 0
         assert yesterday_rows[0]["Ready Generate?"] == "❌  (8/8 to wait)"
@@ -433,7 +433,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC")
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC")
 
         assert len(today_rows) == 0
         assert yesterday_rows[0]["Ready Generate?"] == "✅"
@@ -454,7 +454,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert len(today_rows) == 0
         assert yesterday_rows[0]["Ready Generate?"] == "❌  (1/1 to wait)"
@@ -487,7 +487,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert len(today_rows) == 0
         assert yesterday_rows[0]["Ready Generate?"] == "⚠️  (2/8 to wait)"
@@ -522,7 +522,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(
             timezone_name="Asia/Jakarta", now=now_jakarta
         )
 
@@ -573,7 +573,7 @@ class TestAccountActivityStatus:
         ]
         db.upsert_generations("default", generations)
 
-        today_rows, yesterday_rows = get_account_activity_statuses(timezone_name="UTC", now=now)
+        today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
         assert today_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"
         assert yesterday_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"

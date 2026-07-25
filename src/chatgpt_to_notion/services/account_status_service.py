@@ -85,10 +85,10 @@ def get_account_activity_statuses(
     config_path: str | None = None,
     timezone_name: str | None = None,
     now: datetime | None = None,
-) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+) -> tuple[list[dict[str, str]], list[dict[str, str]], int]:
     account_names = get_account_names(config_path)
     if not account_names:
-        return [], []
+        return [], [], 0
 
     tz = resolve_timezone(timezone_name)
     if now is None:
@@ -134,4 +134,4 @@ def get_account_activity_statuses(
         today_rows.append(row)
     for _, row in sorted(yesterday_sortable, key=lambda item: item[0]):
         yesterday_rows.append(row)
-    return today_rows, yesterday_rows
+    return today_rows, yesterday_rows, len(account_names)

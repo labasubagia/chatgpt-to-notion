@@ -51,7 +51,7 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Show which accounts are ready to generate new data."""
         sqlite_store.init_db()
-        today_rows, yesterday_rows = get_account_activity_statuses(
+        today_rows, yesterday_rows, total_accounts = get_account_activity_statuses(
             config_path=config,
             timezone_name=timezone,
         )
@@ -59,5 +59,9 @@ def register(app: typer.Typer) -> None:
         tz_label = getattr(user_tz, "key", str(user_tz))
         current_time = datetime.now().astimezone(user_tz).strftime("%Y-%m-%d %H:%M:%S")
         print(f"Current Time: {current_time} ({tz_label})")
-        _print_activity_table(today_rows, title="Today")
-        _print_activity_table(yesterday_rows, title="Yesterday")
+        _print_activity_table(
+            today_rows, title=f"Today ({len(today_rows)}/{total_accounts})"
+        )
+        _print_activity_table(
+            yesterday_rows, title=f"Yesterday ({len(yesterday_rows)}/{total_accounts})"
+        )

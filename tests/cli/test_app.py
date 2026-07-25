@@ -268,6 +268,7 @@ class TestCLICommands:
                     },
                 ],
                 [],
+                2,
             ),
         ):
             result = runner.invoke(app, ["account-status"])
