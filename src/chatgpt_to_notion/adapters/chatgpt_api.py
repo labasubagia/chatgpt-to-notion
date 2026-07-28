@@ -278,7 +278,4 @@ async def remove_library_images_by_query(
     finally:
         pbar.close()
 
-    remaining = await count_library_images(session, headers)
-    print(f"Total images remaining in library: {remaining}")
-
     return total_deleted

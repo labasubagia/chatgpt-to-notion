@@ -5,7 +5,11 @@ from pathlib import Path
 import aiohttp
 import typer
 
-from ...adapters.chatgpt_api import get_headers, remove_library_images_by_query
+from ...adapters.chatgpt_api import (
+    count_library_images,
+    get_headers,
+    remove_library_images_by_query,
+)
 from ...adapters.config_loader import get_account_names
 from ...adapters.filesystem import clean_output_path
 from ...adapters.sqlite_store import backup_db, restore_db
@@ -74,5 +78,9 @@ def register(app: typer.Typer) -> None:
                     )
                 label = f"'{query}'" if query else "(all images)"
                 print(f"[{target_account}] Removed {total} images matching {label}")
+                remaining = await count_library_images(session, headers)
+                print(
+                    f"[{target_account}] Total images remaining in library: {remaining}"
+                )
 
         safe_async_run(run())

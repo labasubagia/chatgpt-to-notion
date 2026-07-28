@@ -48,6 +48,8 @@ async def _remove_library_images(options: RuntimeOptions | None) -> None:
             await chatgpt_api.remove_library_images_by_query(
                 session, query=query, headers=headers
             )
+        remaining = await chatgpt_api.count_library_images(session, headers)
+        print(f"Total images remaining in library: {remaining}")
 
 
 get_conversations = chatgpt_api.get_conversations
