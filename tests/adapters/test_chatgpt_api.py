@@ -198,6 +198,23 @@ class TestChatGPTLibraryOperations:
         )
         assert total == 2
 
+    async def test_remove_library_images_by_query_with_remaining(
+        self, mock_aiohttp_session, mocker
+    ):
+        """Should print remaining count when images persist after deletion."""
+        responses = [
+            make_mock_response({"items": [self.SAMPLE_ITEM]}),
+            make_mock_response({"success": True}),
+            make_mock_response({"items": []}),
+            make_mock_response({"items": [{**self.SAMPLE_ITEM, "id": "libfile_keep"}]}),
+        ]
+        mock_aiohttp_session._responses = responses
+
+        total = await remove_library_images_by_query(
+            mock_aiohttp_session, query="ocean", max_concurrent=2
+        )
+        assert total == 1
+
 
 class TestParseSSEEvents:
     def test_parse_single_event(self):
