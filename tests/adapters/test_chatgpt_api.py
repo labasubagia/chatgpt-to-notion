@@ -189,6 +189,7 @@ class TestChatGPTLibraryOperations:
             make_mock_response({"items": [item2]}),
             make_mock_response({"success": True}),
             make_mock_response({"items": []}),
+            make_mock_response({"items": []}),  # post-deletion count: 0 remaining
         ]
         mock_aiohttp_session._responses = responses
 

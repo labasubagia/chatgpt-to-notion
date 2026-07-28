@@ -221,6 +221,26 @@ def extract_file_id_from_thumbnail_url(url: str) -> str | None:
     return parts[1] if len(parts) > 1 else None
 
 
+async def count_library_images(
+    session: aiohttp.ClientSession,
+    headers: dict[str, str] | None = None,
+) -> int:
+    headers = headers or get_headers()
+    total = 0
+    cursor: str | None = None
+
+    while True:
+        data = await get_library_images(
+            session, query=None, headers=headers, cursor=cursor
+        )
+        total += len(data.get("items", []))
+        cursor = data.get("cursor")
+        if not cursor:
+            break
+
+    return total
+
+
 async def remove_library_images_by_query(
     session: aiohttp.ClientSession,
     query: str | None = None,
@@ -257,5 +277,8 @@ async def remove_library_images_by_query(
                 break
     finally:
         pbar.close()
+
+    remaining = await count_library_images(session, headers)
+    print(f"Total images remaining in library: {remaining}")
 
     return total_deleted
