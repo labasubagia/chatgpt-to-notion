@@ -5,6 +5,7 @@ cookie_string_base64 = "b2FpLWRpZD1..."
 # history_folder = "~/data/chatgpt/image_history"
 # image_folder = "~/Desktop/images"
 # delete_library_queries = ["query1", "query2"]
+# remove_all_library_images = false
 
 [notion]
 api_key = "secret_xxx"

@@ -63,6 +63,9 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
     delete_library_queries = (
         account.delete_library_queries or shared.delete_library_queries
     )
+    remove_all_library_images = (
+        account.remove_all_library_images or shared.remove_all_library_images
+    )
 
     return ResolvedConfig(
         account_name=account_name,
@@ -78,6 +81,7 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
         history_folder=history_folder,
         image_folder=image_folder,
         delete_library_queries=delete_library_queries,
+        remove_all_library_images=remove_all_library_images,
     )
 
 

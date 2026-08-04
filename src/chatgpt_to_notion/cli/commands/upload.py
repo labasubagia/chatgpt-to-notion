@@ -61,6 +61,11 @@ def register(app: typer.Typer) -> None:
         remove_in_chatgpt_library: bool = typer.Option(
             False, help="Whether to remove images from ChatGPT library after upload"
         ),
+        remove_all_in_chatgpt_library: bool = typer.Option(
+            False,
+            help="Remove ALL images from ChatGPT library after upload (ignores "
+            "delete_library_queries)",
+        ),
         check_notion_api: bool = typer.Option(
             True, help="Check Notion API even when uploaded_at is already set"
         ),
@@ -156,6 +161,7 @@ def register(app: typer.Typer) -> None:
                     upload_to_notion=upload_to_notion,
                     remove_in_chatgpt=remove,
                     remove_in_chatgpt_library=remove_in_chatgpt_library,
+                    remove_all_in_chatgpt_library=remove_all_in_chatgpt_library,
                     account=resolved.account_name,
                     check_notion_api=effective_check_notion_api,
                     from_history=effective_from_history,

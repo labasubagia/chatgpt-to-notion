@@ -48,6 +48,7 @@ class AccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
+    remove_all_library_images: bool = False
 
 
 class SharedAccountConfig(BaseModel):
@@ -60,6 +61,7 @@ class SharedAccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
+    remove_all_library_images: bool = False
 
 
 class AppConfig(BaseModel):
@@ -83,6 +85,7 @@ class ResolvedConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
+    remove_all_library_images: bool = False
 
 
 class RuntimeOptions(BaseModel):
