@@ -1212,6 +1212,81 @@ class TestChatGPTUploadToNotionSingle:
                                     mock_prompt.assert_called_once()
                                     mock_upload.assert_called_once()
 
+    async def test_remove_all_library_triggers_without_master_switch(
+        self, monkeypatch, tmp_path
+    ):
+        """Should run library removal when remove_all flag set even if master switch off."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations",
+            new_callable=AsyncMock,
+            return_value=([], []),
+        ) as mock_fetch, patch(
+            "chatgpt_to_notion.services.upload_pipeline._remove_library_images",
+            new_callable=AsyncMock,
+        ) as mock_remove:
+            await chatgpt.upload_to_notion_single(
+                image_folder=str(tmp_path / "images"),
+                db_id="test_db",
+                account="test_account",
+                remove_in_chatgpt_library=False,
+                remove_all_in_chatgpt_library=True,
+            )
+
+        mock_fetch.assert_awaited_once()
+        mock_remove.assert_awaited_once()
+        assert mock_remove.await_args.kwargs["remove_all"] is True
+
+    async def test_no_library_removal_when_all_flags_off(self, monkeypatch, tmp_path):
+        """Should not remove library images when no removal flag is set."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations",
+            new_callable=AsyncMock,
+            return_value=([], []),
+        ) as mock_fetch, patch(
+            "chatgpt_to_notion.services.upload_pipeline._remove_library_images",
+            new_callable=AsyncMock,
+        ) as mock_remove:
+            await chatgpt.upload_to_notion_single(
+                image_folder=str(tmp_path / "images"),
+                db_id="test_db",
+                account="test_account",
+                remove_in_chatgpt_library=False,
+                remove_all_in_chatgpt_library=False,
+            )
+
+        mock_fetch.assert_awaited_once()
+        mock_remove.assert_not_awaited()
+
+    async def test_remove_all_library_via_master_switch_still_works(
+        self, monkeypatch, tmp_path
+    ):
+        """Should still remove with master switch on and remove_all unset (queries)."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.fetch_image_generations",
+            new_callable=AsyncMock,
+            return_value=([], []),
+        ) as mock_fetch, patch(
+            "chatgpt_to_notion.services.upload_pipeline._remove_library_images",
+            new_callable=AsyncMock,
+        ) as mock_remove:
+            await chatgpt.upload_to_notion_single(
+                image_folder=str(tmp_path / "images"),
+                db_id="test_db",
+                account="test_account",
+                remove_in_chatgpt_library=True,
+                remove_all_in_chatgpt_library=False,
+            )
+
+        mock_fetch.assert_awaited_once()
+        mock_remove.assert_awaited_once()
+        assert mock_remove.await_args.kwargs["remove_all"] is False
+
     async def test_upload_to_notion_single_skips_uploaded(
         self, monkeypatch, tmp_path, capsys
     ):

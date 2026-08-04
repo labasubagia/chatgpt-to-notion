@@ -283,7 +283,7 @@ async def upload_to_notion(
 
     if not generations:
         print("No generations found.")
-        if remove_in_chatgpt_library:
+        if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
             await _remove_library_images(
                 options, remove_all=remove_all_in_chatgpt_library
             )
@@ -314,7 +314,7 @@ async def upload_to_notion(
         )
 
     if len(remote_generations) <= 0:
-        if remove_in_chatgpt_library:
+        if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
             await _remove_library_images(
                 options, remove_all=remove_all_in_chatgpt_library
             )
@@ -327,7 +327,7 @@ async def upload_to_notion(
             options=options,
         )
 
-    if remove_in_chatgpt_library:
+    if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
         await _remove_library_images(options, remove_all=remove_all_in_chatgpt_library)
 
 
@@ -375,7 +375,7 @@ async def upload_to_notion_single(
 
     if not generations:
         print("No generations found.")
-        if remove_in_chatgpt_library:
+        if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
             await _remove_library_images(
                 options, remove_all=remove_all_in_chatgpt_library
             )
@@ -520,5 +520,5 @@ async def upload_to_notion_single(
         print(counter.summary_line())
     print()
 
-    if remove_in_chatgpt_library:
+    if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
         await _remove_library_images(options, remove_all=remove_all_in_chatgpt_library)
