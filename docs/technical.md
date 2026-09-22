@@ -76,7 +76,7 @@ The pipeline executes as a sequential chain of stages designed to guarantee reli
 4. **Notion Registry Pipeline**:
    - Check if `uploaded_at` is flagged in SQLite.
    - If not flagged, query the Notion Database API directly to verify if the unique image ID exists (handling scenarios where local state was lost but Notion contains the page).
-   - If not found on Notion: Initiate a native multi-part file stream. Create a new page, set the title, host the file permanently, and format the prompt cleanly as a Markdown block inside the page's body.
+   - If not found on Notion: Initiate a native multi-part file stream. Create a new page, set the title, host the file permanently, and format the prompt cleanly as a Markdown block inside the page's body, then append a labeled `**Email:**` line using the account key (always enabled; no config/CLI toggle). Account keys are validated as email addresses at config load time.
    - Once successfully published: Record `uploaded_at` timestamp inside SQLite.
 5. **Fail-Safe Post-Sync Cleanup**:
    - If post-sync thread cleanup is requested, the system performs a multi-layered verification to guarantee the asset is securely hosted in Notion before triggering deletion.

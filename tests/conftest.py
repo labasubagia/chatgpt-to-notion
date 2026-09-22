@@ -104,7 +104,7 @@ cookie_string_base64 = "Y29va2llX2RhdGE="
 api_key = "secret_test_notion_key"
 database_id = "test_database_123"
 
-[accounts.default]
+[accounts."default@example.com"]
 authorization_token = "test_token_abc"
 """.strip()
     )
@@ -138,8 +138,11 @@ def mock_aiohttp_session():
     class MockSession:
         def __init__(self):
             self._responses = []
+            self.requests = []
 
         def _mock_method(self, method, url, **kwargs):
+            self.requests.append({"method": method, "url": url, **kwargs})
+
             class ContextManager:
                 async def __aenter__(ctx_self):
                     if self._responses:

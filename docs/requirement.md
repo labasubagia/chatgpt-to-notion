@@ -87,6 +87,7 @@ The product scope is divided into five core functional pillars:
 ### 5.3 Notion Synchronization Pipeline
 * **Requirement**: Publish downloaded images to a user-defined Notion database as new pages.
 * **Requirement**: Set the page title to the file name and render the prompt as a cleanly formatted, highly readable Markdown block within the page's body content.
+* **Requirement**: Always append a labeled `**Email:**` line to the page body after the prompt block, using the account key (which must be a valid email address) as the value. There is no toggle to disable this.
 * **Requirement**: Utilize safe multi-part file uploads so that images are hosted natively on Notion rather than referencing transient URLs.
 
 ### 5.4 Deduplication & Resiliency
@@ -105,6 +106,9 @@ The product scope is divided into five core functional pillars:
 ### 6.1 Reliability & Resilience
 * **Exponential Backoff**: The tool must automatically retry failed network requests (for both ChatGPT and Notion rate limits) with proper delay intervals.
 * **Transaction Safety**: Local state and indexing should update incrementally, permitting instant resumption at the exact failure point without data corruption.
+
+### 6.2 Configuration Validation
+* **Account Key Format**: Every `[accounts.<key>]` entry in `config.toml` must use a valid email address as the key (e.g. `[accounts."user@example.com"]`). Loading a config with a non-email account key must fail with a clear validation error.
 
 ### 6.2 Privacy & Data Sovereignty
 * **Local-First Design**: No intermediary servers or cloud proxies. All downloads, credential handling, and network requests must occur strictly between the user's local machine and the destination APIs (ChatGPT & Notion).

@@ -215,7 +215,9 @@ async def add_page_to_db(
     ext = os.path.splitext(file_name)[1].lower() or ".png"
     content_type = _content_type_for_ext(ext)
 
-    headers = get_headers(options)
+    notion_ctx = get_notion_context(options)
+    headers = notion_ctx.headers
+    account_name = notion_ctx.account_name
     create_upload_res = await create_upload_img(
         session, file_path, headers=headers, content_type=content_type
     )
@@ -231,6 +233,10 @@ async def add_page_to_db(
     normalized_prompt = normalized_prompt.replace("\r\n", "\n")
     normalized_prompt = normalized_prompt.replace("\r", "\n")
 
+    body = f"**Prompt:**\n\n```\n{normalized_prompt}\n```"
+    if account_name:
+        body += f"\n\n**Email:** {account_name}"
+
     payload: dict[str, Any] = {
         "parent": {"database_id": db_id},
         "properties": {
@@ -244,7 +250,7 @@ async def add_page_to_db(
                 ]
             },
         },
-        "markdown": f"**Prompt:**\n\n```\n{normalized_prompt}\n```",
+        "markdown": body,
     }
 
     async with session.post(

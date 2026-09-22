@@ -219,7 +219,7 @@ class TestTomlConfig:
                     'api_key = "notion_key"',
                     'database_id = "db_default_1234567890"',
                     "",
-                    "[accounts.work]",
+                    '[accounts."work@example.com"]',
                     'authorization_token = "token_work"',
                     'user_agent = "Agent/1.0"',
                     'notion_database_id = "db_work_1234567890"',
@@ -228,9 +228,9 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        resolved = resolve_config(RuntimeOptions(account="work"))
+        resolved = resolve_config(RuntimeOptions(account="work@example.com"))
 
-        assert resolved.account_name == "work"
+        assert resolved.account_name == "work@example.com"
         assert resolved.account.authorization_token == "token_work"
         assert resolved.notion.database_id == "db_work_1234567890"
 
@@ -243,7 +243,7 @@ class TestTomlConfig:
                     'api_key = "notion_key"',
                     'database_id = "db_default_1234567890"',
                     "",
-                    "[accounts.personal]",
+                    '[accounts."personal@example.com"]',
                     'authorization_token = "token_personal"',
                     'user_agent = "Agent/2.0"',
                 ]
@@ -251,8 +251,10 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
-        notion = get_notion_context(RuntimeOptions(account="personal"))
+        provider = get_provider_context(
+            "chatgpt", RuntimeOptions(account="personal@example.com")
+        )
+        notion = get_notion_context(RuntimeOptions(account="personal@example.com"))
 
         assert provider.headers["Authorization"] == "Bearer token_personal"
         assert notion.headers["Authorization"] == "Bearer notion_key"
@@ -265,16 +267,40 @@ class TestTomlConfig:
                     "[shared]",
                     'user_agent = "SharedAgent/1.0"',
                     "",
-                    "[accounts.personal]",
+                    '[accounts."personal@example.com"]',
                     'authorization_token = "token_personal"',
                 ]
             )
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+        provider = get_provider_context(
+            "chatgpt", RuntimeOptions(account="personal@example.com")
+        )
 
         assert provider.headers["User-Agent"] == "SharedAgent/1.0"
+
+    def test_notion_context_exposes_account_name_as_email(
+        self, tmp_path, monkeypatch
+    ):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[notion]",
+                    'api_key = "notion_key"',
+                    'database_id = "db_default_1234567890"',
+                    "",
+                    '[accounts."personal@example.com"]',
+                    'authorization_token = "token_personal"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        notion = get_notion_context(RuntimeOptions(account="personal@example.com"))
+
+        assert notion.account_name == "personal@example.com"
 
     def test_cookie_string_resolves_and_decodes(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
@@ -284,10 +310,10 @@ class TestTomlConfig:
                     "[shared]",
                     'cookie_string_base64 = "Y29va2llX3NoYXJlZA=="', # "cookie_shared"
                     "",
-                    "[accounts.personal]",
+                    '[accounts."personal@example.com"]',
                     'authorization_token = "token_personal"',
                     "",
-                    "[accounts.override]",
+                    '[accounts."override@example.com"]',
                     'authorization_token = "token_override"',
                     'cookie_string_base64 = "Y29va2llX292ZXJyaWRl"', # "cookie_override"
                 ]
@@ -296,11 +322,15 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         # 1. Test shared default resolution & decoding
-        provider_personal = get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+        provider_personal = get_provider_context(
+            "chatgpt", RuntimeOptions(account="personal@example.com")
+        )
         assert provider_personal.headers["Cookie"] == "cookie_shared"
 
         # 2. Test account-level override resolution & decoding
-        provider_override = get_provider_context("chatgpt", RuntimeOptions(account="override"))
+        provider_override = get_provider_context(
+            "chatgpt", RuntimeOptions(account="override@example.com")
+        )
         assert provider_override.headers["Cookie"] == "cookie_override"
 
     def test_cookie_string_invalid_base64(self, tmp_path, monkeypatch):
@@ -308,7 +338,7 @@ class TestTomlConfig:
         config_path.write_text(
             '\n'.join(
                 [
-                    "[accounts.personal]",
+                    '[accounts."personal@example.com"]',
                     'authorization_token = "token_personal"',
                     'cookie_string_base64 = "not-valid-base64!"',
                 ]
@@ -317,18 +347,20 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="Invalid base64 in cookie_string_base64"):
-            get_provider_context("chatgpt", RuntimeOptions(account="personal"))
+            get_provider_context(
+                "chatgpt", RuntimeOptions(account="personal@example.com")
+            )
 
     def test_get_account_names_from_toml(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
         config_path.write_text(
             '\n'.join(
                 [
-                    "[accounts.a]",
+                    '[accounts."a@example.com"]',
                     'authorization_token = "a"',
                     'user_agent = "ua"',
                     "",
-                    "[accounts.b]",
+                    '[accounts."b@example.com"]',
                     'authorization_token = "b"',
                     'user_agent = "ua"',
                 ]
@@ -336,7 +368,22 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        assert get_account_names() == ["a", "b"]
+        assert get_account_names() == ["a@example.com", "b@example.com"]
+
+    def test_account_keys_must_be_valid_emails(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '\n'.join(
+                [
+                    "[accounts.not_an_email]",
+                    'authorization_token = "token"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(ValueError, match="valid email"):
+            resolve_config(RuntimeOptions(account="not_an_email"))
 
 
 class TestAccountActivityStatus:
@@ -345,7 +392,7 @@ class TestAccountActivityStatus:
     def test_no_data_is_ready(self, isolated_db, monkeypatch):
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC")
 
-        assert today_rows[0]["Account"] == "default"
+        assert today_rows[0]["Account"] == "default@example.com"
         assert today_rows[0]["Next Wait"] == "Ready"
         assert today_rows[0]["Ready Generate?"] == "✅"
         assert yesterday_rows[0]["Next Wait"] == "Ready"
@@ -366,7 +413,7 @@ class TestAccountActivityStatus:
             )
             for h in range(1, 9)
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -388,7 +435,7 @@ class TestAccountActivityStatus:
             )
             for h in [13, 14, 15, 16, 17, 1, 2, 3]
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -410,7 +457,7 @@ class TestAccountActivityStatus:
             )
             for h in [13, 14, 15, 16, 17, 18, 19, 20]
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -431,7 +478,7 @@ class TestAccountActivityStatus:
             )
             for d in [2, 3]
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC")
 
@@ -452,7 +499,7 @@ class TestAccountActivityStatus:
                 prompt="Prompt 1",
             )
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -485,7 +532,7 @@ class TestAccountActivityStatus:
             )
             for m in [50, 55]
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -520,7 +567,7 @@ class TestAccountActivityStatus:
                 prompt="Old Prompt",
             ),
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(
             timezone_name="Asia/Jakarta", now=now_jakarta
@@ -571,7 +618,7 @@ class TestAccountActivityStatus:
                 prompt="Yesterday 2",
             ),
         ]
-        db.upsert_generations("default", generations)
+        db.upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -602,9 +649,9 @@ class TestSaveGenerations:
                 prompt="test prompt",
             )
         ]
-        save_generations("default", data)
+        save_generations("default@example.com", data)
 
-        result = db.get_generations("default", include_uploaded=True)
+        result = db.get_generations("default@example.com", include_uploaded=True)
         assert len(result) == 1
         assert result[0].id == "test123"
 
@@ -631,13 +678,13 @@ class TestUploadedGenerationHelpers:
             url="https://example.com/b.png",
             prompt="B",
         )
-        db.upsert_generations("default", [gen_a, gen_b])
+        db.upsert_generations("default@example.com", [gen_a, gen_b])
 
-        assert get_uploaded_generation_ids("default") == set()
+        assert get_uploaded_generation_ids("default@example.com") == set()
 
-        mark_generations_uploaded("default", {"b"})
+        mark_generations_uploaded("default@example.com", {"b"})
 
-        assert get_uploaded_generation_ids("default") == {"b"}
+        assert get_uploaded_generation_ids("default@example.com") == {"b"}
 
 
 class TestCleanOutputPath:

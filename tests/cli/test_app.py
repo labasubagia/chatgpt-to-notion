@@ -106,7 +106,10 @@ class TestCLICommands:
 
     @patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config")
     @patch("chatgpt_to_notion.cli.commands.upload.resolve_config")
-    @patch("chatgpt_to_notion.cli.commands.upload.get_account_names", return_value=["acc1", "acc2"])
+    @patch(
+        "chatgpt_to_notion.cli.commands.upload.get_account_names",
+        return_value=["acc1@example.com", "acc2@example.com"],
+    )
     @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)
     def test_upload_to_notion_multiple_accounts(
         self,
@@ -122,7 +125,7 @@ class TestCLICommands:
         mock_validate.return_value = None
         mock_resolve.side_effect = [
             ResolvedConfig(
-                account_name="acc1",
+                account_name="acc1@example.com",
                 account=AccountConfig(
                     authorization_token="token1",
                     user_agent="ua",
@@ -130,7 +133,7 @@ class TestCLICommands:
                 notion=NotionConfig(api_key="key", database_id="db"),
             ),
             ResolvedConfig(
-                account_name="acc2",
+                account_name="acc2@example.com",
                 account=AccountConfig(
                     authorization_token="token2",
                     user_agent="ua",
@@ -158,7 +161,7 @@ class TestCLICommands:
         )
         assert result.exit_code == 0
         mock_upload.assert_called_once()
-        assert mock_upload.call_args.kwargs["account"] == "default"
+        assert mock_upload.call_args.kwargs["account"] == "default@example.com"
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
     @patch("chatgpt_to_notion.cli.commands.upload.upload_pipeline.upload_to_notion_single", new_callable=AsyncMock)

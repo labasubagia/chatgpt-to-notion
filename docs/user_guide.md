@@ -95,11 +95,13 @@ cookie_string_base64 = "b2FpLWRpZD1..."
 api_key = "secret_yourNotionIntegrationTokenHere"
 database_id = "yourDefaultNotionDatabaseIDHere"
 
-# Configure as many separate ChatGPT accounts as you want to pool
-[accounts.personal]
+# Configure as many separate ChatGPT accounts as you want to pool.
+# The account key must be a valid email address; it is written into each
+# uploaded Notion page body as the **Email:** line.
+[accounts."personal@example.com"]
 authorization_token = "eyJhbGciOiJSUzI1..." # ChatGPT Auth token (excluding 'Bearer ')
 
-[accounts.work]
+[accounts."work@example.com"]
 authorization_token = "eyJhbGciOiJSUzI1_other..."
 # Optional: per-account cookie string override
 cookie_string_base64 = "b3RoZXJfY29va2ll..." 

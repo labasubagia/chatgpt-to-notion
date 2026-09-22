@@ -2,7 +2,8 @@
 
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from email_validator import EmailNotValidError, validate_email
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ImageGeneration(Protocol):
@@ -72,6 +73,21 @@ class AppConfig(BaseModel):
     notion: NotionConfig = NotionConfig()
     shared: SharedAccountConfig = SharedAccountConfig()
     accounts: dict[str, AccountConfig] = {}
+
+    @model_validator(mode="after")
+    def _validate_account_keys_are_emails(self) -> "AppConfig":
+        invalid: list[str] = []
+        for name in self.accounts:
+            try:
+                validate_email(name, check_deliverability=False)
+            except EmailNotValidError:
+                invalid.append(name)
+        if invalid:
+            joined = ", ".join(repr(name) for name in invalid)
+            raise ValueError(
+                f"Account keys must be valid email addresses, got: {joined}"
+            )
+        return self
 
 
 class ResolvedConfig(BaseModel):

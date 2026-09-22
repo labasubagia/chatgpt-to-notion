@@ -326,6 +326,65 @@ class TestNotionUpload:
         assert "id" in result
         assert result["id"] == "page_123"
 
+        page_request = next(
+            req
+            for req in mock_aiohttp_session.requests
+            if req["method"] == "POST" and req["url"].endswith("/v1/pages")
+        )
+        markdown = page_request["json"]["markdown"]
+        assert markdown.startswith("**Prompt:**\n\n```\nTest prompt\n```")
+        assert markdown.endswith("\n\n**Email:** default@example.com")
+
+    async def test_add_page_to_db_email_uses_account_key(
+        self, mock_aiohttp_session, sample_image_bytes, tmp_path, monkeypatch
+    ):
+        """Account key (email) should appear in the body email line."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            '\n'.join(
+                [
+                    "[notion]",
+                    'api_key = "secret_test_notion_key"',
+                    'database_id = "test_database_123"',
+                    "",
+                    '[accounts."user@example.com"]',
+                    'authorization_token = "test_token_abc"',
+                ]
+            )
+        )
+        monkeypatch.chdir(tmp_path)
+
+        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+
+        _load_toml_config.cache_clear()
+
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(sample_image_bytes)
+
+        mock_aiohttp_session._responses = [
+            make_mock_response({"id": "upload_123"}),
+            make_mock_response({"id": "upload_123", "status": "complete"}),
+            make_mock_response({"id": "page_123"}),
+        ]
+
+        result = await add_page_to_db(
+            mock_aiohttp_session,
+            "test_db_123",
+            str(img_path),
+            "Test prompt",
+            options=None,
+        )
+        assert result["id"] == "page_123"
+
+        page_request = next(
+            req
+            for req in mock_aiohttp_session.requests
+            if req["method"] == "POST" and req["url"].endswith("/v1/pages")
+        )
+        markdown = page_request["json"]["markdown"]
+        assert markdown.startswith("**Prompt:**\n\n```\nTest prompt\n```")
+        assert markdown.endswith("\n\n**Email:** user@example.com")
+
     async def test_add_page_to_db_file_not_found(self, mock_aiohttp_session):
         """Should raise FileNotFoundError for missing file."""
         with pytest.raises(FileNotFoundError):
@@ -442,8 +501,8 @@ class TestNotionUploadAllImages:
             url="https://example.com/img.png",
             prompt="Test prompt",
         )
-        db.upsert_generations("default", [gen])
-        db.mark_uploaded("default", {"img_123"})
+        db.upsert_generations("default@example.com", [gen])
+        db.mark_uploaded("default@example.com", {"img_123"})
 
         generations = [gen]
 
@@ -455,8 +514,8 @@ class TestNotionUploadAllImages:
                     generations=generations,
                     db_id="test_db",
                     image_folder=image_folder,
-                    account="default",
-                    options=type("Options", (), {"account": "default"})(),
+                    account="default@example.com",
+                    options=type("Options", (), {"account": "default@example.com"})(),
                 )
 
                 mock_exists.assert_not_called()
@@ -481,8 +540,8 @@ class TestNotionUploadAllImages:
             url="https://example.com/img.png",
             prompt="Test prompt",
         )
-        db.upsert_generations("default", [gen])
-        db.mark_uploaded("default", {"img_123"})
+        db.upsert_generations("default@example.com", [gen])
+        db.mark_uploaded("default@example.com", {"img_123"})
 
         generations = [gen]
 
@@ -495,9 +554,9 @@ class TestNotionUploadAllImages:
                     generations=generations,
                     db_id="test_db",
                     image_folder=image_folder,
-                    account="default",
+                    account="default@example.com",
                     check_notion_api=True,
-                    options=type("Options", (), {"account": "default"})(),
+                    options=type("Options", (), {"account": "default@example.com"})(),
                 )
 
                 mock_exists.assert_called_once()
@@ -522,7 +581,7 @@ class TestNotionUploadAllImages:
             url="https://example.com/img.png",
             prompt="Test prompt",
         )
-        db.upsert_generations("default", [gen])
+        db.upsert_generations("default@example.com", [gen])
 
         generations = [gen]
 
@@ -536,8 +595,8 @@ class TestNotionUploadAllImages:
                     generations=generations,
                     db_id="test_db",
                     image_folder=image_folder,
-                    account="default",
-                    options=type("Options", (), {"account": "default"})(),
+                    account="default@example.com",
+                    options=type("Options", (), {"account": "default@example.com"})(),
                 )
 
         conn = db._get_connection()

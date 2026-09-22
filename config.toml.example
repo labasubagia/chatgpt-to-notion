@@ -11,12 +11,13 @@ cookie_string_base64 = "b2FpLWRpZD1..."
 api_key = "secret_xxx"
 database_id = "your_default_database_id"
 
-[accounts.account_a]
+# Account key must be a valid email; it is written into each Notion page body.
+[accounts."account_a@example.com"]
 authorization_token = "eyJhbGciOi..."
 notion_database_id = "optional_account_specific_db_id"
 # Optional: per-account override (overrides shared settings)
 # history_folder = "~/my_chatgpt/history"
 # image_folder = "~/my_chatgpt/images"
 
-[accounts.account_b]
+[accounts."account_b@example.com"]
 authorization_token = "eyJhbGciOi..."

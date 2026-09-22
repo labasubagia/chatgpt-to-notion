@@ -34,10 +34,10 @@ user_agent = "your_user_agent"
 api_key = "your_notion_integration_token"
 database_id = "your_database_id"
 
-[accounts.personal]
+[accounts."personal@example.com"]
 authorization_token = "your_auth_token"
 
-[accounts.work]
+[accounts."work@example.com"]
 authorization_token = "your_other_auth_token"
 notion_database_id = "optional_override_database_id"
 ```
@@ -54,7 +54,7 @@ Upload recent generations:
 
 ```bash
 uv run chatgpt-to-notion upload-to-notion \
-  --account personal \
+  --account personal@example.com \
   --limit 100
 ```
 

@@ -33,7 +33,7 @@ class TestChatGPTHeaders:
 
     def test_get_headers_with_options(self, mock_config_toml):
         """Should return headers corresponding to specified options/account."""
-        options = RuntimeOptions(account="default")
+        options = RuntimeOptions(account="default@example.com")
         headers = get_headers(options)
         assert headers["Authorization"] == "Bearer test_token_abc"
 

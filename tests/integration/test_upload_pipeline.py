@@ -69,7 +69,7 @@ user_agent = "TestAgent/1.0"
 api_key = "secret_test_notion_key"
 database_id = "test_database_123"
 
-[accounts.default]
+[accounts."default@example.com"]
 authorization_token = "test_token_abc"
 """.strip()
         )
@@ -133,7 +133,7 @@ class TestChatGPTFetchImageGenerations:
 
                         remote_generations, result = await chatgpt.fetch_image_generations(
                             limit=5,
-                            options=type("Options", (), {"account": "default"}),
+                            options=type("Options", (), {"account": "default@example.com"}),
                         )
 
                         assert isinstance(remote_generations, list)
@@ -161,7 +161,7 @@ class TestChatGPTFetchImageGenerations:
             url="https://example.com/image.png",
             prompt="Existing prompt",
         )
-        db.upsert_generations("default", [gen])
+        db.upsert_generations("default@example.com", [gen])
 
         mock_data = {
             "items": [
@@ -189,7 +189,7 @@ class TestChatGPTFetchImageGenerations:
 
                     remote_generations, result = await chatgpt.fetch_image_generations(
                         limit=5,
-                        options=type("Options", (), {"account": "default"})(),
+                        options=type("Options", (), {"account": "default@example.com"})(),
                     )
 
                     assert len(remote_generations) == 1
@@ -214,7 +214,7 @@ class TestChatGPTFetchImageGenerations:
 
                 remote_generations, result = await chatgpt.fetch_image_generations(
                     limit=5,
-                    options=type("Options", (), {"account": "default"})(),
+                    options=type("Options", (), {"account": "default@example.com"})(),
                 )
 
                 assert remote_generations == []
@@ -379,12 +379,12 @@ class TestChatGPTHistoryDataset:
             url="https://example.com/2.png",
             prompt="Prompt 2",
         )
-        db.upsert_generations("default", [gen_1, gen_2])
-        db.mark_uploaded("default", {"img_2"})
+        db.upsert_generations("default@example.com", [gen_1, gen_2])
+        db.mark_uploaded("default@example.com", {"img_2"})
 
         generations = load_image_generations(
-            "default",
-            options=type("Options", (), {"account": "default"})(),
+            "default@example.com",
+            options=type("Options", (), {"account": "default@example.com"})(),
         )
 
         assert [generation.id for generation in generations] == ["img_1"]
@@ -412,13 +412,13 @@ class TestChatGPTHistoryDataset:
             url="https://example.com/2.png",
             prompt="Prompt 2",
         )
-        db.upsert_generations("default", [gen_1, gen_2])
-        db.mark_uploaded("default", {"img_2"})
+        db.upsert_generations("default@example.com", [gen_1, gen_2])
+        db.mark_uploaded("default@example.com", {"img_2"})
 
         generations = load_image_generations(
-            "default",
+            "default@example.com",
             include_uploaded=True,
-            options=type("Options", (), {"account": "default"})(),
+            options=type("Options", (), {"account": "default@example.com"})(),
         )
 
         assert [generation.id for generation in generations] == ["img_1", "img_2"]
@@ -1049,13 +1049,13 @@ class TestChatGPTUploadToNotionComprehensive:
                                 await chatgpt.upload_to_notion(
                                     image_folder=image_folder,
                                     db_id="test_db",
-                                    account="default",
+                                    account="default@example.com",
                                     check_notion_api=True,
                                     from_history=True,
                                 )
 
         mock_load.assert_called_once_with(
-            account="default",
+            account="default@example.com",
             include_uploaded=True,
             keep_days=None,
             timezone_name=None,
@@ -1823,7 +1823,7 @@ delete_library_queries = ["ocean", "city"]
 api_key = "secret_test_notion_key"
 database_id = "test_database_123"
 
-[accounts.default]
+[accounts."default@example.com"]
 authorization_token = "test_token_abc"
 """.strip()
         )
@@ -1874,7 +1874,7 @@ delete_library_queries = ["ocean"]
 api_key = "secret_test_notion_key"
 database_id = "test_database_123"
 
-[accounts.default]
+[accounts."default@example.com"]
 authorization_token = "test_token_abc"
 """.strip()
         )
@@ -1926,7 +1926,7 @@ remove_all_library_images = true
 api_key = "secret_test_notion_key"
 database_id = "test_database_123"
 
-[accounts.default]
+[accounts."default@example.com"]
 authorization_token = "test_token_abc"
 """.strip()
         )
