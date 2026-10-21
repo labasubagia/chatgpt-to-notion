@@ -48,12 +48,11 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 
 1. **Code changes / new feature** → implement on a feature branch
 2. **Review / refactor / harden** → self-review, run tests, pre-commit
-3. **New branch / Pull Request** → `gh pr create --title "..." --body-file ...` against `main`
 4. **Monitor PR CI** → `gh pr checks <number> --watch` wait for all checks (pre-commit, tests, security) to pass
-5. **Merge** → `gh pr merge <number> --squash --delete-branch` only after all CI checks pass (squash merge preferred)
+5. **Check PR status** → `gh pr view <number>` verify no conflicts, branch up-to-date, no "branch needs updates" warning
+6. **Merge** → `gh pr merge <number> --squash --delete-branch` only after all CI checks pass (squash merge preferred)
 
 **Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
-
 **Direct pushes to `main` are prohibited.** Branch protection rules enforce:
 - Required status checks (pre-commit, tests)
 - No force pushes
