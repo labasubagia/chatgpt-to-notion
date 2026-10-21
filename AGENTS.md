@@ -42,6 +42,22 @@ When using coding agents in this repository, prefer small, verifiable changes. S
 
 Recent history follows concise Conventional Commit-style subjects such as `refactor: simplify cli naming` and `fix: improve conversation deletion logic`. Keep commits scoped to one logical change. PRs should include a short summary, the user-visible impact, and a testing section listing commands run, e.g. `uv run pytest`. Link the relevant issue or context when available.
 
+## Development Process
+
+**All changes must go through Pull Requests:**
+
+1. **Code changes / new feature** → implement on a feature branch
+2. **Review / refactor / harden** → self-review, run tests, pre-commit
+3. **New branch / Pull Request** → open PR against `main`
+4. **Monitor PR CI** → wait for all checks (pre-commit, tests, security) to pass
+5. **Merge** → only after all CI checks pass
+
+**Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
+
+**Direct pushes to `main` are prohibited.** Branch protection rules enforce:
+- Required status checks (pre-commit, tests)
+- No force pushes
+- No direct commits
 ## Security & Configuration Tips
 
 Do not commit `config.toml`, tokens, cookies, or downloaded output. Start from `config.toml.example`, keep secrets local, and use per-account configuration only when needed for the current task.
