@@ -11,7 +11,7 @@ import aiohttp
 from tqdm.asyncio import tqdm
 
 from ..domain.models import ImageGeneration, RuntimeOptions
-from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
+from ..shared.constants import image_ext_from_url
 from ..shared.http import (
     DetailedHTTPError,
     exc_detail,
