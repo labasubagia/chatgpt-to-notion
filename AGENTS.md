@@ -44,13 +44,13 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 
 ## Development Process
 
-**All changes must go through Pull Requests:**
+**All changes must go through Pull Requests (using GitHub CLI):**
 
 1. **Code changes / new feature** → implement on a feature branch
 2. **Review / refactor / harden** → self-review, run tests, pre-commit
-3. **New branch / Pull Request** → open PR against `main`
-4. **Monitor PR CI** → wait for all checks (pre-commit, tests, security) to pass
-5. **Merge** → only after all CI checks pass
+3. **New branch / Pull Request** → `gh pr create --title "..." --body-file ...` against `main`
+4. **Monitor PR CI** → `gh pr checks <number> --watch` wait for all checks (pre-commit, tests, security) to pass
+5. **Merge** → `gh pr merge <number> --merge --delete-branch` only after all CI checks pass
 
 **Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
 
