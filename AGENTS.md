@@ -50,7 +50,7 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 2. **Review / refactor / harden** → self-review, run tests, pre-commit
 3. **New branch / Pull Request** → `gh pr create --title "..." --body-file ...` against `main`
 4. **Monitor PR CI** → `gh pr checks <number> --watch` wait for all checks (pre-commit, tests, security) to pass
-5. **Merge** → `gh pr merge <number> --merge --delete-branch` only after all CI checks pass
+5. **Merge** → `gh pr merge <number> --squash --delete-branch` only after all CI checks pass (squash merge preferred)
 
 **Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
 
