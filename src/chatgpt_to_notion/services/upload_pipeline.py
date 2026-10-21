@@ -256,6 +256,7 @@ async def upload_to_notion(
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
     fail_log_path: Path | None = None,
+    max_concurrent: int = 1,
 ) -> None:
     if not db_id:
         raise ValueError("db_id must not be empty")
@@ -311,6 +312,7 @@ async def upload_to_notion(
             check_notion_api=check_notion_api,
             options=options,
             fail_log_path=fail_log_path,
+            max_concurrent=max_concurrent,
         )
 
     if len(remote_generations) <= 0:
@@ -348,6 +350,7 @@ async def upload_to_notion_single(
     no_cache: bool = False,
     options: RuntimeOptions | None = None,
     fail_log_path: Path | None = None,
+    max_concurrent: int = 1,
 ) -> None:
     if not account:
         raise ValueError("account is required")
@@ -399,7 +402,7 @@ async def upload_to_notion_single(
 
     uploaded_ids = get_uploaded_generation_ids(account)
     pbar = tqdm(total=len(conversation_map), desc="Processing conversations")
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    semaphore = asyncio.Semaphore(max_concurrent)
     counter = StageCounter("Processed")
 
     async with aiohttp.ClientSession(

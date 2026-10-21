@@ -90,6 +90,9 @@ def register(app: typer.Typer) -> None:
         ),
         config: str | None = typer.Option(None, help="Path to TOML config file"),
         account: str | None = typer.Option(None, help="Named account from TOML config"),
+        max_concurrent: int = typer.Option(
+            1, help="Max concurrent upload requests (1 = sequential)"
+        ),
         mode: Literal["single", "batch"] = typer.Option(
             "single",
             help="Processing mode: single (per-file, resilient) or batch (parallel)",
@@ -171,6 +174,7 @@ def register(app: typer.Typer) -> None:
                     no_cache=no_cache,
                     options=options,
                     fail_log_path=fail_log,
+                    max_concurrent=max_concurrent,
                 )
             )
             if not ok:

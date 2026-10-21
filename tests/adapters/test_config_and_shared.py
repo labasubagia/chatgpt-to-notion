@@ -31,6 +31,7 @@ from chatgpt_to_notion.services.history_service import (
     save_generations,
 )
 from chatgpt_to_notion.shared.constants import (
+    DOWNLOAD_TIMEOUT_SECONDS,
     HTTP_TIMEOUT_SECONDS,
     MAX_CONCURRENT_DOWNLOADS,
     MAX_CONCURRENT_REQUESTS,
@@ -204,7 +205,7 @@ class TestGetHttpTimeout:
     def test_returns_client_timeout(self):
         timeout = get_http_timeout()
         assert isinstance(timeout, aiohttp.ClientTimeout)
-        assert timeout.total == 30
+        assert timeout.total == 120
 
 
 class TestTomlConfig:
@@ -1005,16 +1006,19 @@ class TestConstants:
     """Tests for module constants."""
 
     def test_max_retries(self):
-        assert MAX_RETRIES == 5
+        assert MAX_RETRIES == 10
 
     def test_max_concurrent_downloads(self):
-        assert MAX_CONCURRENT_DOWNLOADS == 10
+        assert MAX_CONCURRENT_DOWNLOADS == 5
 
     def test_max_concurrent_requests(self):
-        assert MAX_CONCURRENT_REQUESTS == 10
+        assert MAX_CONCURRENT_REQUESTS == 1
 
     def test_http_timeout_seconds(self):
-        assert HTTP_TIMEOUT_SECONDS == 30
+        assert HTTP_TIMEOUT_SECONDS == 120
+
+    def test_download_timeout_seconds(self):
+        assert DOWNLOAD_TIMEOUT_SECONDS == 300
 
     def test_output_path(self):
         assert OUTPUT_PATH == "./output"
