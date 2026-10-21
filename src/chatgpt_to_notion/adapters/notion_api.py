@@ -270,11 +270,12 @@ async def upload_all_images_to_notion(
     check_notion_api: bool = False,
     options: RuntimeOptions | None = None,
     fail_log_path: Path | None = None,
+    max_concurrent: int = 1,
 ) -> None:
     total = len(generations)
     pbar = tqdm(total=total, desc="Uploading to Notion")
     counter = StageCounter("Uploaded")
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    semaphore = asyncio.Semaphore(max_concurrent)
     uploaded_generation_ids = get_uploaded_ids(account) if account else set()
 
     image_folder_path = Path(image_folder)

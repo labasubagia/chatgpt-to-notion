@@ -150,7 +150,7 @@ def before_sleep_custom(retry_state) -> None:
 def retry_http():
     return retry(
         stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
+        wait=wait_exponential(multiplier=2, min=2, max=60),
         retry=retry_if_exception(should_retry_http),
         before_sleep=before_sleep_custom,
         reraise=True,
