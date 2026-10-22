@@ -129,6 +129,14 @@ async def fetch_image_generations(
     fetch_batch_size = resolved.fetch_batch_size
     fetch_batch_pause = 5.0  # seconds between batches
 
+    if fetch_delay > 0 or fetch_batch_size > 0:
+        logger.info(
+            "Rate limiting enabled: delay=%.1fs, batch_size=%d, batch_pause=%.1fs",
+            fetch_delay,
+            fetch_batch_size,
+            fetch_batch_pause,
+        )
+
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
         data = await get_image_generations(session, headers=headers, limit=limit)
 

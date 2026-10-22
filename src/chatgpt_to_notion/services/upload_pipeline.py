@@ -97,6 +97,14 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
     fetch_batch_size = resolved.fetch_batch_size
     fetch_batch_pause = 5.0  # seconds between batches
 
+    if fetch_delay > 0 or fetch_batch_size > 0:
+        logger.info(
+            "Rate limiting enabled: delay=%.1fs, batch_size=%d, batch_pause=%.1fs",
+            fetch_delay,
+            fetch_batch_size,
+            fetch_batch_pause,
+        )
+
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
     counter = StageCounter("Deleted")
 
