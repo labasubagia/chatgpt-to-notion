@@ -8,7 +8,6 @@ from tenacity import (
     retry,
     retry_if_exception,
     stop_after_attempt,
-    wait_exponential,
 )
 
 from .constants import HTTP_TIMEOUT_SECONDS, MAX_RETRIES
@@ -33,12 +32,14 @@ class DetailedHTTPError(Exception):
         body: str,
         url: str,
         req: aiohttp.RequestInfo,
+        retry_after: float | None = None,
     ):
         self.status = status
         self.message_text = message
         self.body = body
         self.url = url
         self.request = req
+        self.retry_after = retry_after
         super().__init__(f"HTTP {status} {message}".strip())
 
     def __str__(self) -> str:
@@ -74,12 +75,24 @@ async def raise_for_status_with_detail(response: aiohttp.ClientResponse) -> None
             body = await response.text()
         except Exception:
             body = "<could not read body>"
+
+        retry_after = None
+        if response.status == 429:
+            retry_after_header = response.headers.get("Retry-After")
+            if retry_after_header:
+                try:
+                    retry_after = float(retry_after_header)
+                except ValueError:
+                    # Handle HTTP-date format if needed
+                    pass
+
         raise DetailedHTTPError(
             response.status,
             response.reason or "",
             body,
             str(response.url),
             response.request_info,
+            retry_after=retry_after,
         )
 
 
@@ -147,10 +160,21 @@ def before_sleep_custom(retry_state) -> None:
         logger.warning(msg)
 
 
+def wait_with_retry_after(retry_state) -> float:
+    """Wait time that respects Retry-After header from 429 responses."""
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    if isinstance(exc, DetailedHTTPError) and exc.retry_after is not None:
+        # Cap at max wait from exponential backoff (60s)
+        return min(exc.retry_after, 60.0)
+    # Fall back to exponential backoff
+    attempt = retry_state.attempt_number
+    return min(2 * (2 ** (attempt - 1)), 60.0)
+
+
 def retry_http():
     return retry(
         stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=2, min=2, max=60),
+        wait=wait_with_retry_after,
         retry=retry_if_exception(should_retry_http),
         before_sleep=before_sleep_custom,
         reraise=True,

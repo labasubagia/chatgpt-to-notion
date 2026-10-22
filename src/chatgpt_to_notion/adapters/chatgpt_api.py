@@ -58,6 +58,84 @@ async def get_conversation_details(
         return await response.json()
 
 
+async def get_conversation_details_with_delay(
+    session: aiohttp.ClientSession,
+    conversation_id: str,
+    headers: dict[str, str] | None = None,
+    delay: float = 0.0,
+) -> dict[str, Any]:
+    """Fetch conversation details with optional delay before request."""
+    if delay > 0:
+        await asyncio.sleep(delay)
+    return await get_conversation_details(session, conversation_id, headers)
+
+
+async def get_conversation_details_batch(
+    session: aiohttp.ClientSession,
+    conversation_ids: list[str],
+    headers: dict[str, str] | None = None,
+    delay: float = 0.0,
+    batch_size: int = 0,
+    batch_pause: float = 5.0,
+) -> dict[str, dict[str, Any]]:
+    """Fetch multiple conversation details with optional delay and batching.
+
+    Args:
+        session: aiohttp client session
+        conversation_ids: List of conversation IDs to fetch
+        headers: Optional headers (Authorization, User-Agent, etc.)
+        delay: Delay in seconds between each request
+        batch_size: Number of requests per batch (0 = no batching)
+        batch_pause: Pause in seconds between batches
+
+    Returns:
+        Dict mapping conversation_id to conversation details
+    """
+    results: dict[str, dict[str, Any]] = {}
+
+    if not conversation_ids:
+        return results
+
+    semaphore = asyncio.Semaphore(1)
+
+    async def fetch_one(conv_id: str) -> tuple[str, dict[str, Any] | None]:
+        async with semaphore:
+            try:
+                detail = await get_conversation_details_with_delay(
+                    session, conv_id, headers, delay
+                )
+                return conv_id, detail
+            except Exception as exc:
+                return conv_id, exc
+
+    if batch_size > 0:
+        # Process in batches
+        for i in range(0, len(conversation_ids), batch_size):
+            batch = conversation_ids[i : i + batch_size]
+            tasks = [fetch_one(conv_id) for conv_id in batch]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)  # type: ignore
+
+            for conv_id, result in batch_results:  # type: ignore[misc]
+                if isinstance(result, BaseException):
+                    raise result
+                if result is not None:
+                    results[conv_id] = result
+
+            # Pause between batches (except after last batch)
+            if i + batch_size < len(conversation_ids) and batch_pause > 0:
+                await asyncio.sleep(batch_pause)
+    else:
+        # No batching, just sequential with delay
+        for conv_id in conversation_ids:
+            conv_id, result = await fetch_one(conv_id)
+            if isinstance(result, Exception):
+                raise result
+            if result is not None:
+                results[conv_id] = result
+
+    return results
+
+
 @retry_http()
 async def delete_conversation(
     session: aiohttp.ClientSession,

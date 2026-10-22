@@ -91,52 +91,78 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
     if not conversation_map:
         return
 
+    # Get delay and batch config from resolved config
+    resolved = resolve_config(options)
+    fetch_delay = resolved.fetch_conversation_delay
+    fetch_batch_size = resolved.fetch_batch_size
+    fetch_batch_pause = 5.0  # seconds between batches
+
     pbar = tqdm(total=len(conversation_map), desc="Deleting conversations")
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     counter = StageCounter("Deleted")
 
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as session:
 
-        async def delete_by_id(conversation_id: str, image_ids: set[str]):
-            async with semaphore:
-                try:
-                    for image_id in image_ids:
-                        ext = image_ext_from_url(generation_urls.get(image_id, ""))
-                        file_name = f"{image_id}{ext}"
-                        exists = await is_page_exists_in_db(
-                            session, db_id, file_name, options=options
-                        )
-                        if not exists:
-                            counter.add("skipped")
-                            if is_verbose():
-                                pbar.write(
-                                    f"⏭️  {file_name} not found in Notion, skipped"
-                                )
-                            return
+        # Fetch conversation details with delay and batching
+        conv_ids = list(conversation_map.keys())
+        conv_details_map = await chatgpt_api.get_conversation_details_batch(
+            session,
+            conv_ids,
+            headers=chatgpt_api.get_headers(options),
+            delay=fetch_delay,
+            batch_size=fetch_batch_size,
+            batch_pause=fetch_batch_pause,
+        )
 
-                    await delete_conversation(
-                        session,
-                        conversation_id,
-                        headers=chatgpt_api.get_headers(options),
+        async def delete_by_id(conversation_id: str, image_ids: set[str]):
+            # Verify conversation was fetched successfully
+            if conversation_id not in conv_details_map:
+                counter.add("failed")
+                if is_verbose():
+                    pbar.write(
+                        f"❌ Conversation ID {conversation_id} failed: "
+                        "details not fetched"
                     )
-                    counter.add("success")
-                    if is_verbose():
-                        pbar.write(f"✅ Conversation ID {conversation_id}")
-                except Exception as exc:
-                    counter.add("failed")
-                    if is_verbose():
-                        pbar.write(
-                            f"❌ Conversation ID {conversation_id} failed: {exc}"
-                        )
-                    log_service_error(
-                        logger,
-                        "Failed to delete conversation " + conversation_id,
-                        exc_detail(exc),
+                pbar.update(1)
+                return
+
+            try:
+                for image_id in image_ids:
+                    ext = image_ext_from_url(generation_urls.get(image_id, ""))
+                    file_name = f"{image_id}{ext}"
+                    exists = await is_page_exists_in_db(
+                        session, db_id, file_name, options=options
                     )
-                finally:
-                    pbar.update(1)
+                    if not exists:
+                        counter.add("skipped")
+                        if is_verbose():
+                            pbar.write(
+                                f"⏭️  {file_name} not found in Notion, skipped"
+                            )
+                        return
+
+                await delete_conversation(
+                    session,
+                    conversation_id,
+                    headers=chatgpt_api.get_headers(options),
+                )
+                counter.add("success")
+                if is_verbose():
+                    pbar.write(f"✅ Conversation ID {conversation_id}")
+            except Exception as exc:
+                counter.add("failed")
+                if is_verbose():
+                    pbar.write(
+                        f"❌ Conversation ID {conversation_id} failed: {exc}"
+                    )
+                log_service_error(
+                    logger,
+                    "Failed to delete conversation " + conversation_id,
+                    exc_detail(exc),
+                )
+            finally:
+                pbar.update(1)
 
         await asyncio.gather(
             *[delete_by_id(conv_id, ids) for conv_id, ids in conversation_map.items()],

@@ -10,6 +10,10 @@ class ImageGeneration(Protocol):
     """Protocol for image generation data with common fields."""
 
     id: str
+    conversation_id: str
+    message_id: str
+    asset_pointer: str
+    url: str
     prompt: str
 
 
@@ -49,6 +53,8 @@ class AccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
+    fetch_conversation_delay: float = 0.0
+    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -59,9 +65,12 @@ class SharedAccountConfig(BaseModel):
 
     user_agent: str | None = None
     cookie_string_base64: str | None = None
+    notion_database_id: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
+    fetch_conversation_delay: float = 0.0
+    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -101,6 +110,8 @@ class ResolvedConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
+    fetch_conversation_delay: float = 0.0
+    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -113,6 +124,8 @@ class RuntimeOptions(BaseModel):
     account: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
+    fetch_conversation_delay: float | None = None
+    fetch_batch_size: int | None = None
 
 
 class ProviderContext(BaseModel):

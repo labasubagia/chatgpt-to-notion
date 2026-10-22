@@ -12,11 +12,10 @@ from pydantic import BaseModel
 from tqdm.asyncio import tqdm
 
 from ..adapters import chatgpt_api, sqlite_store
-from ..adapters.config_loader import get_provider_context
+from ..adapters.config_loader import get_provider_context, resolve_config
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import (
     MAX_CONCURRENT_DOWNLOADS,
-    MAX_CONCURRENT_REQUESTS,
     image_ext_from_url,
 )
 from ..shared.http import (
@@ -122,8 +121,13 @@ async def fetch_image_generations(
 ) -> tuple[list[ChatGPTImageGeneration], list[ChatGPTImageGeneration]]:
     del no_cache
     account = options.account if options and options.account else "default"
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     headers = get_headers(options)
+
+    # Get delay and batch config from resolved config
+    resolved = resolve_config(options)
+    fetch_delay = resolved.fetch_conversation_delay
+    fetch_batch_size = resolved.fetch_batch_size
+    fetch_batch_pause = 5.0  # seconds between batches
 
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
         data = await get_image_generations(session, headers=headers, limit=limit)
@@ -134,74 +138,77 @@ async def fetch_image_generations(
         new_items = [item for item in items if item["id"] not in existing_ids]
 
         if new_items:
+            # Group by conversation_id to avoid duplicate fetches
+            conv_ids = list({str(item["conversation_id"]) for item in new_items})
+
+            # Fetch all conversation details with delay and batching
+            conv_details_map = await chatgpt_api.get_conversation_details_batch(
+                session,
+                conv_ids,
+                headers=headers,
+                delay=fetch_delay,
+                batch_size=fetch_batch_size,
+                batch_pause=fetch_batch_pause,
+            )
+
             pbar = tqdm(total=len(new_items), desc="Fetching new generation details")
             counter = StageCounter("Fetched")
 
-            async def fetch_generation_details(
-                image_generation: dict[str, object],
-            ) -> ChatGPTImageGeneration | None:
-                async with semaphore:
-                    try:
-                        detail = await get_conversation_details(
-                            session,
-                            str(image_generation["conversation_id"]),
-                            headers=headers,
+            new_generations: list[ChatGPTImageGeneration] = []
+            for image_generation in new_items:
+                try:
+                    conv_id = str(image_generation["conversation_id"])
+                    detail = conv_details_map.get(conv_id)
+                    if detail is None:
+                        raise ValueError(
+                            f"Conversation details not found for {conv_id}"
                         )
-                        prompt = get_prompt_from_image_node_in_conversation(
-                            detail,
-                            str(image_generation["message_id"]),
-                            str(image_generation["asset_pointer"]),
-                        )
-                        created_at_value = image_generation["created_at"]
-                        assert isinstance(created_at_value, int | float)
-                        created_at = datetime.fromtimestamp(
-                            created_at_value,
-                            tz=timezone.utc,
-                        ).isoformat(timespec="microseconds")
-                        if is_verbose():
-                            pbar.write(f"✅ img ID {image_generation['id']}")
-                        counter.add("success")
-                        return ChatGPTImageGeneration(
+
+                    prompt = get_prompt_from_image_node_in_conversation(
+                        detail,
+                        str(image_generation["message_id"]),
+                        str(image_generation["asset_pointer"]),
+                    )
+                    created_at_value = image_generation["created_at"]
+                    assert isinstance(created_at_value, int | float)
+                    created_at = datetime.fromtimestamp(
+                        created_at_value,
+                        tz=timezone.utc,
+                    ).isoformat(timespec="microseconds")
+                    if is_verbose():
+                        pbar.write(f"✅ img ID {image_generation['id']}")
+                    counter.add("success")
+                    new_generations.append(
+                        ChatGPTImageGeneration(
                             created_at=created_at,
                             id=str(image_generation["id"]),
-                            conversation_id=str(image_generation["conversation_id"]),
+                            conversation_id=conv_id,
                             message_id=str(image_generation["message_id"]),
                             asset_pointer=str(image_generation["asset_pointer"]),
                             url=str(image_generation["url"]),
                             prompt=prompt or "",
                         )
-                    except Exception as exc:
-                        counter.add("failed")
-                        if is_verbose():
-                            pbar.write(
-                                f"❌ img ID {image_generation['id']} failed: {exc}"
-                            )
-                        log_service_error(
-                            logger,
-                            f"Failed to fetch image generation "
-                            f"{image_generation['id']}",
-                            exc_detail(exc),
+                    )
+                except Exception as exc:
+                    counter.add("failed")
+                    if is_verbose():
+                        pbar.write(
+                            f"❌ img ID {image_generation['id']} failed: {exc}"
                         )
-                        return None
-                    finally:
-                        pbar.update(1)
+                    log_service_error(
+                        logger,
+                        f"Failed to fetch image generation "
+                        f"{image_generation['id']}",
+                        exc_detail(exc),
+                    )
+                finally:
+                    pbar.update(1)
 
-            results = await asyncio.gather(
-                *[fetch_generation_details(item) for item in new_items],
-                return_exceptions=True,
-            )
             pbar.close()
             if not is_verbose():
                 print(counter.summary_line())
             print()
 
-            new_generations = [
-                generation
-                for generation in results
-                if generation is not None
-                and not isinstance(generation, Exception)
-                and isinstance(generation, ChatGPTImageGeneration)
-            ]
             await sqlite_store.async_upsert_generations(account, new_generations)
 
         generations = sqlite_store.get_generations(

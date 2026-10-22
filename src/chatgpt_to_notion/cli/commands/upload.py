@@ -93,6 +93,16 @@ def register(app: typer.Typer) -> None:
         max_concurrent: int = typer.Option(
             1, help="Max concurrent upload requests (1 = sequential)"
         ),
+        fetch_conversation_delay: float = typer.Option(
+            0.0,
+            help="Delay in seconds between fetching conversation details "
+            "(helps avoid 429 rate limits)",
+        ),
+        fetch_batch_size: int = typer.Option(
+            0,
+            help="Number of conversation detail requests per batch "
+            "(0 = no batching, process all sequentially with delay)",
+        ),
         mode: Literal["single", "batch"] = typer.Option(
             "single",
             help="Processing mode: single (per-file, resilient) or batch (parallel)",
@@ -123,6 +133,8 @@ def register(app: typer.Typer) -> None:
                 account=target_account,
                 history_folder=history_folder,
                 image_folder=image_folder,
+                fetch_conversation_delay=fetch_conversation_delay,
+                fetch_batch_size=fetch_batch_size,
             )
             required_vars = [
                 "NOTION_API_KEY",
