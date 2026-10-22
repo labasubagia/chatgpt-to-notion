@@ -98,7 +98,9 @@ async def get_conversation_details_batch(
 
     semaphore = asyncio.Semaphore(1)
 
-    async def fetch_one(conv_id: str) -> tuple[str, dict[str, Any] | None]:
+    async def fetch_one(
+        conv_id: str,
+    ) -> tuple[str, dict[str, Any] | None | BaseException]:
         async with semaphore:
             try:
                 detail = await get_conversation_details_with_delay(
@@ -129,6 +131,10 @@ async def get_conversation_details_batch(
         for conv_id in conversation_ids:
             conv_id, result = await fetch_one(conv_id)
             if isinstance(result, Exception):
+                raise result
+        for conv_id in conversation_ids:
+            conv_id, result = await fetch_one(conv_id)
+            if isinstance(result, BaseException):
                 raise result
             if result is not None:
                 results[conv_id] = result

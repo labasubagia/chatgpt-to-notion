@@ -111,7 +111,6 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
     async with aiohttp.ClientSession(
         headers=chatgpt_api.get_headers(options), timeout=get_http_timeout()
     ) as session:
-
         # Fetch conversation details with delay and batching
         conv_ids = list(conversation_map.keys())
         conv_details_map = await chatgpt_api.get_conversation_details_batch(
@@ -145,9 +144,7 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
                     if not exists:
                         counter.add("skipped")
                         if is_verbose():
-                            pbar.write(
-                                f"⏭️  {file_name} not found in Notion, skipped"
-                            )
+                            pbar.write(f"⏭️  {file_name} not found in Notion, skipped")
                         return
 
                 await delete_conversation(
@@ -161,9 +158,7 @@ async def delete_conversation_of_image_generation_uploaded_to_notion(
             except Exception as exc:
                 counter.add("failed")
                 if is_verbose():
-                    pbar.write(
-                        f"❌ Conversation ID {conversation_id} failed: {exc}"
-                    )
+                    pbar.write(f"❌ Conversation ID {conversation_id} failed: {exc}")
                 log_service_error(
                     logger,
                     "Failed to delete conversation " + conversation_id,

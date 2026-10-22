@@ -200,13 +200,10 @@ async def fetch_image_generations(
                 except Exception as exc:
                     counter.add("failed")
                     if is_verbose():
-                        pbar.write(
-                            f"❌ img ID {image_generation['id']} failed: {exc}"
-                        )
+                        pbar.write(f"❌ img ID {image_generation['id']} failed: {exc}")
                     log_service_error(
                         logger,
-                        f"Failed to fetch image generation "
-                        f"{image_generation['id']}",
+                        f"Failed to fetch image generation {image_generation['id']}",
                         exc_detail(exc),
                     )
                 finally:

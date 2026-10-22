@@ -69,9 +69,9 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
     fetch_conversation_delay = (
         runtime_options.fetch_conversation_delay
         if runtime_options.fetch_conversation_delay is not None
-        else (account.fetch_conversation_delay
-            or shared.fetch_conversation_delay
-            or 0.0)
+        else (
+            account.fetch_conversation_delay or shared.fetch_conversation_delay or 0.0
+        )
     )
     fetch_batch_size = (
         runtime_options.fetch_batch_size
