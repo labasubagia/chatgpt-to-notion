@@ -187,7 +187,8 @@ class TestAddPromptToImages:
             if call_count[0] < 3:
                 raise OSError("Simulated failure")
 
-        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=flaky_edit):
+        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=flaky_edit), \
+             patch("chatgpt_to_notion.services.image_service.time.sleep"):
             add_prompt_to_images(sample_chatgpt_generations[:1], "images")
 
         captured = capsys.readouterr()
@@ -212,8 +213,9 @@ class TestAddPromptToImages:
             img_path = folder / f"{gen.id}.png"
             img_path.write_bytes(sample_image_bytes)
 
-        # Mock edit_png_info to always fail
-        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=OSError("Always fails")):
+        # Mock edit_png_info to always fail, and sleep to avoid real delays
+        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=OSError("Always fails")), \
+             patch("chatgpt_to_notion.services.image_service.time.sleep"):
             add_prompt_to_images(sample_chatgpt_generations[:1], "images")
 
         captured = capsys.readouterr()
