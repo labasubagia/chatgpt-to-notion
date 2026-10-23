@@ -25,6 +25,7 @@ from chatgpt_to_notion.services.upload_pipeline import (
     get_prompt_from_image_node_in_conversation,
     load_image_generations,
 )
+from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_batch
 from tests.conftest import make_mock_response
 
 
@@ -131,19 +132,36 @@ class TestChatGPTFetchImageGenerations:
                     with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
                         mock_headers.return_value = {"Authorization": "Bearer test"}
 
-                        remote_generations, result = await chatgpt.fetch_image_generations(
-                            limit=5,
-                            options=type("Options", (), {"account": "default@example.com"}),
-                        )
+                        with patch(
+                            "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
+                        ) as mock_detail_batch:
+                            mock_detail_batch.return_value = {
+                                "conv_abc": {
+                                    "mapping": {
+                                        "node1": {
+                                            "message": {
+                                                "author": {"role": "user"},
+                                                "content": {"parts": ["Test prompt"]},
+                                            },
+                                            "parent": None,
+                                        }
+                                    }
+                                }
+                            }
 
-                        assert isinstance(remote_generations, list)
-                        assert isinstance(result, list)
-                        assert len(result) == 1
-                        assert result[0].id == "img_123"
-                        assert result[0].prompt == "Test prompt"
+                            remote_generations, result = await chatgpt.fetch_image_generations(
+                                limit=5,
+                                options=type("Options", (), {"account": "default@example.com"}),
+                            )
 
-                        mock_get.assert_called_once()
-                        mock_detail.assert_called_once()
+                            assert isinstance(remote_generations, list)
+                            assert isinstance(result, list)
+                            assert len(result) == 1
+                            assert result[0].id == "img_123"
+                            assert result[0].prompt == "Test prompt"
+
+                            mock_get.assert_called_once()
+                            mock_detail_batch.assert_called_once()
 
     async def test_fetch_image_generations_existing_items_skip_details(
         self, mock_aiohttp_session, monkeypatch, isolated_db
@@ -691,14 +709,22 @@ class TestChatGPTDeleteConversation:
             mock_exists.return_value = True
 
             with patch(
-                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
-            ) as mock_delete:
-                await delete_conversation_of_image_generation_uploaded_to_notion(
-                    generations, "test_db"
-                )
+                "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
+            ) as mock_detail_batch:
+                mock_detail_batch.return_value = {
+                    "conv_1": {"mapping": {}},
+                    "conv_2": {"mapping": {}},
+                }
 
-                assert mock_exists.call_count == 2
-                assert mock_delete.call_count == 2
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
+                ) as mock_delete:
+                    await delete_conversation_of_image_generation_uploaded_to_notion(
+                        generations, "test_db"
+                    )
+
+                    assert mock_exists.call_count == 2
+                    assert mock_delete.call_count == 2
 
     async def test_delete_conversations_skip_not_in_notion(self, monkeypatch, capsys):
         """Should skip conversations for images not in Notion."""
@@ -724,16 +750,21 @@ class TestChatGPTDeleteConversation:
             mock_exists.return_value = False
 
             with patch(
-                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
-            ) as mock_delete:
-                await delete_conversation_of_image_generation_uploaded_to_notion(
-                    generations, "test_db"
-                )
+                "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
+            ) as mock_detail_batch:
+                mock_detail_batch.return_value = {"conv_1": {"mapping": {}}}
 
-                mock_exists.assert_called_once()
-                mock_delete.assert_not_called()
-                captured = capsys.readouterr()
-                assert "not found in Notion, skipped" in captured.out
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
+                ) as mock_delete:
+                    await delete_conversation_of_image_generation_uploaded_to_notion(
+                        generations, "test_db"
+                    )
+
+                    mock_exists.assert_called_once()
+                    mock_delete.assert_not_called()
+                    captured = capsys.readouterr()
+                    assert "not found in Notion, skipped" in captured.out
 
     async def test_delete_conversations_deduplicates(self, monkeypatch):
         """Should deduplicate by conversation_id."""
@@ -769,14 +800,19 @@ class TestChatGPTDeleteConversation:
             mock_exists.return_value = True
 
             with patch(
-                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
-            ) as mock_delete:
-                await delete_conversation_of_image_generation_uploaded_to_notion(
-                    generations, "test_db"
-                )
+                "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
+            ) as mock_detail_batch:
+                mock_detail_batch.return_value = {"conv_1": {"mapping": {}}}
 
-                # Should only delete once per conversation
-                assert mock_delete.call_count == 1
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
+                ) as mock_delete:
+                    await delete_conversation_of_image_generation_uploaded_to_notion(
+                        generations, "test_db"
+                    )
+
+                    # Should only delete once per conversation
+                    assert mock_delete.call_count == 1
 
     async def test_delete_conversations_after_upload_skips_when_notion_missing(
         self, monkeypatch, capsys
@@ -860,16 +896,21 @@ class TestChatGPTDeleteConversation:
             side_effect=exists_side_effect,
         ):
             with patch(
-                "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
-                new_callable=AsyncMock,
-            ) as mock_delete:
-                await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
-                    generations, "test_db"
-                )
+                "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
+            ) as mock_detail_batch:
+                mock_detail_batch.return_value = {"conv_1": {"mapping": {}}}
 
-                mock_delete.assert_not_called()
-                captured = capsys.readouterr()
-                assert "not found in Notion" in captured.out
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+                    new_callable=AsyncMock,
+                ) as mock_delete:
+                    await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
+                        generations, "test_db"
+                    )
+
+                    mock_delete.assert_not_called()
+                    captured = capsys.readouterr()
+                    assert "not found in Notion" in captured.out
 
     async def test_delete_after_upload_skips_when_not_all_uploaded(
         self, monkeypatch, capsys
@@ -1710,11 +1751,16 @@ class TestChatGPTUploadToNotionSingle:
             mock_exists.return_value = True
 
             with patch(
-                "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
-            ) as mock_delete:
-                await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
-                    generations, "test_db"
-                )
+                "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
+            ) as mock_detail_batch:
+                mock_detail_batch.return_value = {"conv_1": {"mapping": {}}}
+
+                with patch(
+                    "chatgpt_to_notion.services.upload_pipeline.delete_conversation", new_callable=AsyncMock
+                ) as mock_delete:
+                    await chatgpt.delete_conversation_of_image_generation_uploaded_to_notion(
+                        generations, "test_db"
+                    )
 
                 # Should delete once for the conversation
                 assert mock_delete.call_count == 1

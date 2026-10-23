@@ -1,11 +1,13 @@
 [shared]
 user_agent = "Mozilla/5.0 ..."
-cookie_string_base64 = "b2FpLWRpZD1..."
+cookie_string_base64 = "b2FpLWRpZD0..."
 # Optional: override default output locations (use ~ for home directory)
 # history_folder = "~/data/chatgpt/image_history"
 # image_folder = "~/Desktop/images"
 # delete_library_queries = ["query1", "query2"]
 # remove_all_library_images = false
+# fetch_conversation_delay = 2.0  # seconds between conversation detail requests
+# fetch_batch_size = 10  # requests per batch (0 = no batching)
 
 [notion]
 api_key = "secret_xxx"
@@ -18,6 +20,8 @@ notion_database_id = "optional_account_specific_db_id"
 # Optional: per-account override (overrides shared settings)
 # history_folder = "~/my_chatgpt/history"
 # image_folder = "~/my_chatgpt/images"
+# fetch_conversation_delay = 2.0
+# fetch_batch_size = 10
 
 [accounts."account_b@example.com"]
 authorization_token = "eyJhbGciOi..."

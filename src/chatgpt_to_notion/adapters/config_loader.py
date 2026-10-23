@@ -66,6 +66,18 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
     remove_all_library_images = (
         account.remove_all_library_images or shared.remove_all_library_images
     )
+    fetch_conversation_delay = (
+        runtime_options.fetch_conversation_delay
+        if runtime_options.fetch_conversation_delay is not None
+        else (
+            account.fetch_conversation_delay or shared.fetch_conversation_delay or 0.0
+        )
+    )
+    fetch_batch_size = (
+        runtime_options.fetch_batch_size
+        if runtime_options.fetch_batch_size is not None
+        else (account.fetch_batch_size or shared.fetch_batch_size or 0)
+    )
 
     return ResolvedConfig(
         account_name=account_name,
@@ -82,6 +94,8 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
         image_folder=image_folder,
         delete_library_queries=delete_library_queries,
         remove_all_library_images=remove_all_library_images,
+        fetch_conversation_delay=fetch_conversation_delay,
+        fetch_batch_size=fetch_batch_size,
     )
 
 

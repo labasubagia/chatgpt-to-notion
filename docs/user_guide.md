@@ -90,6 +90,9 @@ Populate the configuration file with your acquired tokens and database credentia
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
 # Base64-encoded cookie string to be used across all accounts by default
 cookie_string_base64 = "b2FpLWRpZD1..." 
+# Optional: Rate limiting for ChatGPT API (avoid 429 Too Many Requests)
+# fetch_conversation_delay = 2.0  # seconds between conversation detail requests
+# fetch_batch_size = 10  # requests per batch (0 = no batching)
 
 [notion]
 api_key = "secret_yourNotionIntegrationTokenHere"
@@ -100,6 +103,9 @@ database_id = "yourDefaultNotionDatabaseIDHere"
 # uploaded Notion page body as the **Email:** line.
 [accounts."personal@example.com"]
 authorization_token = "eyJhbGciOiJSUzI1..." # ChatGPT Auth token (excluding 'Bearer ')
+# Optional: per-account rate limit override
+# fetch_conversation_delay = 2.0
+# fetch_batch_size = 10
 
 [accounts."work@example.com"]
 authorization_token = "eyJhbGciOiJSUzI1_other..."
@@ -132,6 +138,8 @@ Synchronizes images from ChatGPT accounts into your Notion gallery database.
   - `--check-notion-api`: Actively query the Notion database directly via API to prevent duplicates (Enabled by default).
   - `--mode <single|batch>`: Choose single sequential execution (high stability) or batch execution (high bandwidth parallel workers).
   - `--remove`: Automatically hide/delete uploaded conversations from ChatGPT after successfully verifying Notion presence.
+  - `--fetch-conversation-delay <float>`: Delay in seconds between fetching conversation details (helps avoid 429 rate limits). Default: 0.0.
+  - `--fetch-batch-size <int>`: Number of conversation detail requests per batch (0 = no batching, process all sequentially with delay). Default: 0.
 
 ### 2. `account-status`
 Audits daily image generation usage counts and remaining 24-hour cooldown periods across all configured accounts.
@@ -186,6 +194,47 @@ Overwrites the local SQLite database with a backup file. Uses the SQLite backup 
   # Absolute path
   uv run chatgpt-to-notion restore-db /home/user/backups/chatgpt.db
   ```
+
+---
+
+## Rate Limiting & 429 Handling
+
+When syncing accounts with many image generations, ChatGPT may return HTTP 429 (Too Many Requests). Two configuration options help avoid this:
+
+### Configuration (`config.toml`)
+
+```toml
+[shared]
+# Optional: Delay between conversation detail requests (seconds)
+fetch_conversation_delay = 2.0
+# Optional: Batch size with pause between batches
+fetch_batch_size = 10
+```
+
+### CLI Options
+
+```bash
+# Add delay between requests
+uv run chatgpt-to-notion upload-to-notion --fetch-conversation-delay 2.0
+
+# Process in batches of 10 with 5s pause between batches
+uv run chatgpt-to-notion upload-to-notion --fetch-batch-size 10 --fetch-conversation-delay 2.0
+```
+
+### How It Works
+
+1. **Conversation deduplication**: Multiple images from the same conversation are grouped; details fetched once per conversation
+2. **Sequential with delay**: When `fetch_batch_size = 0` (default), requests run sequentially with `fetch_conversation_delay` between each
+3. **Batching**: When `fetch_batch_size > 0`, requests run in batches of that size, with a 5-second pause between batches
+4. **Retry-After**: The client respects `Retry-After` headers from 429 responses (capped at 60s)
+
+### Recommended Starting Values
+
+| Scenario | `fetch_conversation_delay` | `fetch_batch_size` |
+|----------|---------------------------|-------------------|
+| Light usage (<50 images/run) | 0.0 | 0 |
+| Medium usage (50-200 images/run) | 1.0 | 10 |
+| Heavy usage (>200 images/run) | 2.0 | 10 |
 
 ---
 
