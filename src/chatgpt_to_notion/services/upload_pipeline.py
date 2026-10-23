@@ -1,8 +1,8 @@
 """Shared re-exports and helpers for upload modes.
 
 This module provides a single namespace that tests patch against.
-The three mode implementations (upload_batch, upload_single, upload_sequential)
-import from this module for all external dependencies.
+The sequential mode implementation (upload_sequential)
+imports from this module for all external dependencies.
 """
 
 import asyncio
@@ -59,19 +59,6 @@ get_prompt_from_image_node_in_conversation = (
 )
 get_image_generations = chatgpt_api.get_image_generations
 get_headers = chatgpt_api.get_headers
-
-
-# Lazy wrappers avoid circular imports at module load time.
-async def upload_to_notion(*args, **kwargs):
-    from .upload_batch import upload_to_notion as _impl
-
-    return await _impl(*args, **kwargs)
-
-
-async def upload_to_notion_single(*args, **kwargs):
-    from .upload_single import upload_to_notion_single as _impl
-
-    return await _impl(*args, **kwargs)
 
 
 async def upload_to_notion_sequential(*args, **kwargs):
@@ -286,8 +273,6 @@ async def delete_conversations_after_upload(
 
 
 __all__ = [
-    "upload_to_notion",
-    "upload_to_notion_single",
     "upload_to_notion_sequential",
     "fetch_image_generations",
     "download_all_images",
