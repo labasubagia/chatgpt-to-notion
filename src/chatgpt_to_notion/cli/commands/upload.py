@@ -104,7 +104,7 @@ def register(app: typer.Typer) -> None:
             "(0 = no batching, process all sequentially with delay)",
         ),
         mode: Literal["single", "batch", "sequential"] = typer.Option(
-            "single",
+            "sequential",
             help=(
                 "Processing mode: single (per-conversation, parallel), "
                 "batch (full parallel), or sequential (one conversation at a time)"
