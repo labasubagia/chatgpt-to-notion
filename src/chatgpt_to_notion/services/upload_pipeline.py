@@ -556,6 +556,7 @@ async def upload_to_notion_single(
     if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
         await _remove_library_images(options, remove_all=remove_all_in_chatgpt_library)
 
+
 async def upload_to_notion_sequential(
     image_folder: str | None,
     db_id: str,
@@ -610,8 +611,8 @@ async def upload_to_notion_sequential(
                     timezone_name=timezone_name,
                     options=options,
                 )
-                conversation_map: dict[str, list[ChatGPTImageGeneration]] = (
-                    defaultdict(list)
+                conversation_map: dict[str, list[ChatGPTImageGeneration]] = defaultdict(
+                    list
                 )
                 for g in generations:
                     conversation_map[g.conversation_id].append(g)

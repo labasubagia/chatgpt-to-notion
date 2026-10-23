@@ -254,9 +254,7 @@ async def fetch_generations_for_conversation(
     Fetches the conversation detail at most once, and only when the
     conversation contains items not yet stored locally.
     """
-    new_items = [
-        item for item in image_items if str(item["id"]) not in existing_ids
-    ]
+    new_items = [item for item in image_items if str(item["id"]) not in existing_ids]
     if not new_items:
         return []
 
