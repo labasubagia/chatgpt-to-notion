@@ -10,6 +10,9 @@ import pytest
 
 from chatgpt_to_notion.adapters import sqlite_store as db
 from chatgpt_to_notion.domain.models import AppConfig
+from chatgpt_to_notion.services import upload_batch as chatgpt_batch
+from chatgpt_to_notion.services import upload_single as chatgpt_single
+from chatgpt_to_notion.services import upload_sequential as chatgpt_sequential
 from chatgpt_to_notion.services import upload_pipeline as chatgpt
 from chatgpt_to_notion.shared.verbosity import SIMPLE, VERBOSE, set_verbosity
 from chatgpt_to_notion.services.upload_pipeline import (
@@ -1197,7 +1200,7 @@ class TestChatGPTUploadToNotionSingle:
     """Tests for upload_to_notion_single function."""
 
     async def test_upload_to_notion_single_full_workflow(
-        self, monkeypatch, tmp_path
+        self, isolated_db, monkeypatch, tmp_path
     ):
         """Should execute per-file upload workflow."""
         from unittest.mock import AsyncMock, patch
@@ -1329,7 +1332,7 @@ class TestChatGPTUploadToNotionSingle:
         assert mock_remove.await_args.kwargs["remove_all"] is False
 
     async def test_upload_to_notion_single_skips_uploaded(
-        self, monkeypatch, tmp_path, capsys
+        self, isolated_db, monkeypatch, tmp_path, capsys
     ):
         """Should skip files already marked uploaded in CSV."""
         from unittest.mock import AsyncMock, patch
@@ -1379,7 +1382,7 @@ class TestChatGPTUploadToNotionSingle:
                         assert "skipped, already uploaded" in captured.out
 
     async def test_upload_to_notion_single_skips_in_notion(
-        self, monkeypatch, tmp_path, capsys
+        self, isolated_db, monkeypatch, tmp_path, capsys
     ):
         """Should skip files already in Notion."""
         from unittest.mock import AsyncMock, patch
@@ -1434,7 +1437,7 @@ class TestChatGPTUploadToNotionSingle:
                             assert "skipped, already in Notion" in captured.out
 
     async def test_upload_to_notion_single_skips_download_when_in_notion(
-        self, monkeypatch, tmp_path, capsys
+        self, isolated_db, monkeypatch, tmp_path, capsys
     ):
         """Should skip download when image already in Notion, even if file missing."""
         from unittest.mock import AsyncMock, patch
@@ -1489,7 +1492,7 @@ class TestChatGPTUploadToNotionSingle:
                             assert "skipped, already in Notion" in captured.out
 
     async def test_upload_to_notion_single_deletes_only_when_all_uploaded(
-        self, monkeypatch, tmp_path, capsys
+        self, isolated_db, monkeypatch, tmp_path, capsys
     ):
         """Should not delete conversation if not all images uploaded."""
         from unittest.mock import AsyncMock, patch
@@ -1573,7 +1576,7 @@ class TestChatGPTUploadToNotionSingle:
                                         assert "skipped" in captured.out
 
     async def test_upload_to_notion_single_remove_false_skips_deletion(
-        self, monkeypatch, tmp_path, capsys
+        self, isolated_db, monkeypatch, tmp_path, capsys
     ):
         """Should not delete conversation when remove_in_chatgpt=False, even if all images uploaded."""
         from unittest.mock import AsyncMock, patch
@@ -1634,7 +1637,7 @@ class TestChatGPTUploadToNotionSingle:
                                         assert "deleted" not in captured.out
 
     async def test_upload_to_notion_single_resume_after_failure(
-        self, monkeypatch, tmp_path
+        self, isolated_db, monkeypatch, tmp_path
     ):
         """Should retry failed files on re-run."""
         from unittest.mock import AsyncMock, patch
@@ -1766,7 +1769,7 @@ class TestChatGPTUploadToNotionSingle:
                 assert mock_delete.call_count == 1
 
     async def test_single_mode_one_failure_does_not_crash_others(
-        self, monkeypatch, tmp_path, capsys
+        self, isolated_db, monkeypatch, tmp_path, capsys
     ):
         """When one upload fails, remaining items should still be processed."""
         from unittest.mock import AsyncMock, patch

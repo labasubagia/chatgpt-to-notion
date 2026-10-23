@@ -11,7 +11,7 @@ from ...adapters.config_loader import (
     validate_runtime_config,
 )
 from ...domain.models import RuntimeOptions
-from ...services import upload_pipeline
+from ...services import upload_batch, upload_sequential, upload_single
 from ...shared.console import (
     print_account_log_footer,
     print_account_log_header,
@@ -171,15 +171,12 @@ def register(app: typer.Typer) -> None:
             else:
                 effective_keep_days = None
 
-            upload_fn = (
-                upload_pipeline.upload_to_notion_sequential
-                if mode == "sequential"
-                else (
-                    upload_pipeline.upload_to_notion_single
-                    if mode == "single"
-                    else upload_pipeline.upload_to_notion
-                )
-            )
+            if mode == "sequential":
+                upload_fn = upload_sequential.upload_to_notion_sequential
+            elif mode == "single":
+                upload_fn = upload_single.upload_to_notion_single
+            else:
+                upload_fn = upload_batch.upload_to_notion
             kwargs: dict[str, Any] = {
                 "image_folder": image_folder,
                 "db_id": effective_db_id,
