@@ -103,9 +103,16 @@ def register(app: typer.Typer) -> None:
             help="Number of conversation detail requests per batch "
             "(0 = no batching, process all sequentially with delay)",
         ),
-        mode: Literal["single", "batch"] = typer.Option(
+        mode: Literal["single", "batch", "sequential"] = typer.Option(
             "single",
-            help="Processing mode: single (per-file, resilient) or batch (parallel)",
+            help=(
+                "Processing mode: single (per-conversation, parallel), "
+                "batch (full parallel), or sequential (one conversation at a time)"
+            ),
+        ),
+        conversation_delay: float = typer.Option(
+            2.0,
+            help="Delay in seconds between conversations in sequential mode",
         ),
         verbose: bool = typer.Option(
             False, "--verbose", "-v", help="Show per-file output"
@@ -165,9 +172,13 @@ def register(app: typer.Typer) -> None:
                 effective_keep_days = None
 
             upload_fn = (
-                upload_pipeline.upload_to_notion_single
-                if mode == "single"
-                else upload_pipeline.upload_to_notion
+                upload_pipeline.upload_to_notion_sequential
+                if mode == "sequential"
+                else (
+                    upload_pipeline.upload_to_notion_single
+                    if mode == "single"
+                    else upload_pipeline.upload_to_notion
+                )
             )
             ok = safe_async_run(
                 upload_fn(
@@ -187,6 +198,7 @@ def register(app: typer.Typer) -> None:
                     options=options,
                     fail_log_path=fail_log,
                     max_concurrent=max_concurrent,
+                    conversation_delay=conversation_delay
                 )
             )
             if not ok:
