@@ -118,7 +118,7 @@ uv run chatgpt-to-notion restore-db ./backups/chatgpt.db
 - `uploaded_at` is used to skip repeated Notion uploads
 - `--check-notion-api` bypasses the local DB cache and checks Notion directly
 - `--image-folder` defaults to `output/images/`, override with `--image-folder <path>`
-- `--mode single` (default) processes files one-by-one; `--mode batch` processes in parallel
+- `--mode sequential` (default) processes conversations one at a time; `--conversation-delay` controls delay between conversations
 - `--remove` deletes uploaded conversations after verification
 
 ## Make Targets

@@ -7,7 +7,7 @@ cookie_string_base64 = "b2FpLWRpZD0..."
 # delete_library_queries = ["query1", "query2"]
 # remove_all_library_images = false
 # conversation_delay = 2.0  # seconds between conversations in sequential mode
-# fetch_batch_size = 10  # requests per batch (0 = no batching)
+
 
 [notion]
 api_key = "secret_xxx"
@@ -21,7 +21,7 @@ notion_database_id = "optional_account_specific_db_id"
 # history_folder = "~/my_chatgpt/history"
 # image_folder = "~/my_chatgpt/images"
 # conversation_delay = 2.0
-# fetch_batch_size = 10
+
 
 [accounts."account_b@example.com"]
 authorization_token = "eyJhbGciOi..."

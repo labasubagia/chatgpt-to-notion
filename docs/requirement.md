@@ -115,8 +115,7 @@ The product scope is divided into five core functional pillars:
 * **Configuration Safety**: Sensitive credentials (auth tokens, integration keys) must never be exported, committed, or exposed.
 
 ### 6.3 Performance & Modes
-* **Resilient Sync Mode**: Process items sequentially to minimize rates-per-minute spikes and provide a safe recovery loop for unstable networks.
-* **High-Speed Sync Mode**: Support batch processing (concurrent downloads and uploads) to maximize bandwidth utilization when performing bulk first-time synchronizations.
+* **Sequential Sync Mode**: Process conversations one at a time end-to-end with a configurable delay between conversations. This is the only mode and is designed to avoid ChatGPT's strict rate limits (HTTP 429).
 
 ---
 
