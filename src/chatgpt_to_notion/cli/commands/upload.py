@@ -1,7 +1,7 @@
 """Upload CLI commands."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import typer
 
@@ -11,7 +11,7 @@ from ...adapters.config_loader import (
     validate_runtime_config,
 )
 from ...domain.models import RuntimeOptions
-from ...services import upload_pipeline
+from ...services import upload_sequential
 from ...shared.console import (
     print_account_log_footer,
     print_account_log_header,
@@ -90,22 +90,13 @@ def register(app: typer.Typer) -> None:
         ),
         config: str | None = typer.Option(None, help="Path to TOML config file"),
         account: str | None = typer.Option(None, help="Named account from TOML config"),
-        max_concurrent: int = typer.Option(
-            1, help="Max concurrent upload requests (1 = sequential)"
+        mode: Literal["sequential"] = typer.Option(
+            "sequential",
+            help="Processing mode: sequential (one conversation at a time)",
         ),
-        fetch_conversation_delay: float | None = typer.Option(
-            None,
-            help="Delay in seconds between fetching conversation details "
-            "(helps avoid 429 rate limits)",
-        ),
-        fetch_batch_size: int | None = typer.Option(
-            None,
-            help="Number of conversation detail requests per batch "
-            "(0 = no batching, process all sequentially with delay)",
-        ),
-        mode: Literal["single", "batch"] = typer.Option(
-            "single",
-            help="Processing mode: single (per-file, resilient) or batch (parallel)",
+        conversation_delay: float = typer.Option(
+            2.0,
+            help="Delay in seconds between conversations in sequential mode",
         ),
         verbose: bool = typer.Option(
             False, "--verbose", "-v", help="Show per-file output"
@@ -133,8 +124,6 @@ def register(app: typer.Typer) -> None:
                 account=target_account,
                 history_folder=history_folder,
                 image_folder=image_folder,
-                fetch_conversation_delay=fetch_conversation_delay,
-                fetch_batch_size=fetch_batch_size,
             )
             required_vars = [
                 "NOTION_API_KEY",
@@ -164,31 +153,27 @@ def register(app: typer.Typer) -> None:
             else:
                 effective_keep_days = None
 
-            upload_fn = (
-                upload_pipeline.upload_to_notion_single
-                if mode == "single"
-                else upload_pipeline.upload_to_notion
-            )
-            ok = safe_async_run(
-                upload_fn(
-                    image_folder=image_folder,
-                    db_id=effective_db_id,
-                    upload_to_notion=upload_to_notion,
-                    remove_in_chatgpt=remove,
-                    remove_in_chatgpt_library=remove_in_chatgpt_library,
-                    remove_all_in_chatgpt_library=remove_all_in_chatgpt_library,
-                    account=resolved.account_name,
-                    check_notion_api=effective_check_notion_api,
-                    from_history=effective_from_history,
-                    limit=limit,
-                    keep_days=effective_keep_days,
-                    timezone_name=timezone,
-                    no_cache=no_cache,
-                    options=options,
-                    fail_log_path=fail_log,
-                    max_concurrent=max_concurrent,
-                )
-            )
+            upload_fn = upload_sequential.upload_to_notion_sequential
+
+            kwargs: dict[str, Any] = {
+                "image_folder": image_folder,
+                "db_id": effective_db_id,
+                "upload_to_notion": upload_to_notion,
+                "remove_in_chatgpt": remove,
+                "remove_in_chatgpt_library": remove_in_chatgpt_library,
+                "remove_all_in_chatgpt_library": remove_all_in_chatgpt_library,
+                "account": resolved.account_name,
+                "check_notion_api": effective_check_notion_api,
+                "from_history": effective_from_history,
+                "limit": limit,
+                "keep_days": effective_keep_days,
+                "timezone_name": timezone,
+                "no_cache": no_cache,
+                "options": options,
+                "fail_log_path": fail_log,
+                "conversation_delay": conversation_delay,
+            }
+            ok = safe_async_run(upload_fn(**kwargs))
             if not ok:
                 continue
             print_account_log_footer(

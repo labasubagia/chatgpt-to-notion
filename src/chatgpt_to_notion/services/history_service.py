@@ -6,6 +6,7 @@ import tempfile
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import aiohttp
 from pydantic import BaseModel
@@ -239,6 +240,50 @@ def load_image_generations(
         keep_days=keep_days,
         timezone_name=timezone_name,
     )
+
+
+async def fetch_generations_for_conversation(
+    session: aiohttp.ClientSession,
+    conv_id: str,
+    image_items: Sequence[dict[str, Any]],
+    headers: dict[str, str],
+    existing_ids: set[str],
+) -> list[ChatGPTImageGeneration]:
+    """Build generations for one conversation.
+
+    Fetches the conversation detail at most once, and only when the
+    conversation contains items not yet stored locally.
+    """
+    new_items = [item for item in image_items if str(item["id"]) not in existing_ids]
+    if not new_items:
+        return []
+
+    detail = await chatgpt_api.get_conversation_details(session, conv_id, headers)
+    generations: list[ChatGPTImageGeneration] = []
+    for image_generation in new_items:
+        prompt = get_prompt_from_image_node_in_conversation(
+            detail,
+            str(image_generation["message_id"]),
+            str(image_generation["asset_pointer"]),
+        )
+        created_at_value = image_generation["created_at"]
+        assert isinstance(created_at_value, int | float)
+        created_at = datetime.fromtimestamp(
+            created_at_value,
+            tz=timezone.utc,
+        ).isoformat(timespec="microseconds")
+        generations.append(
+            ChatGPTImageGeneration(
+                created_at=created_at,
+                id=str(image_generation["id"]),
+                conversation_id=conv_id,
+                message_id=str(image_generation["message_id"]),
+                asset_pointer=str(image_generation["asset_pointer"]),
+                url=str(image_generation["url"]),
+                prompt=prompt or "",
+            )
+        )
+    return generations
 
 
 async def download_all_images(

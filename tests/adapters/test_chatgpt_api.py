@@ -435,16 +435,6 @@ class TestConversationDetailsBatch:
 class TestConfigRateLimitFields:
     """Tests for rate limit config fields in domain models."""
 
-    def test_runtime_options_has_rate_limit_fields(self):
-        """RuntimeOptions should have fetch_conversation_delay and fetch_batch_size."""
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions(
-            fetch_conversation_delay=2.0,
-            fetch_batch_size=10,
-        )
-        assert options.fetch_conversation_delay == 2.0
-        assert options.fetch_batch_size == 10
-
     def test_runtime_options_defaults(self):
         """RuntimeOptions should default rate limit fields to None (not specified)."""
         from chatgpt_to_notion.domain.models import RuntimeOptions
