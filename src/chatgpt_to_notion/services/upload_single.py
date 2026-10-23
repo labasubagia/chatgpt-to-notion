@@ -1,13 +1,12 @@
 """Single upload mode: per-conversation parallel, conversations parallel."""
 
-import aiohttp
 import asyncio
 from collections import defaultdict
 from pathlib import Path
 
+import aiohttp
 from tqdm.asyncio import tqdm
 
-from . import upload_pipeline as shared
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import image_ext_from_url
@@ -19,6 +18,7 @@ from ..shared.verbosity import (
     log_service_error,
     write_fail_log,
 )
+from . import upload_pipeline as shared
 
 logger = get_logger(__name__)
 

@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from . import upload_pipeline as shared
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.logging import get_logger
+from . import upload_pipeline as shared
 
 logger = get_logger(__name__)
 
