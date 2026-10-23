@@ -180,24 +180,24 @@ def register(app: typer.Typer) -> None:
                     else upload_pipeline.upload_to_notion
                 )
             )
-            kwargs: dict[str, Any] = dict(
-                image_folder=image_folder,
-                db_id=effective_db_id,
-                upload_to_notion=upload_to_notion,
-                remove_in_chatgpt=remove,
-                remove_in_chatgpt_library=remove_in_chatgpt_library,
-                remove_all_in_chatgpt_library=remove_all_in_chatgpt_library,
-                account=resolved.account_name,
-                check_notion_api=effective_check_notion_api,
-                from_history=effective_from_history,
-                limit=limit,
-                keep_days=effective_keep_days,
-                timezone_name=timezone,
-                no_cache=no_cache,
-                options=options,
-                fail_log_path=fail_log,
-                max_concurrent=max_concurrent,
-            )
+            kwargs: dict[str, Any] = {
+                "image_folder": image_folder,
+                "db_id": effective_db_id,
+                "upload_to_notion": upload_to_notion,
+                "remove_in_chatgpt": remove,
+                "remove_in_chatgpt_library": remove_in_chatgpt_library,
+                "remove_all_in_chatgpt_library": remove_all_in_chatgpt_library,
+                "account": resolved.account_name,
+                "check_notion_api": effective_check_notion_api,
+                "from_history": effective_from_history,
+                "limit": limit,
+                "keep_days": effective_keep_days,
+                "timezone_name": timezone,
+                "no_cache": no_cache,
+                "options": options,
+                "fail_log_path": fail_log,
+                "max_concurrent": max_concurrent,
+            }
             if mode == "sequential":
                 kwargs["conversation_delay"] = conversation_delay
             ok = safe_async_run(upload_fn(**kwargs))
