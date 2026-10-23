@@ -171,6 +171,28 @@ def register(app: typer.Typer) -> None:
             else:
                 effective_keep_days = None
 
+            if mode == "batch":
+                import warnings
+
+                warnings.warn(
+                    "batch mode is deprecated and will be removed. "
+                    "Use sequential mode instead (--mode sequential). "
+                    "batch mode hits rate limits immediately due to "
+                    "parallel detail fetches.",
+                    stacklevel=2,
+                )
+            elif mode == "single":
+                import warnings
+
+                warnings.warn(
+                    "single mode is deprecated and will be removed. "
+                    "Use sequential mode instead (--mode sequential). "
+                    "single mode parallel detail fetches hit rate "
+                    "limits on >5-10 conversations.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
             if mode == "sequential":
                 upload_fn = upload_sequential.upload_to_notion_sequential
             elif mode == "single":

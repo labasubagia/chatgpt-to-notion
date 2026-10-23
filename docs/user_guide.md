@@ -129,18 +129,17 @@ Synchronizes images from ChatGPT accounts into your Notion gallery database.
   ```bash
   uv run chatgpt-to-notion upload-to-notion [OPTIONS]
   ```
-- **Key Options**:
   - `--account <name>`: Sync a specific account profile (e.g. `personal`). Defaults to processing all accounts sequentially.
   - `--limit <int>`: Max number of history items to crawl per run.
   - `--from-history`: Replays synchronization using saved offline local index files.
   - `--verify-history`: Audits and repairs missing Notion pages from local logs without fetching new live data.
   - `--all`: Used in combination with history options to process all records rather than just today's.
   - `--check-notion-api`: Actively query the Notion database directly via API to prevent duplicates (Enabled by default).
-  - `--mode <single|batch>`: Choose single sequential execution (high stability) or batch execution (high bandwidth parallel workers).
+  - `--mode <sequential|single|batch>`: Processing mode. **`sequential` (default, recommended)** processes one conversation at a time end-to-end to avoid rate limits. `single` and `batch` are deprecated and will be removed.
+  - `--conversation-delay <float>`: Delay in seconds between conversations in sequential mode (default: 2.0).
   - `--remove`: Automatically hide/delete uploaded conversations from ChatGPT after successfully verifying Notion presence.
   - `--fetch-conversation-delay <float>`: Delay in seconds between fetching conversation details (helps avoid 429 rate limits). Default: 0.0.
   - `--fetch-batch-size <int>`: Number of conversation detail requests per batch (0 = no batching, process all sequentially with delay). Default: 0.
-
 ### 2. `account-status`
 Audits daily image generation usage counts and remaining 24-hour cooldown periods across all configured accounts.
 - **Source Module**: [src/chatgpt_to_notion/cli/commands/accounts.py](requirement.md)
@@ -199,9 +198,23 @@ Overwrites the local SQLite database with a backup file. Uses the SQLite backup 
 
 ## Rate Limiting & 429 Handling
 
-When syncing accounts with many image generations, ChatGPT may return HTTP 429 (Too Many Requests). Two configuration options help avoid this:
+When syncing accounts with many image generations, ChatGPT may return HTTP 429 (Too Many Requests). The tool provides two layers of protection:
 
-### Configuration (`config.toml`)
+### 1. Processing Mode (`--mode`)
+
+**`sequential` (default, recommended)**: Processes conversations one at a time end-to-end — detail fetch, image download, prompt write, Notion upload — with a configurable delay between conversations. This is the safest mode for avoiding 429 errors.
+
+```bash
+uv run chatgpt-to-notion upload-to-notion --mode sequential --conversation-delay 2.0
+```
+
+> **Note**: `single` and `batch` modes are deprecated and will be removed. They perform parallel detail fetches which hit rate limits immediately on typical accounts.
+
+### 2. Legacy Fetch Rate Limits (for `single`/`batch` modes)
+
+These options only apply when using the deprecated `single` or `batch` modes:
+
+#### Configuration (`config.toml`)
 
 ```toml
 [shared]
@@ -211,7 +224,7 @@ fetch_conversation_delay = 2.0
 fetch_batch_size = 10
 ```
 
-### CLI Options
+#### CLI Options
 
 ```bash
 # Add delay between requests
@@ -221,21 +234,20 @@ uv run chatgpt-to-notion upload-to-notion --fetch-conversation-delay 2.0
 uv run chatgpt-to-notion upload-to-notion --fetch-batch-size 10 --fetch-conversation-delay 2.0
 ```
 
-### How It Works
+### How Legacy Fetch Rate Limits Work
 
 1. **Conversation deduplication**: Multiple images from the same conversation are grouped; details fetched once per conversation
 2. **Sequential with delay**: When `fetch_batch_size = 0` (default), requests run sequentially with `fetch_conversation_delay` between each
 3. **Batching**: When `fetch_batch_size > 0`, requests run in batches of that size, with a 5-second pause between batches
 4. **Retry-After**: The client respects `Retry-After` headers from 429 responses (capped at 60s)
 
-### Recommended Starting Values
+### Recommended Starting Values (Legacy Modes Only)
 
 | Scenario | `fetch_conversation_delay` | `fetch_batch_size` |
 |----------|---------------------------|-------------------|
 | Light usage (<50 images/run) | 0.0 | 0 |
 | Medium usage (50-200 images/run) | 1.0 | 10 |
 | Heavy usage (>200 images/run) | 2.0 | 10 |
-
 ---
 
 ## 5. Automated Scheduling & Background Operations
