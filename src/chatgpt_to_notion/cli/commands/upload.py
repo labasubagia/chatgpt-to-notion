@@ -93,13 +93,13 @@ def register(app: typer.Typer) -> None:
         max_concurrent: int = typer.Option(
             1, help="Max concurrent upload requests (1 = sequential)"
         ),
-        fetch_conversation_delay: float = typer.Option(
-            0.0,
+        fetch_conversation_delay: float | None = typer.Option(
+            None,
             help="Delay in seconds between fetching conversation details "
             "(helps avoid 429 rate limits)",
         ),
-        fetch_batch_size: int = typer.Option(
-            0,
+        fetch_batch_size: int | None = typer.Option(
+            None,
             help="Number of conversation detail requests per batch "
             "(0 = no batching, process all sequentially with delay)",
         ),

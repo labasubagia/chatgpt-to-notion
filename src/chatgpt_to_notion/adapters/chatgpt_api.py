@@ -121,7 +121,7 @@ async def get_conversation_details_batch(
                 if isinstance(result, BaseException):
                     raise result
                 if result is not None:
-                    results[conv_id] = result
+                    results[conv_id] = result  # type: ignore[assignment]
 
             # Pause between batches (except after last batch)
             if i + batch_size < len(conversation_ids) and batch_pause > 0:
@@ -132,12 +132,8 @@ async def get_conversation_details_batch(
             conv_id, result = await fetch_one(conv_id)
             if isinstance(result, Exception):
                 raise result
-        for conv_id in conversation_ids:
-            conv_id, result = await fetch_one(conv_id)
-            if isinstance(result, BaseException):
-                raise result
             if result is not None:
-                results[conv_id] = result
+                results[conv_id] = result  # type: ignore[assignment]
 
     return results
 

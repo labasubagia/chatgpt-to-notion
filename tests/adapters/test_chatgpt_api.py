@@ -327,3 +327,127 @@ class TestChatGPTMappingHelper:
             )
             is None
         )
+
+
+@pytest.mark.integration
+class TestConversationDetailsBatch:
+    """Tests for get_conversation_details_batch and get_conversation_details_with_delay."""
+
+    async def test_get_conversation_details_with_delay(self, mock_aiohttp_session, mock_config_toml):
+        """Should fetch conversation details with optional delay."""
+        from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_with_delay
+        from unittest.mock import AsyncMock, patch
+
+        mock_response = make_mock_response({"id": "conv_123", "title": "Test"})
+        mock_aiohttp_session._responses = [mock_response]
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            res = await get_conversation_details_with_delay(
+                mock_aiohttp_session, "conv_123", delay=1.5,
+                headers={"Authorization": "Bearer test"}
+            )
+            mock_sleep.assert_awaited_once_with(1.5)
+            assert res["id"] == "conv_123"
+
+    async def test_get_conversation_details_batch_sequential(self, mock_aiohttp_session, mock_config_toml):
+        """Should fetch multiple conversations sequentially when batch_size=0."""
+        from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_batch
+        from unittest.mock import AsyncMock, patch
+
+        mock_aiohttp_session._responses = [
+            make_mock_response({"id": "conv_1"}),
+            make_mock_response({"id": "conv_2"}),
+            make_mock_response({"id": "conv_3"}),
+        ]
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            res = await get_conversation_details_batch(
+                mock_aiohttp_session,
+                ["conv_1", "conv_2", "conv_3"],
+                delay=0.5,
+                batch_size=0,
+                headers={"Authorization": "Bearer test"},
+            )
+            assert len(res) == 3
+            assert res["conv_1"]["id"] == "conv_1"
+            assert res["conv_2"]["id"] == "conv_2"
+            assert res["conv_3"]["id"] == "conv_3"
+            # Should sleep 3 times for 3 requests
+            assert mock_sleep.await_count == 3
+
+    async def test_get_conversation_details_batch_with_batching(self, mock_aiohttp_session, mock_config_toml):
+        """Should fetch in batches with pause between batches."""
+        from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_batch
+        from unittest.mock import AsyncMock, patch
+
+        # 5 conversations, batch_size=2 -> 3 batches
+        mock_aiohttp_session._responses = [
+            make_mock_response({"id": "conv_1"}),
+            make_mock_response({"id": "conv_2"}),
+            make_mock_response({"id": "conv_3"}),
+            make_mock_response({"id": "conv_4"}),
+            make_mock_response({"id": "conv_5"}),
+        ]
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            res = await get_conversation_details_batch(
+                mock_aiohttp_session,
+                ["conv_1", "conv_2", "conv_3", "conv_4", "conv_5"],
+                delay=0.1,
+                batch_size=2,
+                batch_pause=1.0,
+                headers={"Authorization": "Bearer test"},
+            )
+            assert len(res) == 5
+            # Should sleep for each request (5) + between batches (2 pauses)
+            assert mock_sleep.await_count >= 5  # at least 5 for delays
+
+    async def test_get_conversation_details_batch_empty(self, mock_aiohttp_session, mock_config_toml):
+        """Should return empty dict for empty conversation_ids."""
+        from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_batch
+
+        res = await get_conversation_details_batch(mock_aiohttp_session, [], headers={"Authorization": "Bearer test"})
+        assert res == {}
+
+    async def test_get_conversation_details_batch_raises_on_error(self, mock_aiohttp_session, mock_config_toml):
+        """Should raise exception when any request fails (uses non-retryable 400 error)."""
+        from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_batch
+        from chatgpt_to_notion.shared.http import DetailedHTTPError
+
+        mock_aiohttp_session._responses = [
+            make_mock_response({"id": "conv_1"}),
+            make_mock_response({}, status=400, reason="Bad Request", text_data="Error"),
+        ]
+
+        with pytest.raises(DetailedHTTPError):
+            await get_conversation_details_batch(
+                mock_aiohttp_session,
+                ["conv_1", "conv_2"],
+                delay=0.0,
+                batch_size=0,
+                headers={"Authorization": "Bearer test"},
+            )
+
+
+
+
+@pytest.mark.integration
+class TestConfigRateLimitFields:
+    """Tests for rate limit config fields in domain models."""
+
+    def test_runtime_options_has_rate_limit_fields(self):
+        """RuntimeOptions should have fetch_conversation_delay and fetch_batch_size."""
+        from chatgpt_to_notion.domain.models import RuntimeOptions
+        options = RuntimeOptions(
+            fetch_conversation_delay=2.0,
+            fetch_batch_size=10,
+        )
+        assert options.fetch_conversation_delay == 2.0
+        assert options.fetch_batch_size == 10
+
+    def test_runtime_options_defaults(self):
+        """RuntimeOptions should default rate limit fields to None (not specified)."""
+        from chatgpt_to_notion.domain.models import RuntimeOptions
+        options = RuntimeOptions()
+        assert options.fetch_conversation_delay is None
+        assert options.fetch_batch_size is None

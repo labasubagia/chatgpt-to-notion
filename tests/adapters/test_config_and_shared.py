@@ -1022,3 +1022,185 @@ class TestConstants:
 
     def test_output_path(self):
         assert OUTPUT_PATH == "./output"
+
+
+class TestWaitWithRetryAfter:
+    """Tests for wait_with_retry_after function."""
+
+    def test_wait_with_retry_after_header(self):
+        """Should respect Retry-After header from DetailedHTTPError."""
+        from chatgpt_to_notion.shared.http import DetailedHTTPError, wait_with_retry_after
+        from unittest.mock import MagicMock
+
+        class MockRetryState:
+            attempt_number = 1
+            outcome = None
+            fn = None
+
+            def __init__(self, retry_after):
+                req = MagicMock(spec=['url', 'method', 'headers'])
+                req.url = "https://test.url"
+                req.method = "GET"
+                req.headers = {}
+                exc = DetailedHTTPError(
+                    status=429,
+                    message="Too Many Requests",
+                    body="Rate limited",
+                    url="https://test.url",
+                    req=req,
+                    retry_after=retry_after
+                )
+                class Outcome:
+                    def exception(self):
+                        return exc
+                self.outcome = Outcome()
+
+        # Retry-After: 30s -> should use 30s (capped at 60)
+        state = MockRetryState(30.0)
+        assert wait_with_retry_after(state) == 30.0
+
+        # Retry-After: 120s -> should cap at 60s
+        state = MockRetryState(120.0)
+        assert wait_with_retry_after(state) == 60.0
+
+    def test_wait_with_retry_after_fallback(self):
+        """Should fall back to exponential backoff when no Retry-After."""
+        from chatgpt_to_notion.shared.http import wait_with_retry_after
+
+        class MockRetryState:
+            attempt_number = 1
+            outcome = None
+            fn = None
+
+            def __init__(self, attempt):
+                self.attempt_number = attempt
+                class Outcome:
+                    def exception(self):
+                        return ValueError("no retry_after")
+                self.outcome = Outcome()
+
+        # Attempt 1: 2 * 2^0 = 2
+        assert wait_with_retry_after(MockRetryState(1)) == 2.0
+        # Attempt 2: 2 * 2^1 = 4
+        assert wait_with_retry_after(MockRetryState(2)) == 4.0
+        # Attempt 3: 2 * 2^2 = 8
+        assert wait_with_retry_after(MockRetryState(3)) == 8.0
+        # Attempt 6: 2 * 2^5 = 64 -> capped at 60
+        assert wait_with_retry_after(MockRetryState(6)) == 60.0
+
+    def test_wait_with_retry_after_non_detailed_error(self):
+        """Should fall back to exponential backoff for non-DetailedHTTPError."""
+        from chatgpt_to_notion.shared.http import wait_with_retry_after
+
+        class MockRetryState:
+            attempt_number = 1
+            outcome = None
+            fn = None
+
+            def __init__(self):
+                class Outcome:
+                    def exception(self):
+                        return ConnectionError("network error")
+                self.outcome = Outcome()
+
+        state = MockRetryState()
+        assert wait_with_retry_after(state) == 2.0
+
+
+class TestDetailedHTTPErrorRetryAfter:
+    """Tests for DetailedHTTPError retry_after extraction."""
+
+    def test_retry_after_from_header_seconds(self):
+        """Should store Retry-After as seconds when provided."""
+        from chatgpt_to_notion.shared.http import DetailedHTTPError
+        from unittest.mock import MagicMock
+
+        req = MagicMock(spec=['url', 'method', 'headers'])
+        req.url = "https://test.url"
+        req.method = "GET"
+        req.headers = {}
+
+        exc = DetailedHTTPError(
+            status=429,
+            message="Too Many Requests",
+            body="Rate limited",
+            url="https://test.url",
+            req=req,
+            retry_after=30.0
+        )
+        assert exc.retry_after == 30.0
+
+    def test_retry_after_capped_in_wait(self):
+        """Should be capped at 60s in wait_with_retry_after."""
+        from chatgpt_to_notion.shared.http import DetailedHTTPError, wait_with_retry_after
+        from unittest.mock import MagicMock
+
+        req = MagicMock(spec=['url', 'method', 'headers'])
+        req.url = "https://test.url"
+        req.method = "GET"
+        req.headers = {}
+
+        exc = DetailedHTTPError(
+            status=429,
+            message="Too Many Requests",
+            body="Rate limited",
+            url="https://test.url",
+            req=req,
+            retry_after=120.0
+        )
+
+        class MockRetryState:
+            attempt_number = 1
+            outcome = None
+            fn = None
+
+            def __init__(self, exc):
+                class Outcome:
+                    def exception(self):
+                        return exc
+                self.outcome = Outcome()
+
+        state = MockRetryState(exc)
+        assert wait_with_retry_after(state) == 60.0
+
+    def test_retry_after_none_when_missing(self):
+        """Should be None when not provided."""
+        from chatgpt_to_notion.shared.http import DetailedHTTPError
+        from unittest.mock import MagicMock
+
+        req = MagicMock(spec=['url', 'method', 'headers'])
+        req.url = "https://test.url"
+        req.method = "GET"
+        req.headers = {}
+
+        exc = DetailedHTTPError(
+            status=429,
+            message="Too Many Requests",
+            body="Rate limited",
+            url="https://test.url",
+            req=req,
+            retry_after=None
+        )
+        assert exc.retry_after is None
+
+    def test_retry_after_none_for_non_429(self):
+        """Should be None for non-429 status (set by raise_for_status_with_detail)."""
+        from chatgpt_to_notion.shared.http import DetailedHTTPError
+        from unittest.mock import MagicMock
+
+        req = MagicMock(spec=['url', 'method', 'headers'])
+        req.url = "https://test.url"
+        req.method = "GET"
+        req.headers = {}
+
+        exc = DetailedHTTPError(
+            status=500,
+            message="Internal Server Error",
+            body="Server error",
+            url="https://test.url",
+            req=req,
+            retry_after=None
+        )
+        assert exc.retry_after is None
+
+
