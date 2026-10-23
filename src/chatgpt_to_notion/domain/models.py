@@ -124,6 +124,7 @@ class RuntimeOptions(BaseModel):
     account: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
+    # Legacy rate limit fields (for config.toml, not CLI options)
     fetch_conversation_delay: float | None = None
     fetch_batch_size: int | None = None
 

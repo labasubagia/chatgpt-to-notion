@@ -90,9 +90,8 @@ Populate the configuration file with your acquired tokens and database credentia
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
 # Base64-encoded cookie string to be used across all accounts by default
 cookie_string_base64 = "b2FpLWRpZD1..." 
-# Optional: Rate limiting for ChatGPT API (avoid 429 Too Many Requests)
-# fetch_conversation_delay = 2.0  # seconds between conversation detail requests
-# fetch_batch_size = 10  # requests per batch (0 = no batching)
+# Optional: Conversation delay for sequential mode (seconds)
+# conversation_delay = 2.0
 
 [notion]
 api_key = "secret_yourNotionIntegrationTokenHere"
@@ -103,9 +102,8 @@ database_id = "yourDefaultNotionDatabaseIDHere"
 # uploaded Notion page body as the **Email:** line.
 [accounts."personal@example.com"]
 authorization_token = "eyJhbGciOiJSUzI1..." # ChatGPT Auth token (excluding 'Bearer ')
-# Optional: per-account rate limit override
-# fetch_conversation_delay = 2.0
-# fetch_batch_size = 10
+# Optional: per-account conversation delay override (seconds)
+# conversation_delay = 2.0
 
 [accounts."work@example.com"]
 authorization_token = "eyJhbGciOiJSUzI1_other..."
@@ -133,13 +131,10 @@ Synchronizes images from ChatGPT accounts into your Notion gallery database.
   - `--limit <int>`: Max number of history items to crawl per run.
   - `--from-history`: Replays synchronization using saved offline local index files.
   - `--verify-history`: Audits and repairs missing Notion pages from local logs without fetching new live data.
-  - `--all`: Used in combination with history options to process all records rather than just today's.
   - `--check-notion-api`: Actively query the Notion database directly via API to prevent duplicates (Enabled by default).
-  - `--mode <sequential|single|batch>`: Processing mode. **`sequential` (default, recommended)** processes one conversation at a time end-to-end to avoid rate limits. `single` and `batch` are deprecated and will be removed.
+  - `--mode sequential`: Processing mode: sequential (one conversation at a time end-to-end).
   - `--conversation-delay <float>`: Delay in seconds between conversations in sequential mode (default: 2.0).
   - `--remove`: Automatically hide/delete uploaded conversations from ChatGPT after successfully verifying Notion presence.
-  - `--fetch-conversation-delay <float>`: Delay in seconds between fetching conversation details (helps avoid 429 rate limits). Default: 0.0.
-  - `--fetch-batch-size <int>`: Number of conversation detail requests per batch (0 = no batching, process all sequentially with delay). Default: 0.
 ### 2. `account-status`
 Audits daily image generation usage counts and remaining 24-hour cooldown periods across all configured accounts.
 - **Source Module**: [src/chatgpt_to_notion/cli/commands/accounts.py](requirement.md)
@@ -198,58 +193,28 @@ Overwrites the local SQLite database with a backup file. Uses the SQLite backup 
 
 ## Rate Limiting & 429 Handling
 
-When syncing accounts with many image generations, ChatGPT may return HTTP 429 (Too Many Requests). The tool provides two layers of protection:
+When syncing accounts with many image generations, ChatGPT may return HTTP 429 (Too Many Requests). The tool provides protection through the sequential processing mode:
 
-### 1. Processing Mode (`--mode`)
+### Sequential Mode (Primary Protection)
 
 **`sequential` (default, recommended)**: Processes conversations one at a time end-to-end — detail fetch, image download, prompt write, Notion upload — with a configurable delay between conversations. This is the safest mode for avoiding 429 errors.
 
 ```bash
-uv run chatgpt-to-notion upload-to-notion --mode sequential --conversation-delay 2.0
+uv run chatgpt-to-notion upload-to-notion --conversation-delay 2.0
 ```
 
-> **Note**: `single` and `batch` modes are deprecated and will be removed. They perform parallel detail fetches which hit rate limits immediately on typical accounts.
+> **Note**: The legacy `--mode single` and `--mode batch` have been removed. They performed parallel detail fetches which hit rate limits immediately on typical accounts.
 
-### 2. Legacy Fetch Rate Limits (for `single`/`batch` modes)
+### Configuration (`config.toml`)
 
-These options only apply when using the deprecated `single` or `batch` modes:
+No additional rate limit configuration is needed for sequential mode. The delay between conversations is controlled via the `--conversation-delay` CLI option (default: 2.0 seconds).
 
-#### Configuration (`config.toml`)
-
-```toml
-[shared]
-# Optional: Delay between conversation detail requests (seconds)
-fetch_conversation_delay = 2.0
-# Optional: Batch size with pause between batches
-fetch_batch_size = 10
-```
-
-#### CLI Options
-
-```bash
-# Add delay between requests
-uv run chatgpt-to-notion upload-to-notion --fetch-conversation-delay 2.0
-
-# Process in batches of 10 with 5s pause between batches
-uv run chatgpt-to-notion upload-to-notion --fetch-batch-size 10 --fetch-conversation-delay 2.0
-```
-
-### How Legacy Fetch Rate Limits Work
+### How Sequential Mode Avoids Rate Limits
 
 1. **Conversation deduplication**: Multiple images from the same conversation are grouped; details fetched once per conversation
-2. **Sequential with delay**: When `fetch_batch_size = 0` (default), requests run sequentially with `fetch_conversation_delay` between each
-3. **Batching**: When `fetch_batch_size > 0`, requests run in batches of that size, with a 5-second pause between batches
+2. **Sequential end-to-end**: For each conversation, the full pipeline runs (detail fetch → image download → prompt write → Notion upload) before moving to the next
+3. **Configurable delay**: A pause between conversations (`--conversation-delay`) prevents burst traffic
 4. **Retry-After**: The client respects `Retry-After` headers from 429 responses (capped at 60s)
-
-### Recommended Starting Values (Legacy Modes Only)
-
-| Scenario | `fetch_conversation_delay` | `fetch_batch_size` |
-|----------|---------------------------|-------------------|
-| Light usage (<50 images/run) | 0.0 | 0 |
-| Medium usage (50-200 images/run) | 1.0 | 10 |
-| Heavy usage (>200 images/run) | 2.0 | 10 |
----
-
 ## 5. Automated Scheduling & Background Operations
 
 To run your synchronizations automatically in the background, you can schedule the CLI using standard Unix scheduler daemons.

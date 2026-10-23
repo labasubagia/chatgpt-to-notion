@@ -6,7 +6,7 @@ cookie_string_base64 = "b2FpLWRpZD0..."
 # image_folder = "~/Desktop/images"
 # delete_library_queries = ["query1", "query2"]
 # remove_all_library_images = false
-# fetch_conversation_delay = 2.0  # seconds between conversation detail requests
+# conversation_delay = 2.0  # seconds between conversations in sequential mode
 # fetch_batch_size = 10  # requests per batch (0 = no batching)
 
 [notion]
@@ -20,7 +20,7 @@ notion_database_id = "optional_account_specific_db_id"
 # Optional: per-account override (overrides shared settings)
 # history_folder = "~/my_chatgpt/history"
 # image_folder = "~/my_chatgpt/images"
-# fetch_conversation_delay = 2.0
+# conversation_delay = 2.0
 # fetch_batch_size = 10
 
 [accounts."account_b@example.com"]

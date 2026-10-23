@@ -333,34 +333,6 @@ class TestCLIMode:
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         yield
 
-    @patch("chatgpt_to_notion.cli.commands.upload.upload_single.upload_to_notion_single", new_callable=AsyncMock)
-    def test_upload_to_notion_mode_single(self, mock_upload, mock_config_toml):
-        """Should call upload_to_notion_single when --mode single."""
-        result = runner.invoke(
-            app,
-            [
-                "upload-to-notion",
-                "--db-id", "test_db_12345678901234567890",
-                "--mode", "single",
-            ],
-        )
-        assert result.exit_code == 0
-        mock_upload.assert_called_once()
-
-    @patch("chatgpt_to_notion.cli.commands.upload.upload_batch.upload_to_notion", new_callable=AsyncMock)
-    def test_upload_to_notion_mode_batch(self, mock_upload, mock_config_toml):
-        """Should call upload_to_notion when --mode batch."""
-        result = runner.invoke(
-            app,
-            [
-                "upload-to-notion",
-                "--db-id", "test_db_12345678901234567890",
-                "--mode", "batch",
-            ],
-        )
-        assert result.exit_code == 0
-        mock_upload.assert_called_once()
-
     @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
     def test_upload_to_notion_defaults_to_sequential(self, mock_upload, mock_config_toml):
         """Should default to sequential mode when --mode is omitted."""
@@ -379,5 +351,4 @@ class TestCLIMode:
         result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         assert "--mode" in strip_ansi(result.stdout)
-        assert "single" in strip_ansi(result.stdout)
-        assert "batch" in strip_ansi(result.stdout)
+        assert "sequential" in strip_ansi(result.stdout)

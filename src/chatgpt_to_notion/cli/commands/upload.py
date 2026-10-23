@@ -11,7 +11,7 @@ from ...adapters.config_loader import (
     validate_runtime_config,
 )
 from ...domain.models import RuntimeOptions
-from ...services import upload_batch, upload_sequential, upload_single
+from ...services import upload_sequential
 from ...shared.console import (
     print_account_log_footer,
     print_account_log_header,
@@ -90,25 +90,9 @@ def register(app: typer.Typer) -> None:
         ),
         config: str | None = typer.Option(None, help="Path to TOML config file"),
         account: str | None = typer.Option(None, help="Named account from TOML config"),
-        max_concurrent: int = typer.Option(
-            1, help="Max concurrent upload requests (1 = sequential)"
-        ),
-        fetch_conversation_delay: float | None = typer.Option(
-            None,
-            help="Delay in seconds between fetching conversation details "
-            "(helps avoid 429 rate limits)",
-        ),
-        fetch_batch_size: int | None = typer.Option(
-            None,
-            help="Number of conversation detail requests per batch "
-            "(0 = no batching, process all sequentially with delay)",
-        ),
-        mode: Literal["single", "batch", "sequential"] = typer.Option(
+        mode: Literal["sequential"] = typer.Option(
             "sequential",
-            help=(
-                "Processing mode: single (per-conversation, parallel), "
-                "batch (full parallel), or sequential (one conversation at a time)"
-            ),
+            help="Processing mode: sequential (one conversation at a time)",
         ),
         conversation_delay: float = typer.Option(
             2.0,
@@ -140,8 +124,6 @@ def register(app: typer.Typer) -> None:
                 account=target_account,
                 history_folder=history_folder,
                 image_folder=image_folder,
-                fetch_conversation_delay=fetch_conversation_delay,
-                fetch_batch_size=fetch_batch_size,
             )
             required_vars = [
                 "NOTION_API_KEY",
@@ -171,34 +153,8 @@ def register(app: typer.Typer) -> None:
             else:
                 effective_keep_days = None
 
-            if mode == "batch":
-                import warnings
+            upload_fn = upload_sequential.upload_to_notion_sequential
 
-                warnings.warn(
-                    "batch mode is deprecated and will be removed. "
-                    "Use sequential mode instead (--mode sequential). "
-                    "batch mode hits rate limits immediately due to "
-                    "parallel detail fetches.",
-                    stacklevel=2,
-                )
-            elif mode == "single":
-                import warnings
-
-                warnings.warn(
-                    "single mode is deprecated and will be removed. "
-                    "Use sequential mode instead (--mode sequential). "
-                    "single mode parallel detail fetches hit rate "
-                    "limits on >5-10 conversations.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-
-            if mode == "sequential":
-                upload_fn = upload_sequential.upload_to_notion_sequential
-            elif mode == "single":
-                upload_fn = upload_single.upload_to_notion_single
-            else:
-                upload_fn = upload_batch.upload_to_notion
             kwargs: dict[str, Any] = {
                 "image_folder": image_folder,
                 "db_id": effective_db_id,
@@ -215,10 +171,8 @@ def register(app: typer.Typer) -> None:
                 "no_cache": no_cache,
                 "options": options,
                 "fail_log_path": fail_log,
-                "max_concurrent": max_concurrent,
+                "conversation_delay": conversation_delay,
             }
-            if mode == "sequential":
-                kwargs["conversation_delay"] = conversation_delay
             ok = safe_async_run(upload_fn(**kwargs))
             if not ok:
                 continue
