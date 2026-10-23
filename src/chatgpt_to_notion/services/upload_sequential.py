@@ -65,7 +65,6 @@ async def upload_to_notion_sequential(
         headers=shared.get_headers(options), timeout=get_http_timeout()
     ) as chatgpt_session:
         async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
-
             # Build the per-conversation work list up front.
             # from_history: prompts already in the local DB.
             # otherwise: only the lightweight image list is fetched here;
@@ -248,4 +247,6 @@ async def upload_to_notion_sequential(
     print()
 
     if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
-        await shared._remove_library_images(options, remove_all=remove_all_in_chatgpt_library)
+        await shared._remove_library_images(
+            options, remove_all=remove_all_in_chatgpt_library
+        )

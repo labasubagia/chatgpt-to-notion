@@ -103,4 +103,6 @@ async def upload_to_notion(
         )
 
     if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
-        await shared._remove_library_images(options, remove_all=remove_all_in_chatgpt_library)
+        await shared._remove_library_images(
+            options, remove_all=remove_all_in_chatgpt_library
+        )
