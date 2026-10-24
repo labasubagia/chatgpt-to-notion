@@ -12,7 +12,7 @@ from chatgpt_to_notion.adapters.chatgpt_api import (
     get_library_images,
     delete_library_file,
     extract_file_id_from_thumbnail_url,
-    remove_library_images_by_query,
+    delete_library_images_by_query,
     _parse_sse_events,
     get_conversation_mapping_key_by_asset_pointer,
     get_prompt_from_image_node_in_conversation,
@@ -173,7 +173,7 @@ class TestChatGPTLibraryOperations:
         res = await delete_library_file(mock_aiohttp_session, self.SAMPLE_ITEM)
         assert res == {"already_deleted": True}
 
-    async def test_remove_library_images_by_query(
+    async def test_delete_library_images_by_query(
         self, mock_aiohttp_session, mocker
     ):
         """Should loop through pages and delete all matched images."""
@@ -192,7 +192,7 @@ class TestChatGPTLibraryOperations:
         ]
         mock_aiohttp_session._responses = responses
 
-        total = await remove_library_images_by_query(
+        total = await delete_library_images_by_query(
             mock_aiohttp_session, query="ocean", max_concurrent=2
         )
         assert total == 2

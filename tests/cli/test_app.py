@@ -219,6 +219,101 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["from_history"] is True
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_delete_conversation_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass delete_conversation flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-conversation",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_conversation"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_delete_library_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass delete_library flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-library",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_library"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_delete_library_all_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass delete_library_all flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-library-all",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_library_all"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_all_delete_flags_combined(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass all delete flags when combined."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-conversation",
+                "--delete-library",
+                "--delete-library-all",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_conversation"] is True
+        assert mock_upload.call_args.kwargs["delete_library"] is True
+        assert mock_upload.call_args.kwargs["delete_library_all"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_no_delete_flags_default_false(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should default all delete flags to False when not specified."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_conversation"] is False
+        assert mock_upload.call_args.kwargs["delete_library"] is False
+        assert mock_upload.call_args.kwargs["delete_library_all"] is False
+
     def test_clean_output_path(self, tmp_output_dir, monkeypatch):
         """Should clean output path."""
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
