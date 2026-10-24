@@ -3,7 +3,7 @@ Integration tests for chatgpt.py using pure mocking.
 
 No real API calls are made. All external dependencies are mocked.
 """
-
+from unittest.mock import AsyncMock, MagicMock, patch
 import tomllib
 
 import pytest
@@ -1238,3 +1238,279 @@ authorization_token = "test_token_abc"
 
         remove_lib_mock.assert_awaited_once()
         count_lib_mock.assert_awaited_once()
+@pytest.mark.integration
+class TestUploadToAccountStatus:
+    """End-to-end tests verifying upload-to-notion saves history to account-status."""
+
+    async def test_from_history_upload_marks_generations_uploaded(
+        self, tmp_path, monkeypatch, isolated_db
+    ):
+        """Full flow: load from history -> upload -> mark uploaded -> account-status sees it."""
+        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+        from datetime import datetime, timezone
+        from chatgpt_to_notion.services import history_service
+        from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
+        from chatgpt_to_notion.services import upload_sequential
+
+        account = "default@example.com"
+
+        # Setup: insert generations directly into DB (simulating prior fetch)
+        now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        gen1 = ChatGPTImageGeneration(
+            created_at=now,
+            id="gen_hist_1",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/img1.png",
+            prompt="history prompt 1",
+        )
+        gen2 = ChatGPTImageGeneration(
+            created_at=now,
+            id="gen_hist_2",
+            conversation_id="conv_2",
+            message_id="msg_2",
+            asset_pointer="asset_2",
+            url="https://example.com/img2.png",
+            prompt="history prompt 2",
+        )
+        db.upsert_generations(account, [gen1, gen2])
+
+        # Verify initially not uploaded
+        uploaded_before = db.get_uploaded_ids(account)
+        assert uploaded_before == set()
+
+        # Mock external calls (Notion, image download)
+        with patch("chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock) as mock_notion, \
+             patch("chatgpt_to_notion.services.upload_pipeline.history_service.download_image", new_callable=AsyncMock) as mock_download, \
+             patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single") as mock_add_prompt, \
+             patch("chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock) as mock_add_page, \
+             patch("chatgpt_to_notion.services.upload_pipeline.get_headers") as mock_headers:
+
+            mock_notion.return_value = False
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+
+            await upload_sequential.upload_to_notion_sequential(
+                image_folder=None,
+                db_id="test_db",
+                delete_conversation=False,
+                from_history=True,
+                account=account,
+                options=None,
+            )
+
+        # Verify generations were marked as uploaded in DB
+        uploaded_after = db.get_uploaded_ids(account)
+        assert "gen_hist_1" in uploaded_after
+        assert "gen_hist_2" in uploaded_after
+
+        # Verify account-status can see today's activity (based on created_at)
+        # Since both generations created at "now", they are active (within 24h)
+        today_rows, yesterday_rows, total = get_account_activity_statuses(config_path=None, timezone_name=None)
+        assert len(today_rows) == 1
+        assert today_rows[0]["Account"] == account
+        assert today_rows[0]["Service"] == "chatgpt"
+        # Both are active (created now), so shows "2/2 to wait"
+        assert "2/2 to wait" in today_rows[0]["Ready Generate?"]
+
+    async def test_api_upload_creates_and_marks_generations(
+        self, tmp_path, monkeypatch, isolated_db
+    ):
+        """Full flow: fetch from API -> save to DB -> upload -> mark uploaded -> account-status sees it."""
+        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
+        from chatgpt_to_notion.services import upload_sequential
+
+        # Create config.toml with test account so account-status can find it
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            """
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+[accounts."default@example.com"]
+authorization_token = "test_token_abc"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+
+        account = "default@example.com"
+
+        # Mock all external API calls
+        with patch("chatgpt_to_notion.services.upload_sequential.shared.get_image_generations", new_callable=AsyncMock) as mock_get_gen, \
+             patch("chatgpt_to_notion.services.history_service.chatgpt_api.get_conversation_details", new_callable=AsyncMock) as mock_get_conv, \
+             patch("chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock) as mock_notion, \
+             patch("chatgpt_to_notion.services.upload_pipeline.history_service.download_image", new_callable=AsyncMock) as mock_download, \
+             patch("chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single") as mock_add_prompt, \
+             patch("chatgpt_to_notion.services.upload_pipeline.add_page_to_db", new_callable=AsyncMock) as mock_add_page, \
+             patch("chatgpt_to_notion.adapters.chatgpt_api.get_headers") as mock_headers:
+
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+            mock_notion.return_value = False
+
+            # Mock API returning one conversation with one image
+            from datetime import datetime, timezone
+            recent_ts = int(datetime.now(timezone.utc).timestamp())
+            mock_get_gen.return_value = {
+                "items": [
+                    {
+                        "id": "gen_api_1",
+                        "message_id": "msg_1",
+                        "asset_pointer": "asset_1",
+                        "conversation_id": "conv_1",
+                        "url": "https://example.com/img.png",
+                        "prompt": "api prompt",
+                        "created_at": recent_ts,
+                    }
+                ]
+            }
+            mock_get_conv.return_value = {
+                "mapping": {
+                    "msg_1": {
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["api prompt"]},
+                        },
+                        "parent": None,
+                    }
+                }
+            }
+
+            await upload_sequential.upload_to_notion_sequential(
+                image_folder=None,
+                db_id="test_db",
+                delete_conversation=False,
+                from_history=False,
+                account=account,
+                options=None,
+            )
+
+        # Verify generation was saved to DB and marked as uploaded
+        uploaded_after = db.get_uploaded_ids(account)
+        assert "gen_api_1" in uploaded_after
+
+        # Verify account-status can see today's activity
+        # Generation created_at is recent (within 24h), so it's active
+        today_rows, yesterday_rows, total = get_account_activity_statuses(config_path=None, timezone_name=None)
+        assert len(today_rows) == 1
+        assert today_rows[0]["Account"] == account
+        assert today_rows[0]["Service"] == "chatgpt"
+        # Active (recent created_at), shows "1/1 to wait"
+        assert "1/1 to wait" in today_rows[0]["Ready Generate?"]
+    async def test_verify_history_checks_notion_and_updates_local(
+        self, tmp_path, monkeypatch, isolated_db
+    ):
+        """verify_history flag loads all (including uploaded) and syncs with Notion."""
+        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+        from datetime import datetime, timezone
+        from chatgpt_to_notion.services import history_service
+        from chatgpt_to_notion.services import upload_sequential
+
+        account = "default@example.com"
+
+        # Setup: generation already marked uploaded locally
+        now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        gen = ChatGPTImageGeneration(
+            created_at=now,
+            id="gen_verify_1",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/img.png",
+            prompt="verify prompt",
+        )
+        db.upsert_generations(account, [gen])
+        history_service.mark_generations_uploaded(account, {"gen_verify_1"})
+
+        # Verify it's already uploaded locally
+        uploaded_before = db.get_uploaded_ids(account)
+        assert "gen_verify_1" in uploaded_before
+
+        # Mock Notion to say page exists
+        with patch("chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db", new_callable=AsyncMock) as mock_notion, \
+             patch("chatgpt_to_notion.services.upload_pipeline.load_image_generations") as mock_load_gen, \
+             patch("chatgpt_to_notion.services.upload_pipeline.get_headers") as mock_headers:
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+            mock_notion.return_value = True  # Page exists in Notion
+
+            # Create mock generation for load_image_generations to return
+            mock_gen = MagicMock()
+            mock_gen.id = "gen_verify_1"
+            mock_gen.conversation_id = "conv_1"
+            mock_gen.url = "https://example.com/img.png"
+            mock_gen.prompt = "verify prompt"
+            mock_load_gen.return_value = [mock_gen]
+
+            await upload_sequential.upload_to_notion_sequential(
+                image_folder=None,
+                db_id="test_db",
+                delete_conversation=False,
+                from_history=True,
+                check_notion_api=True,  # verify_history sets both
+                account=account,
+                options=None,
+            )
+
+        # Should still be marked uploaded (no change)
+        uploaded_after = db.get_uploaded_ids(account)
+        assert "gen_verify_1" in uploaded_after
+
+    async def test_check_notion_api_false_skips_already_uploaded(
+        self, tmp_path, monkeypatch, isolated_db
+    ):
+        """With check_notion_api=False (default), already-uploaded generations are skipped."""
+        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+        from datetime import datetime, timezone
+        from chatgpt_to_notion.services import history_service
+        from chatgpt_to_notion.services import upload_sequential
+
+        account = "default@example.com"
+
+        # Setup: generation already marked uploaded locally
+        now = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        gen = ChatGPTImageGeneration(
+            created_at=now,
+            id="gen_skip_1",
+            conversation_id="conv_1",
+            message_id="msg_1",
+            asset_pointer="asset_1",
+            url="https://example.com/img.png",
+            prompt="skip prompt",
+        )
+        db.upsert_generations(account, [gen])
+        history_service.mark_generations_uploaded(account, {"gen_skip_1"})
+
+        with patch("chatgpt_to_notion.services.upload_pipeline.load_image_generations") as mock_load_gen, \
+             patch("chatgpt_to_notion.services.upload_pipeline.get_headers") as mock_headers:
+
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+
+            # load_image_generations should NOT return already-uploaded when check_notion_api=False
+            mock_load_gen.return_value = []  # Empty because gen_skip_1 is already uploaded
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+
+            # load_image_generations should NOT return already-uploaded when check_notion_api=False
+            mock_load_gen.return_value = []  # Empty because gen_skip_1 is already uploaded
+
+            await upload_sequential.upload_to_notion_sequential(
+                image_folder=None,
+                db_id="test_db",
+                delete_conversation=False,
+                from_history=True,
+                check_notion_api=False,  # default
+                account=account,
+                options=None,
+            )
+
+        # load_image_generations should have been called with include_uploaded=False
+        mock_load_gen.assert_called_once()
+        args, kwargs = mock_load_gen.call_args
+        assert kwargs.get("include_uploaded") is False
