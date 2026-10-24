@@ -81,12 +81,12 @@ async def _remove_library_images(
     ) as session:
         await chatgpt_api.count_library_images(session, headers=headers)
         if effective_remove_all:
-            await chatgpt_api.remove_library_images_by_query(
+            await chatgpt_api.delete_library_images_by_query(
                 session, query=None, headers=headers
             )
         else:
             for query in resolved.delete_library_queries:
-                await chatgpt_api.remove_library_images_by_query(
+                await chatgpt_api.delete_library_images_by_query(
                     session, query=query, headers=headers
                 )
 

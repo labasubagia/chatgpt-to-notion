@@ -321,7 +321,7 @@ async def count_library_images(
     return total
 
 
-async def remove_library_images_by_query(
+async def delete_library_images_by_query(
     session: aiohttp.ClientSession,
     query: str | None = None,
     headers: dict[str, str] | None = None,

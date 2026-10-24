@@ -7,8 +7,8 @@ import typer
 
 from ...adapters.chatgpt_api import (
     count_library_images,
+    delete_library_images_by_query,
     get_headers,
-    remove_library_images_by_query,
 )
 from ...adapters.config_loader import get_account_names
 from ...adapters.filesystem import clean_output_path
@@ -47,8 +47,8 @@ def register(app: typer.Typer) -> None:
         result = restore_db(source)
         print(f"Database restored from {result}")
 
-    @app.command("remove-images")
-    def remove_images_command(
+    @app.command("delete-library")
+    def delete_library_command(
         query: str | None = typer.Argument(
             None, help="Search query to filter library images (omit for all)"
         ),
@@ -70,14 +70,14 @@ def register(app: typer.Typer) -> None:
                 options = RuntimeOptions(config_path=config, account=target_account)
                 headers = get_headers(options)
                 async with aiohttp.ClientSession() as session:
-                    total = await remove_library_images_by_query(
+                    total = await delete_library_images_by_query(
                         session,
                         query=query,
                         headers=headers,
                         max_concurrent=max_concurrent,
                     )
                 label = f"'{query}'" if query else "(all images)"
-                print(f"[{target_account}] Removed {total} images matching {label}")
+                print(f"[{target_account}] Deleted {total} images matching {label}")
                 remaining = await count_library_images(session, headers)
                 print(
                     f"[{target_account}] Total images remaining in library: {remaining}"
