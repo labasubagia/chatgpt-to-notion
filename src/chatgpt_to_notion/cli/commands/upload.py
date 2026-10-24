@@ -56,13 +56,25 @@ def register(app: typer.Typer) -> None:
         ),
         upload_to_notion: bool = typer.Option(True, help="Whether to upload to Notion"),
         delete_conversation: bool = typer.Option(
-            False, help="Whether to delete conversation from ChatGPT after all its images upload"
+            False,
+            help=(
+                "Whether to delete conversation from ChatGPT "
+                "after all its images upload"
+            ),
         ),
         delete_library: bool = typer.Option(
-            False, help="Whether to delete images from ChatGPT library after upload (uses config queries)"
+            False,
+            help=(
+                "Whether to delete images from ChatGPT library "
+                "after upload (uses config queries)"
+            ),
         ),
         delete_library_all: bool = typer.Option(
-            False, help="Delete ALL images from ChatGPT library after upload (ignores config queries)"
+            False,
+            help=(
+                "Delete ALL images from ChatGPT library "
+                "after upload (ignores config queries)"
+            ),
         ),
         check_notion_api: bool = typer.Option(
             True, help="Check Notion API even when uploaded_at is already set"
