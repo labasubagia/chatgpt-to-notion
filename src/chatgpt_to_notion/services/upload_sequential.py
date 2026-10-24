@@ -20,6 +20,7 @@ from ..shared.verbosity import (
     write_fail_log,
 )
 from . import upload_pipeline as shared
+from ..adapters import sqlite_store
 
 logger = get_logger(__name__)
 
@@ -56,6 +57,8 @@ async def upload_to_notion_sequential(
         raise ValueError("account is required")
 
     resolved_image_folder = resolve_image_folder(image_folder, options)
+
+    sqlite_store.init_db()
 
     uploaded_ids = shared.get_uploaded_generation_ids(account)
     counter = StageCounter("Processed")
