@@ -1514,3 +1514,184 @@ authorization_token = "test_token_abc"
         mock_load_gen.assert_called_once()
         args, kwargs = mock_load_gen.call_args
         assert kwargs.get("include_uploaded") is False
+
+
+@pytest.mark.integration
+class TestImageProcessingOrder:
+    """Tests for image processing order within a conversation."""
+
+    async def test_api_mode_images_processed_oldest_first(
+        self, tmp_path, monkeypatch, isolated_db
+    ):
+        """In API mode, images within a conversation should be processed oldest-first.
+
+        The API returns items newest-first, but upload should process oldest-first.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from chatgpt_to_notion.domain.models import AppConfig
+        import tomllib
+
+        account = "order@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+[accounts."{account}"]
+authorization_token = "test_token_abc"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        # API returns items newest-first (typical API behavior)
+        # created_at timestamps: gen_3 (newest), gen_2, gen_1 (oldest)
+        api_items = [
+            {
+                "id": "gen_3",
+                "message_id": "msg_3",
+                "asset_pointer": "asset_3",
+                "conversation_id": "conv_1",
+                "url": "https://example.com/img3.png",
+                "prompt": "prompt 3",
+                "created_at": 1705316000,  # newest
+            },
+            {
+                "id": "gen_2",
+                "message_id": "msg_2",
+                "asset_pointer": "asset_2",
+                "conversation_id": "conv_1",
+                "url": "https://example.com/img2.png",
+                "prompt": "prompt 2",
+                "created_at": 1705315900,  # middle
+            },
+            {
+                "id": "gen_1",
+                "message_id": "msg_1",
+                "asset_pointer": "asset_1",
+                "conversation_id": "conv_1",
+                "url": "https://example.com/img1.png",
+                "prompt": "prompt 1",
+                "created_at": 1705315800,  # oldest
+            },
+        ]
+
+        session_mock = MagicMock()
+        response_mock = AsyncMock()
+        response_mock.status = 200
+        response_mock.__aenter__ = AsyncMock(return_value=response_mock)
+        response_mock.__aexit__ = AsyncMock(return_value=False)
+        response_mock.json = AsyncMock(return_value={})
+        response_mock.text = AsyncMock(return_value="")
+        session_mock.get = MagicMock(return_value=response_mock)
+        session_mock.patch = MagicMock(return_value=response_mock)
+        session_mock.__aenter__ = AsyncMock(return_value=session_mock)
+        session_mock.__aexit__ = AsyncMock(return_value=False)
+
+        mark_uploaded_mock = MagicMock()
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.get_image_generations",
+            new_callable=AsyncMock,
+        ) as mock_get_gen, patch(
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db",
+            new_callable=AsyncMock,
+        ) as mock_notion, patch(
+            "chatgpt_to_notion.services.upload_pipeline.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.add_page_to_db",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.mark_generations_uploaded",
+            mark_uploaded_mock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details",
+            new_callable=AsyncMock,
+        ) as mock_conv_detail, patch(
+            "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt, patch(
+            "chatgpt_to_notion.services.upload_pipeline.get_headers"
+        ) as mock_headers:
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+            mock_get_gen.return_value = {"items": api_items}
+            mock_notion.return_value = False
+            mock_conv_detail.return_value = {
+                "mapping": {
+                    "msg_1": {
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["Prompt 1"]},
+                        },
+                        "parent": None,
+                    },
+                    "msg_2": {
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["Prompt 2"]},
+                        },
+                        "parent": None,
+                    },
+                    "msg_3": {
+                        "message": {
+                            "author": {"role": "user"},
+                            "content": {"parts": ["Prompt 3"]},
+                        },
+                        "parent": None,
+                    },
+                }
+            }
+            mock_prompt.side_effect = ["Prompt 1", "Prompt 2", "Prompt 3"]
+
+            from chatgpt_to_notion.services import upload_sequential
+
+            await upload_sequential.upload_to_notion_sequential(
+                image_folder=None,
+                db_id="test_db",
+                delete_conversation=False,
+                account=account,
+                options=None,
+            )
+
+            # Verify mark_generations_uploaded was called in oldest-first order: gen_1, gen_2, gen_3
+            calls = mark_uploaded_mock.call_args_list
+            assert len(calls) == 3
+            processed_ids = []
+            for call_args in calls:
+                # mark_generations_uploaded(account, generation_ids_set)
+                # generation_ids_set is the 2nd positional arg (index 1)
+                gen_ids = call_args[0][1]
+                processed_ids.extend(list(gen_ids))
+
+            assert processed_ids == ["gen_1", "gen_2", "gen_3"], (
+                f"Expected oldest-first order [gen_1, gen_2, gen_3], got {processed_ids}"
+            )
+

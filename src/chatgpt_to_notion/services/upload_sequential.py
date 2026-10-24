@@ -200,6 +200,7 @@ async def upload_to_notion_sequential(
                         include_uploaded=True,
                         ids_filter=conv_ids,
                     )
+                    conv_generations.sort(key=lambda g: g.created_at)
 
                 results = []
                 for g in conv_generations:
