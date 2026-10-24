@@ -55,16 +55,14 @@ def register(app: typer.Typer) -> None:
             None, help="Notion Database ID", callback=validate_db_id
         ),
         upload_to_notion: bool = typer.Option(True, help="Whether to upload to Notion"),
-        remove: bool = typer.Option(
-            False, help="Whether to remove uploaded items after upload"
+        delete_conversation: bool = typer.Option(
+            False, help="Whether to delete conversation from ChatGPT after all its images upload"
         ),
-        remove_in_chatgpt_library: bool = typer.Option(
-            False, help="Whether to remove images from ChatGPT library after upload"
+        delete_library: bool = typer.Option(
+            False, help="Whether to delete images from ChatGPT library after upload (uses config queries)"
         ),
-        remove_all_in_chatgpt_library: bool = typer.Option(
-            False,
-            help="Remove ALL images from ChatGPT library after upload (ignores "
-            "delete_library_queries)",
+        delete_library_all: bool = typer.Option(
+            False, help="Delete ALL images from ChatGPT library after upload (ignores config queries)"
         ),
         check_notion_api: bool = typer.Option(
             True, help="Check Notion API even when uploaded_at is already set"
@@ -154,14 +152,13 @@ def register(app: typer.Typer) -> None:
                 effective_keep_days = None
 
             upload_fn = upload_sequential.upload_to_notion_sequential
-
             kwargs: dict[str, Any] = {
                 "image_folder": image_folder,
                 "db_id": effective_db_id,
                 "upload_to_notion": upload_to_notion,
-                "remove_in_chatgpt": remove,
-                "remove_in_chatgpt_library": remove_in_chatgpt_library,
-                "remove_all_in_chatgpt_library": remove_all_in_chatgpt_library,
+                "remove_in_chatgpt": delete_conversation,
+                "remove_in_chatgpt_library": delete_library,
+                "remove_all_in_chatgpt_library": delete_library_all,
                 "account": resolved.account_name,
                 "check_notion_api": effective_check_notion_api,
                 "from_history": effective_from_history,

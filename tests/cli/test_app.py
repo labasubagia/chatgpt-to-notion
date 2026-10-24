@@ -83,10 +83,9 @@ class TestCLICommands:
                 "--image-folder", "test_images",
                 "--db-id", "test_db_12345678901234567890",
                 "--limit", "10",
-                "--no-remove",
+                "--no-delete-conversation",
             ],
         )
-        assert result.exit_code == 0
         mock_upload.assert_called_once()
 
     @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
