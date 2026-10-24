@@ -8,6 +8,7 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
+from ..adapters import sqlite_store
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import image_ext_from_url
@@ -20,7 +21,6 @@ from ..shared.verbosity import (
     write_fail_log,
 )
 from . import upload_pipeline as shared
-from ..adapters import sqlite_store
 
 logger = get_logger(__name__)
 
