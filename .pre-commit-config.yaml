@@ -17,5 +17,9 @@ repos:
         name: pytest
         entry: uv run pytest
         language: system
-        pass_filenames: false
         stages: [pre-push]
+      - id: vulture
+        name: Vulture (dead code detection)
+        entry: uv run vulture src/ --min-confidence 80
+        language: system
+        pass_filenames: false
