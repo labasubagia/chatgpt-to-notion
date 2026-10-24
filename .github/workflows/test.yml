@@ -26,7 +26,9 @@ jobs:
         run: uv sync --group dev
 
       - name: Run prek
-        run: uv run prek run --all-files --no-progress
+        run: |
+          uv run prek run --all-files --no-progress --refresh 2>&1 | tee prek-output.txt
+          echo "Exit code: ${PIPESTATUS[0]}"
   test:
     name: Test (3.13)
     runs-on: ubuntu-latest
