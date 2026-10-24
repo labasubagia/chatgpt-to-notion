@@ -100,7 +100,6 @@ def resolve_config(options: RuntimeOptions | None = None) -> ResolvedConfig:
 
 
 def get_provider_context(
-    provider: str = "chatgpt",
     options: RuntimeOptions | None = None,
 ) -> ProviderContext:
     resolved = resolve_config(options)

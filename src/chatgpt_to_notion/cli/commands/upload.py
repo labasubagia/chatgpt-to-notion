@@ -1,7 +1,7 @@
 """Upload CLI commands."""
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import typer
 
@@ -100,10 +100,6 @@ def register(app: typer.Typer) -> None:
         ),
         config: str | None = typer.Option(None, help="Path to TOML config file"),
         account: str | None = typer.Option(None, help="Named account from TOML config"),
-        mode: Literal["sequential"] = typer.Option(
-            "sequential",
-            help="Processing mode: sequential (one conversation at a time)",
-        ),
         conversation_delay: float = typer.Option(
             2.0,
             help="Delay in seconds between conversations in sequential mode",

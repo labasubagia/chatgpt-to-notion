@@ -112,7 +112,7 @@ async def download_image(
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_provider_context("chatgpt", options).headers
+    return get_provider_context(options).headers
 
 
 async def fetch_image_generations(
