@@ -28,9 +28,9 @@ async def upload_to_notion_sequential(
     image_folder: str | None,
     db_id: str,
     upload_to_notion: bool = True,
-    remove_in_chatgpt: bool = False,
-    remove_in_chatgpt_library: bool = True,
-    remove_all_in_chatgpt_library: bool = False,
+    delete_conversation: bool = False,
+    delete_library: bool = False,
+    delete_library_all: bool = False,
     add_prompt_to_image: bool = True,
     account: str | None = None,
     check_notion_api: bool = False,
@@ -97,12 +97,11 @@ async def upload_to_notion_sequential(
                 for item in items:
                     conv_items_map[str(item["conversation_id"])].append(item)
                 conv_payloads = list(conv_items_map.items())
-
             if not conv_payloads:
                 print("No generations found.")
-                if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
+                if delete_library or delete_library_all:
                     await shared._remove_library_images(
-                        options, remove_all=remove_all_in_chatgpt_library
+                        options, remove_all=delete_library_all
                     )
                 return
 
@@ -210,7 +209,7 @@ async def upload_to_notion_sequential(
                 if all_ok:
                     # In API mode every image in the conversation came from
                     # this run, so the conversation is eligible for deletion.
-                    if remove_in_chatgpt and not from_history:
+                    if delete_conversation and not from_history:
                         try:
                             await shared.delete_conversation(
                                 chatgpt_session,
@@ -245,7 +244,5 @@ async def upload_to_notion_sequential(
         print(counter.summary_line())
     print()
 
-    if remove_in_chatgpt_library or remove_all_in_chatgpt_library:
-        await shared._remove_library_images(
-            options, remove_all=remove_all_in_chatgpt_library
-        )
+    if delete_library or delete_library_all:
+        await shared._remove_library_images(options, remove_all=delete_library_all)
