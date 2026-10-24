@@ -1699,7 +1699,124 @@ authorization_token = "test_token_abc"
 class TestDBInitialization:
     """Tests for database auto-initialization."""
 
-    async def test_upload_sequential_auto_inits_db(self, tmp_path, monkeypatch, isolated_db):
+    async def test_upload_sequential_auto_inits_db(self, tmp_path, monkeypatch):
+        """upload_to_notion_sequential should auto-initialize DB if not exists.
+
+        Previously this failed with OperationalError: no such table: image_generations
+        because init_db() was not called before first DB access.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from chatgpt_to_notion.domain.models import AppConfig
+        import tomllib
+
+        account = "initdb@example.com"
+        config_file = tmp_path / "config.toml"
+        account_section = f'[accounts."{account}"]'
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+{account_section}
+authorization_token = "test_token_abc"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        session_mock = MagicMock()
+        response_mock = AsyncMock()
+        response_mock.status = 200
+        response_mock.__aenter__ = AsyncMock(return_value=response_mock)
+        response_mock.__aexit__ = AsyncMock(return_value=False)
+        # Return a valid image response for download
+        response_mock.read = AsyncMock(return_value=b"fake_image_data")
+        response_mock.json = AsyncMock(return_value={})
+        response_mock.text = AsyncMock(return_value="")
+        session_mock.get = MagicMock(return_value=response_mock)
+        session_mock.patch = MagicMock(return_value=response_mock)
+        session_mock.__aenter__ = AsyncMock(return_value=session_mock)
+        session_mock.__aexit__ = AsyncMock(return_value=False)
+
+        # No isolated_db fixture - this tests that init_db is called before first DB access
+        # The default DB path will be tmp_path/output/chatgpt.db
+        # Do NOT mock get_uploaded_generation_ids or get_existing_ids - let them hit real DB
+        with patch(
+            "chatgpt_to_notion.services.upload_pipeline.aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.get_image_generations",
+            new_callable=AsyncMock,
+        ) as mock_get_gen, patch(
+            "chatgpt_to_notion.services.upload_pipeline.is_page_exists_in_db",
+            new_callable=AsyncMock,
+        ) as mock_notion, patch(
+            "chatgpt_to_notion.services.upload_pipeline.history_service.download_image",
+            new_callable=AsyncMock,
+        ) as mock_download, patch(
+            "chatgpt_to_notion.services.upload_pipeline.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.services.upload_pipeline.add_page_to_db",
+            new_callable=AsyncMock,
+        ) as mock_add_page, patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details",
+            new_callable=AsyncMock,
+        ) as mock_conv_detail, patch(
+            "chatgpt_to_notion.services.upload_pipeline.delete_conversation",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt, patch(
+            "chatgpt_to_notion.services.upload_pipeline.get_headers"
+        ) as mock_headers:
+            mock_headers.return_value = {"Authorization": "Bearer test"}
+            # Return one item so code proceeds to DB operations
+            mock_get_gen.return_value = {
+                "items": [
+                    {
+                        "id": "test_img_1",
+                        "conversation_id": "test_conv_1",
+                        "message_id": "test_msg_1",
+                        "asset_pointer": "asset_1",
+                        "url": "https://example.com/image.png",
+                        "created_at": 1705315800,
+                    }
+                ]
+            }
+            mock_notion.return_value = False
+            mock_download.return_value = b"fake_image_data"
+            mock_add_page.return_value = {"id": "notion_page_1"}
+            mock_conv_detail.return_value = {"mapping": {}}
+            mock_prompt.return_value = "Test prompt"
+
+            from chatgpt_to_notion.services import upload_sequential
+
+            # Should not raise OperationalError
+            await upload_sequential.upload_to_notion_sequential(
+                image_folder=None,
+                db_id="test_db",
+                delete_conversation=False,
+                account=account,
+                options=None,
+            )
+
+            # Verify it completed without error
+            mock_get_gen.assert_called_once()
+            mock_add_page.assert_called_once()
         """upload_to_notion_sequential should auto-initialize DB if not exists.
 
         Previously this failed with OperationalError: no such table: image_generations
@@ -1746,7 +1863,9 @@ authorization_token = "test_token_abc"
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        # Use the real isolated_db - don't mock sqlite_store functions
+        # No isolated_db fixture - this tests that init_db is called before first DB access
+        # The default DB path will be tmp_path/output/chatgpt.db
+        # The default DB path will be tmp_path/output/chatgpt.db
         # This tests that init_db is called before first DB access
         with patch(
             "chatgpt_to_notion.services.upload_pipeline.aiohttp.ClientSession",
