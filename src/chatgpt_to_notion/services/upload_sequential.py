@@ -8,6 +8,7 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
+from ..adapters import sqlite_store
 from ..adapters.filesystem import resolve_image_folder
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
 from ..shared.constants import image_ext_from_url
@@ -56,6 +57,8 @@ async def upload_to_notion_sequential(
         raise ValueError("account is required")
 
     resolved_image_folder = resolve_image_folder(image_folder, options)
+
+    sqlite_store.init_db()
 
     uploaded_ids = shared.get_uploaded_generation_ids(account)
     counter = StageCounter("Processed")
