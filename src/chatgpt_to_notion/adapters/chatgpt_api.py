@@ -16,7 +16,7 @@ BASE_URL = "https://chatgpt.com/backend-api"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_provider_context("chatgpt", options).headers
+    return get_provider_context(options).headers
 
 
 @retry_http()

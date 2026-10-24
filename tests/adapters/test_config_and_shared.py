@@ -253,7 +253,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         provider = get_provider_context(
-            "chatgpt", RuntimeOptions(account="personal@example.com")
+            RuntimeOptions(account="personal@example.com")
         )
         notion = get_notion_context(RuntimeOptions(account="personal@example.com"))
 
@@ -276,7 +276,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         provider = get_provider_context(
-            "chatgpt", RuntimeOptions(account="personal@example.com")
+            RuntimeOptions(account="personal@example.com")
         )
 
         assert provider.headers["User-Agent"] == "SharedAgent/1.0"
@@ -324,13 +324,13 @@ class TestTomlConfig:
 
         # 1. Test shared default resolution & decoding
         provider_personal = get_provider_context(
-            "chatgpt", RuntimeOptions(account="personal@example.com")
+            RuntimeOptions(account="personal@example.com")
         )
         assert provider_personal.headers["Cookie"] == "cookie_shared"
 
         # 2. Test account-level override resolution & decoding
         provider_override = get_provider_context(
-            "chatgpt", RuntimeOptions(account="override@example.com")
+            RuntimeOptions(account="override@example.com")
         )
         assert provider_override.headers["Cookie"] == "cookie_override"
 
@@ -349,7 +349,7 @@ class TestTomlConfig:
 
         with pytest.raises(ValueError, match="Invalid base64 in cookie_string_base64"):
             get_provider_context(
-                "chatgpt", RuntimeOptions(account="personal@example.com")
+                RuntimeOptions(account="personal@example.com")
             )
 
     def test_get_account_names_from_toml(self, tmp_path, monkeypatch):
