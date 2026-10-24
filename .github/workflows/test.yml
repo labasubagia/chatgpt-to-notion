@@ -26,7 +26,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run prek
-        run: uv run prek run --all-files
+        run: uv run prek run --all-files --no-progress
   test:
     name: Test (3.13)
     runs-on: ubuntu-latest
