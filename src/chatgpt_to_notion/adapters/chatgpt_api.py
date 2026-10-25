@@ -19,7 +19,6 @@ def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
     return get_provider_context(options).headers
 
 
-
 @retry_http()
 async def get_conversation_details(
     session: aiohttp.ClientSession,
@@ -32,7 +31,6 @@ async def get_conversation_details(
     ) as response:
         await raise_for_status_with_detail(response)
         return await response.json()
-
 
 
 @retry_http()

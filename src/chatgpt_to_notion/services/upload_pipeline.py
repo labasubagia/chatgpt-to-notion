@@ -5,31 +5,21 @@ The sequential mode implementation (upload_sequential)
 imports from this module for all external dependencies.
 """
 
-import asyncio
-from collections import defaultdict
-
 import aiohttp
-from tqdm.asyncio import tqdm
 
 from ..adapters import chatgpt_api, notion_api, sqlite_store
 from ..adapters.config_loader import resolve_config
-from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
-from ..shared.constants import MAX_CONCURRENT_REQUESTS, image_ext_from_url
-from ..shared.http import exc_detail, get_http_timeout
+from ..domain.models import RuntimeOptions
+from ..shared.http import get_http_timeout
 from ..shared.logging import get_logger
-from ..shared.verbosity import (
-    StageCounter,
-    is_verbose,
-    log_service_error,
-)
-from .image_service import add_prompt_to_image_single
+from . import history_service
 from .history_service import (
     fetch_generations_for_conversation,
     get_uploaded_generation_ids,
     load_image_generations,
     mark_generations_uploaded,
 )
-from . import history_service
+from .image_service import add_prompt_to_image_single
 
 logger = get_logger(__name__)
 
@@ -47,8 +37,6 @@ delete_conversation = chatgpt_api.delete_conversation
 get_conversation_details = chatgpt_api.get_conversation_details
 get_image_generations = chatgpt_api.get_image_generations
 get_headers = chatgpt_api.get_headers
-
-
 
 
 async def _remove_library_images(
@@ -73,10 +61,6 @@ async def _remove_library_images(
                 await chatgpt_api.delete_library_images_by_query(
                     session, query=query, headers=headers
                 )
-
-
-
-
 
 
 __all__ = [

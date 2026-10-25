@@ -1,38 +1,20 @@
 """History retrieval and download orchestration."""
 
-import asyncio
 import os
 import tempfile
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
-from pydantic import BaseModel
-from tqdm.asyncio import tqdm
 
-from ..adapters import chatgpt_api, sqlite_store
-from ..adapters.config_loader import get_provider_context, resolve_config
+from ..adapters import chatgpt_api, config_loader, sqlite_store
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
-from ..shared.constants import (
-    MAX_CONCURRENT_DOWNLOADS,
-    image_ext_from_url,
-)
 from ..shared.http import (
-    exc_detail,
-    get_download_timeout,
-    get_http_timeout,
     raise_for_status_with_detail,
     retry_http,
 )
 from ..shared.logging import get_logger
-from ..shared.verbosity import (
-    StageCounter,
-    is_verbose,
-    log_service_error,
-    write_fail_log,
-)
 
 logger = get_logger("history")
 
@@ -41,16 +23,27 @@ get_conversation_details = chatgpt_api.get_conversation_details
 get_prompt_from_image_node_in_conversation = (
     chatgpt_api.get_prompt_from_image_node_in_conversation
 )
+resolve_config = config_loader.resolve_config
+logger = get_logger("history")
+
+get_image_generations = chatgpt_api.get_image_generations
+get_conversation_details = chatgpt_api.get_conversation_details
+get_prompt_from_image_node_in_conversation = (
+    chatgpt_api.get_prompt_from_image_node_in_conversation
+)
+
 
 def get_uploaded_generation_ids(account: str | None) -> set[str]:
     if not account:
         return set()
     return sqlite_store.get_uploaded_ids(account)
 
+
 def mark_generations_uploaded(account: str | None, generation_ids: set[str]) -> None:
     if not account or not generation_ids:
         return
     sqlite_store.mark_uploaded(account, generation_ids)
+
 
 @retry_http()
 async def download_image(
@@ -79,6 +72,7 @@ async def download_image(
             pass
         raise
 
+
 def load_image_generations(
     account: str,
     include_uploaded: bool = False,
@@ -93,6 +87,7 @@ def load_image_generations(
         keep_days=keep_days,
         timezone_name=timezone_name,
     )
+
 
 async def fetch_generations_for_conversation(
     session: aiohttp.ClientSession,

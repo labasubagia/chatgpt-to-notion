@@ -2,18 +2,12 @@
 
 import os
 import tempfile
-import time
-from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-from tqdm import tqdm
 
 from ..domain.models import ImageGeneration
-from ..shared.constants import MAX_RETRIES
-from ..shared.verbosity import StageCounter, is_verbose
 
 
 def edit_png_info(
@@ -61,5 +55,3 @@ def add_prompt_to_image_single(generation: ImageGeneration, folder: str) -> None
     if get_png_prompt(str(file_path)) == generation.prompt:
         return
     edit_png_info(str(file_path), payload={"Prompt": generation.prompt})
-
-

@@ -3,35 +3,21 @@
 import asyncio
 import mimetypes
 import os
-from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 
 import aiohttp
-from tqdm.asyncio import tqdm
 
-from ..domain.models import ImageGeneration, RuntimeOptions
-from ..shared.constants import image_ext_from_url
+from ..domain.models import RuntimeOptions
 from ..shared.http import (
     DetailedHTTPError,
-    exc_detail,
-    get_http_timeout,
     raise_for_status_with_detail,
     retry_http,
 )
 from ..shared.logging import get_logger
-from ..shared.verbosity import (
-    StageCounter,
-    is_verbose,
-    log_service_error,
-    write_fail_log,
-)
 from .config_loader import get_notion_context
 from .sqlite_store import (
     async_set_cached_data_sources,
     get_cached_data_sources,
-    get_uploaded_ids,
-    mark_uploaded,
 )
 
 logger = get_logger("notion")
@@ -259,5 +245,3 @@ async def add_page_to_db(
     ) as response:
         await raise_for_status_with_detail(response)
         return await response.json()
-
-

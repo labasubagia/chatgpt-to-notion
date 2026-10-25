@@ -7,6 +7,8 @@ from pathlib import Path
 from ..domain.models import RuntimeOptions
 from ..shared import constants
 from .config_loader import resolve_config
+
+
 def get_output_path(input_path_str: str, is_dir: bool = False) -> Path:
     input_path = Path(input_path_str)
     if input_path.is_absolute():
@@ -31,7 +33,6 @@ def _resolve_folder_path(folder_str: str | None, default_subpath: str) -> Path:
     path = Path(os.path.expanduser(folder_str))
     path.mkdir(parents=True, exist_ok=True)
     return path
-
 
 
 def get_image_folder(options: RuntimeOptions | None = None) -> Path:
