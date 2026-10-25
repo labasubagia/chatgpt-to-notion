@@ -418,6 +418,12 @@ def restore_db(backup_path: Path, db_path: Path | None = None) -> Path:
     target = db_path or _get_db_path()
     target.parent.mkdir(parents=True, exist_ok=True)
 
+    # Remove WAL and SHM files to avoid stale data after replace
+    wal_file = target.with_suffix(target.suffix + "-wal")
+    shm_file = target.with_suffix(target.suffix + "-shm")
+    wal_file.unlink(missing_ok=True)
+    shm_file.unlink(missing_ok=True)
+
     tmp = target.with_suffix(".tmp")
     try:
         backup_conn = sqlite3.connect(str(backup_path))
