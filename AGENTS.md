@@ -77,7 +77,7 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 ### Testing
 - [ ] Tested locally
 - [ ] Tests passed (`uv run pytest`)
-
+- **Do not include test logs/output in PR description**
 ### Notes
 - Any additional information (optional)
 ## Security & Configuration Tips
