@@ -44,39 +44,42 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 
 ## Development Process
 
-**All changes must go through Pull Requests (using GitHub CLI):**
+**All changes must go through git worktrees and Pull Requests (using GitHub CLI):**
 
-1. **Code changes / new feature** → implement on a feature branch
-2. **Review / refactor / harden** → self-review, run tests, pre-commit
-3. **New branch / Pull Request** → `gh pr create --title "..." --body-file ...` against `main`
-4. **Monitor PR CI** → `gh pr checks <number> --watch` wait for all checks (pre-commit, tests, security) to pass
-5. **Check PR status** → `gh pr view <number>` verify no conflicts, branch up-to-date, no "branch needs updates" warning
-6. **Merge** → `gh pr merge <number> --squash --delete-branch` only after all CI checks pass (squash merge preferred)
+1. **Create worktree** → `git worktree add ../worktree-<branch> -b <branch> main`
+2. **Code changes** → implement in worktree directory
+3. **Verify locally** → `uv run pytest`, `uv run ruff check .`, `uv run pyrefly check src/`
+4. **Push & PR** → `gh pr create --title "..." --body-file ... --base main --head <branch>`
+5. **Monitor CI** → `gh pr checks <number> --watch` wait for all checks (pre-commit, tests, security) to pass
+6. **Verify PR** → `gh pr view <number>` confirm no conflicts, branch up-to-date, mergeable, squash mode
+7. **Squash merge** → `gh pr merge <number> --squash --delete-branch` only after CI passes **and explicit user approval**
+8. **Cleanup** → `git worktree remove ../worktree-<branch>`
 
 **Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
 **Direct pushes to `main` are prohibited.** Branch protection rules enforce:
 - Required status checks (pre-commit, tests)
 - No force pushes
 - No direct commits
-## Worktree-Based Development Worklow
-
-All changes must go through git worktrees and Pull Requests (using GitHub CLI):
-
-1. **Create worktree** → `git worktree add ../worktree-<branch> -b <branch> main`
-2. **Code changes** → implement in worktree directory
-3. **Verify locally** → `uv run pytest`, `uv run ruff check .`, `uv run pyrefly check src/`
-4. **Push & PR** → `gh pr create --title "..." --body-file ... --base main --head <branch>`
-5. **Monitor CI** → `gh pr checks <number> --watch` wait for all checks to pass
-6. **Verify PR** → `gh pr view <number>` confirm no conflicts, mergeable, squash mode
-7. **Squash merge** → `gh pr merge <number> --squash --delete-branch` only after CI passes **and explicit user approval**
-8. **Cleanup** → `git worktree remove ../worktree-<branch>`
-
 **Never auto-merge PRs without explicit user permission.** Wait for confirmation before merging.
-8. **Cleanup** → `git worktree remove ../worktree-<branch>`
-
-**Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
-**Direct pushes to `main` are prohibited.** Branch protection rules enforce required status checks, no force pushes, no direct commits.
 **Never commit:** `config.toml`, tokens, cookies, downloaded output, `.venv/`, `__pycache__/`.
+
+## PR Format
+
+**Ensure good markdown formatting** in PR descriptions. Use this template:
+
+### Summary
+- Brief description of the changes.
+
+### Changes Made
+- Change 1
+- Change 2
+
+### Testing
+- [ ] Tested locally
+- [ ] Tests passed (`uv run pytest`)
+- **Do not include test logs/output in PR description**
+### Notes
+- Any additional information (optional)
 ## Security & Configuration Tips
 
 Do not commit `config.toml`, tokens, cookies, or downloaded output. Start from `config.toml.example`, keep secrets local, and use per-account configuration only when needed for the current task.
