@@ -218,25 +218,6 @@ def mark_uploaded(
             conn.close()
 
 
-def delete_old_generations(
-    account: str,
-    keep_days: int = 3,
-    db_path: Path | None = None,
-) -> int:
-    cutoff = datetime.now().astimezone() - timedelta(days=keep_days)
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            cursor = conn.execute(
-                "DELETE FROM image_generations WHERE account = ? AND created_at < ?",
-                (account, cutoff.isoformat()),
-            )
-            conn.commit()
-            return cursor.rowcount
-        finally:
-            conn.close()
-
-
 def get_cached_data_sources(
     db_id: str,
     db_path: Path | None = None,
@@ -261,7 +242,7 @@ def get_cached_data_sources(
             conn.close()
 
 
-def set_cached_data_sources(
+async def async_set_cached_data_sources(
     db_id: str,
     sources: list[dict[str, Any]],
     ttl_days: int = 1,
@@ -342,45 +323,12 @@ def get_activity_stats(
             conn.close()
 
 
-def count_recent_generations(
-    account: str, since: str, db_path: Path | None = None
-) -> int:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM image_generations "
-                "WHERE account = ? AND created_at >= ?",
-                (account, since),
-            ).fetchone()
-            return row["cnt"] if row else 0
-        finally:
-            conn.close()
-
-
 async def async_upsert_generations(
     account: str,
     generations: list[ChatGPTImageGeneration],
     db_path: Path | None = None,
 ) -> None:
     upsert_generations(account, generations, db_path)
-
-
-async def async_mark_uploaded(
-    account: str,
-    generation_ids: set[str],
-    db_path: Path | None = None,
-) -> None:
-    mark_uploaded(account, generation_ids, db_path)
-
-
-async def async_set_cached_data_sources(
-    db_id: str,
-    sources: list[dict[str, Any]],
-    ttl_days: int = 1,
-    db_path: Path | None = None,
-) -> None:
-    set_cached_data_sources(db_id, sources, ttl_days, db_path)
 
 
 def backup_db(backup_path: Path, db_path: Path | None = None) -> Path:

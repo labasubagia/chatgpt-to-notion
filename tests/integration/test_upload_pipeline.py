@@ -15,18 +15,11 @@ from chatgpt_to_notion.services import upload_pipeline as chatgpt
 from chatgpt_to_notion.shared.verbosity import SIMPLE, VERBOSE, set_verbosity
 from chatgpt_to_notion.services.upload_pipeline import (
     delete_conversation,
-    delete_conversation_of_image_generation_uploaded_to_notion,
-    delete_conversations_after_upload,
-    download_all_images,
     get_conversation_details,
-    get_conversation_mapping_key_by_asset_pointer,
-    get_conversations,
     get_headers,
     get_image_generations,
-    get_prompt_from_image_node_in_conversation,
     load_image_generations,
 )
-from chatgpt_to_notion.adapters.chatgpt_api import get_conversation_details_batch
 from tests.conftest import make_mock_response
 
 
@@ -82,162 +75,6 @@ authorization_token = "test_token_abc"
         assert "User-Agent" in headers
         assert "Content-Type" in headers
         assert "Cookie" not in headers
-
-
-@pytest.mark.integration
-class TestChatGPTFetchImageGenerations:
-    """Tests for fetch_image_generations function."""
-
-    async def test_fetch_image_generations_new_items(
-        self, mock_aiohttp_session, monkeypatch, isolated_db
-    ):
-        """Should fetch details only for new items and upsert to DB."""
-        from unittest.mock import AsyncMock, patch
-
-        mock_data = {
-            "items": [
-                {
-                    "id": "img_123",
-                    "conversation_id": "conv_abc",
-                    "message_id": "msg_def",
-                    "asset_pointer": "asset_ghi",
-                    "url": "https://example.com/image.png",
-                    "created_at": 1705315800,
-                }
-            ]
-        }
-
-        with patch("chatgpt_to_notion.services.history_service.get_image_generations", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_data
-
-            with patch(
-                "chatgpt_to_notion.services.history_service.get_conversation_details", new_callable=AsyncMock
-            ) as mock_detail:
-                mock_detail.return_value = {
-                    "mapping": {
-                        "node1": {
-                            "message": {
-                                "author": {"role": "user"},
-                                "content": {"parts": ["Test prompt"]},
-                            },
-                            "parent": None,
-                        }
-                    }
-                }
-
-                with patch(
-                    "chatgpt_to_notion.services.history_service.get_prompt_from_image_node_in_conversation"
-                ) as mock_prompt:
-                    mock_prompt.return_value = "Test prompt"
-
-                    with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
-                        mock_headers.return_value = {"Authorization": "Bearer test"}
-
-                        with patch(
-                            "chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details_batch", new_callable=AsyncMock
-                        ) as mock_detail_batch:
-                            mock_detail_batch.return_value = {
-                                "conv_abc": {
-                                    "mapping": {
-                                        "node1": {
-                                            "message": {
-                                                "author": {"role": "user"},
-                                                "content": {"parts": ["Test prompt"]},
-                                            },
-                                            "parent": None,
-                                        }
-                                    }
-                                }
-                            }
-
-                            remote_generations, result = await chatgpt.fetch_image_generations(
-                                limit=5,
-                                options=type("Options", (), {"account": "default@example.com"}),
-                            )
-
-                            assert isinstance(remote_generations, list)
-                            assert isinstance(result, list)
-                            assert len(result) == 1
-                            assert result[0].id == "img_123"
-                            assert result[0].prompt == "Test prompt"
-
-                            mock_get.assert_called_once()
-                            mock_detail_batch.assert_called_once()
-
-    async def test_fetch_image_generations_existing_items_skip_details(
-        self, mock_aiohttp_session, monkeypatch, isolated_db
-    ):
-        """Should skip fetching details for items already in DB."""
-        from unittest.mock import AsyncMock, patch
-        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
-
-        gen = ChatGPTImageGeneration(
-            created_at="2024-01-15T10:30:00.000000+00:00",
-            id="img_123",
-            conversation_id="conv_abc",
-            message_id="msg_def",
-            asset_pointer="asset_ghi",
-            url="https://example.com/image.png",
-            prompt="Existing prompt",
-        )
-        db.upsert_generations("default@example.com", [gen])
-
-        mock_data = {
-            "items": [
-                {
-                    "id": "img_123",
-                    "conversation_id": "conv_abc",
-                    "message_id": "msg_def",
-                    "asset_pointer": "asset_ghi",
-                    "url": "https://example.com/image.png",
-                    "created_at": 1705315800,
-                }
-            ]
-        }
-
-        with patch("chatgpt_to_notion.services.history_service.get_image_generations", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_data
-
-            with patch(
-                "chatgpt_to_notion.services.history_service.get_conversation_details", new_callable=AsyncMock
-            ) as mock_detail:
-                mock_detail.return_value = {}
-
-                with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
-                    mock_headers.return_value = {"Authorization": "Bearer test"}
-
-                    remote_generations, result = await chatgpt.fetch_image_generations(
-                        limit=5,
-                        options=type("Options", (), {"account": "default@example.com"})(),
-                    )
-
-                    assert len(remote_generations) == 1
-                    assert len(result) == 1
-                    assert result[0].id == "img_123"
-                    assert result[0].prompt == "Existing prompt"
-
-                    mock_get.assert_called_once()
-                    mock_detail.assert_not_called()
-
-    async def test_fetch_image_generations_empty(
-        self, mock_aiohttp_session, monkeypatch, isolated_db
-    ):
-        """Should return empty list when no generations."""
-        from unittest.mock import AsyncMock, patch
-
-        with patch("chatgpt_to_notion.services.history_service.get_image_generations", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = {"items": []}
-
-            with patch("chatgpt_to_notion.services.history_service.get_headers") as mock_headers:
-                mock_headers.return_value = {"Authorization": "Bearer test"}
-
-                remote_generations, result = await chatgpt.fetch_image_generations(
-                    limit=5,
-                    options=type("Options", (), {"account": "default@example.com"})(),
-                )
-
-                assert remote_generations == []
-                assert result == []
 
 
 @pytest.mark.integration

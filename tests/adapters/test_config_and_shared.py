@@ -28,7 +28,6 @@ from chatgpt_to_notion.services.history_service import (
     download_image,
     get_uploaded_generation_ids,
     mark_generations_uploaded,
-    save_generations,
 )
 from chatgpt_to_notion.shared.constants import (
     DOWNLOAD_TIMEOUT_SECONDS,
@@ -625,36 +624,6 @@ class TestAccountActivityStatus:
 
         assert today_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"
         assert yesterday_rows[0]["Ready Generate?"] == "❌  (2/2 to wait)"
-
-
-class TestSaveGenerations:
-    """Tests for save_generations function."""
-
-    def test_empty_data_skips(self, capsys):
-        save_generations("test", [])
-        captured = capsys.readouterr()
-        assert "No generations to save" in captured.out
-
-    def test_saves_to_db(self, isolated_db, monkeypatch):
-        from datetime import datetime, timezone
-
-        now = datetime.now(timezone.utc)
-        data = [
-            ChatGPTImageGeneration(
-                created_at=now.isoformat(),
-                id="test123",
-                conversation_id="conv_1",
-                message_id="msg_1",
-                asset_pointer="asset_1",
-                url="https://example.com/1.png",
-                prompt="test prompt",
-            )
-        ]
-        save_generations("default@example.com", data)
-
-        result = db.get_generations("default@example.com", include_uploaded=True)
-        assert len(result) == 1
-        assert result[0].id == "test123"
 
 
 class TestUploadedGenerationHelpers:

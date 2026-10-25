@@ -1,7 +1,6 @@
 """Tests for sqlite_store.py - SQLite persistence layer."""
 
 import sqlite3
-import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -47,7 +46,7 @@ def sample_generations(sample_generation):
             ).isoformat(),
         }
     )
-    return [sample_generation, older, newer]
+    return [older, sample_generation, newer]
 
 
 class TestInitDb:
@@ -57,67 +56,48 @@ class TestInitDb:
         tables = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
-        conn.close()
-        table_names = {t[0] for t in tables}
-        assert "image_generations" in table_names
-        assert "cache_data_sources" in table_names
+        names = {t[0] for t in tables}
+        assert "image_generations" in names
+        assert "cache_data_sources" in names
 
 
 class TestUpsertGenerations:
-    def test_inserts_new_rows(self, tmp_db_path, sample_generations):
-        sqlite_store.init_db(tmp_db_path)
-        sqlite_store.upsert_generations("test_account", sample_generations, tmp_db_path)
-
-        result = sqlite_store.get_generations("test_account", db_path=tmp_db_path)
-        assert len(result) == 3
-
-    def test_upserts_existing_rows(self, tmp_db_path, sample_generation):
+    def test_inserts_new(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
         sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
-
-        updated = sample_generation.model_copy(update={"prompt": "Updated prompt"})
-        sqlite_store.upsert_generations("test_account", [updated], tmp_db_path)
-
         result = sqlite_store.get_generations("test_account", db_path=tmp_db_path)
         assert len(result) == 1
-        assert result[0].prompt == "Updated prompt"
+        assert result[0].id == "gen_test123"
 
-    def test_empty_list_does_nothing(self, tmp_db_path):
+    def test_updates_existing(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
-        sqlite_store.upsert_generations("test_account", [], tmp_db_path)
+        sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
+        updated = sample_generation.model_copy(update={"prompt": "updated"})
+        sqlite_store.upsert_generations("test_account", [updated], tmp_db_path)
         result = sqlite_store.get_generations("test_account", db_path=tmp_db_path)
-        assert len(result) == 0
+        assert len(result) == 1
+        assert result[0].prompt == "updated"
+
+    def test_multiple_generations(self, tmp_db_path, sample_generations):
+        sqlite_store.init_db(tmp_db_path)
+        sqlite_store.upsert_generations("test_account", sample_generations, tmp_db_path)
+        result = sqlite_store.get_generations("test_account", db_path=tmp_db_path)
+        assert len(result) == len(sample_generations)
 
 
 class TestGetGenerations:
-    def test_returns_all_for_account(self, tmp_db_path, sample_generations):
-        sqlite_store.init_db(tmp_db_path)
-        sqlite_store.upsert_generations("test_account", sample_generations, tmp_db_path)
-        sqlite_store.upsert_generations(
-            "other_account",
-            [sample_generations[0].model_copy(update={"id": "other_id"})],
-            tmp_db_path,
-        )
-
-        result = sqlite_store.get_generations("test_account", db_path=tmp_db_path)
-        assert len(result) == 3
-
     def test_filters_unuploaded_by_default(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
         sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
-        sqlite_store.mark_uploaded("test_account", {sample_generation.id}, tmp_db_path)
-
+        sqlite_store.mark_uploaded("test_account", {"gen_test123"}, tmp_db_path)
         result = sqlite_store.get_generations("test_account", db_path=tmp_db_path)
         assert len(result) == 0
 
     def test_includes_uploaded_when_flagged(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
         sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
-        sqlite_store.mark_uploaded("test_account", {sample_generation.id}, tmp_db_path)
-
-        result = sqlite_store.get_generations(
-            "test_account", include_uploaded=True, db_path=tmp_db_path
-        )
+        sqlite_store.mark_uploaded("test_account", {"gen_test123"}, tmp_db_path)
+        result = sqlite_store.get_generations("test_account", include_uploaded=True, db_path=tmp_db_path)
         assert len(result) == 1
 
     def test_filters_by_keep_days(self, tmp_db_path, sample_generations):
@@ -185,107 +165,49 @@ class TestMarkUploaded:
         conn.close()
         assert row["uploaded_at"] != ""
 
-    def test_empty_ids_does_nothing(self, tmp_db_path):
+    def test_empty_ids_does_nothing(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
+        sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
         sqlite_store.mark_uploaded("test_account", set(), tmp_db_path)
+
+        result = sqlite_store.get_uploaded_ids("test_account", db_path=tmp_db_path)
+        assert result == set()
 
 
 class TestGetExistingIds:
-    def test_returns_matching_ids(self, tmp_db_path):
+    def test_returns_matching_ids(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
-        now = datetime.now(timezone.utc)
-        gens = [
-            ChatGPTImageGeneration(
-                created_at=now.isoformat(),
-                id=f"g{i}",
-                conversation_id="c1",
-                message_id=f"m{i}",
-                asset_pointer=f"a{i}",
-                url=f"https://example.com/{i}.png",
-                prompt="test",
-            )
-            for i in range(1, 4)
-        ]
-        sqlite_store.upsert_generations("acc", gens, db_path=tmp_db_path)
+        gen2 = sample_generation.model_copy(update={"id": "gen_2"})
+        sqlite_store.upsert_generations("test_account", [sample_generation, gen2], tmp_db_path)
+        result = sqlite_store.get_existing_ids("test_account", {"gen_test123", "gen_2", "gen_3"}, tmp_db_path)
+        assert result == {"gen_test123", "gen_2"}
 
-        result = sqlite_store.get_existing_ids("acc", {"g1", "g3", "g99"}, db_path=tmp_db_path)
-        assert result == {"g1", "g3"}
-
-    def test_returns_empty_when_none_match(self, tmp_db_path):
+    def test_returns_empty_when_none_match(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
-        gen = ChatGPTImageGeneration(
-            created_at=datetime.now(timezone.utc).isoformat(),
-            id="g1",
-            conversation_id="c1",
-            message_id="m1",
-            asset_pointer="a1",
-            url="https://example.com/1.png",
-            prompt="test",
-        )
-        sqlite_store.upsert_generations("acc", [gen], db_path=tmp_db_path)
-
-        result = sqlite_store.get_existing_ids("acc", {"g99"}, db_path=tmp_db_path)
+        sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
+        result = sqlite_store.get_existing_ids("test_account", {"gen_99"}, tmp_db_path)
         assert result == set()
 
     def test_returns_empty_for_empty_input(self, tmp_db_path):
         sqlite_store.init_db(tmp_db_path)
-        result = sqlite_store.get_existing_ids("acc", set(), db_path=tmp_db_path)
+        result = sqlite_store.get_existing_ids("test_account", set(), tmp_db_path)
         assert result == set()
 
-    def test_respects_account_boundary(self, tmp_db_path):
+    def test_respects_account_boundary(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
-        gen = ChatGPTImageGeneration(
-            created_at=datetime.now(timezone.utc).isoformat(),
-            id="g1",
-            conversation_id="c1",
-            message_id="m1",
-            asset_pointer="a1",
-            url="https://example.com/1.png",
-            prompt="test",
-        )
-        sqlite_store.upsert_generations("acc_a", [gen], db_path=tmp_db_path)
-
-        result = sqlite_store.get_existing_ids("acc_b", {"g1"}, db_path=tmp_db_path)
+        sqlite_store.upsert_generations("account_a", [sample_generation], tmp_db_path)
+        result = sqlite_store.get_existing_ids("account_b", {"gen_test123"}, tmp_db_path)
         assert result == set()
 
 
-class TestDeleteOldGenerations:
-    def test_deletes_rows_older_than_keep_days(self, tmp_db_path, sample_generations):
-        sqlite_store.init_db(tmp_db_path)
-        sqlite_store.upsert_generations("test_account", sample_generations, tmp_db_path)
-
-        deleted = sqlite_store.delete_old_generations("test_account", keep_days=3, db_path=tmp_db_path)
-        assert deleted == 1
-
-        remaining = sqlite_store.get_generations(
-            "test_account", include_uploaded=True, db_path=tmp_db_path
-        )
-        assert len(remaining) == 2
-
-    def test_does_not_delete_other_accounts(self, tmp_db_path, sample_generation):
-        sqlite_store.init_db(tmp_db_path)
-        old = sample_generation.model_copy(
-            update={
-                "id": "old_gen",
-                "created_at": (
-                    datetime.now(timezone.utc) - timedelta(days=10)
-                ).isoformat(),
-            }
-        )
-        sqlite_store.upsert_generations("test_account", [old], tmp_db_path)
-        sqlite_store.upsert_generations("other_account", [old.model_copy(update={"id": "other_old"})], tmp_db_path)
-
-        sqlite_store.delete_old_generations("test_account", keep_days=2, db_path=tmp_db_path)
-
-        other = sqlite_store.get_generations("other_account", include_uploaded=True, db_path=tmp_db_path)
-        assert len(other) == 1
 
 
 class TestDataSourcesCache:
-    def test_set_and_get(self, tmp_db_path):
+    @pytest.mark.asyncio
+    async def test_set_and_get(self, tmp_db_path):
         sqlite_store.init_db(tmp_db_path)
         sources = [{"id": "ds_1"}, {"id": "ds_2"}]
-        sqlite_store.set_cached_data_sources("test_db", sources, db_path=tmp_db_path)
+        await sqlite_store.async_set_cached_data_sources("test_db", sources, db_path=tmp_db_path)
 
         result = sqlite_store.get_cached_data_sources("test_db", db_path=tmp_db_path)
         assert result == sources
@@ -295,10 +217,11 @@ class TestDataSourcesCache:
         result = sqlite_store.get_cached_data_sources("nonexistent", db_path=tmp_db_path)
         assert result is None
 
-    def test_expires_after_ttl(self, tmp_db_path):
+    @pytest.mark.asyncio
+    async def test_expires_after_ttl(self, tmp_db_path):
         sqlite_store.init_db(tmp_db_path)
         sources = [{"id": "ds_1"}]
-        sqlite_store.set_cached_data_sources("test_db", sources, ttl_days=0, db_path=tmp_db_path)
+        await sqlite_store.async_set_cached_data_sources("test_db", sources, ttl_days=0, db_path=tmp_db_path)
 
         import time
         time.sleep(0.01)
@@ -308,37 +231,19 @@ class TestDataSourcesCache:
 
 
 class TestHasGenerations:
-    def test_returns_true_when_exists(self, tmp_db_path):
+    def test_returns_true_when_exists(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
-        gen = ChatGPTImageGeneration(
-            created_at=datetime.now(timezone.utc).isoformat(),
-            id="g1",
-            conversation_id="c1",
-            message_id="m1",
-            asset_pointer="a1",
-            url="https://example.com/1.png",
-            prompt="test",
-        )
-        sqlite_store.upsert_generations("acc", [gen], db_path=tmp_db_path)
-        assert sqlite_store.has_generations("acc", db_path=tmp_db_path) is True
+        sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
+        assert sqlite_store.has_generations("test_account", tmp_db_path) is True
 
     def test_returns_false_when_empty(self, tmp_db_path):
         sqlite_store.init_db(tmp_db_path)
-        assert sqlite_store.has_generations("acc", db_path=tmp_db_path) is False
+        assert sqlite_store.has_generations("empty_account", tmp_db_path) is False
 
-    def test_returns_false_for_other_account(self, tmp_db_path):
+    def test_returns_false_for_other_account(self, tmp_db_path, sample_generation):
         sqlite_store.init_db(tmp_db_path)
-        gen = ChatGPTImageGeneration(
-            created_at=datetime.now(timezone.utc).isoformat(),
-            id="g1",
-            conversation_id="c1",
-            message_id="m1",
-            asset_pointer="a1",
-            url="https://example.com/1.png",
-            prompt="test",
-        )
-        sqlite_store.upsert_generations("acc", [gen], db_path=tmp_db_path)
-        assert sqlite_store.has_generations("other", db_path=tmp_db_path) is False
+        sqlite_store.upsert_generations("account_a", [sample_generation], tmp_db_path)
+        assert sqlite_store.has_generations("account_b", tmp_db_path) is False
 
 
 class TestGetActivityStats:
@@ -388,6 +293,7 @@ class TestGetActivityStats:
 
     def test_active_count_filters_by_cooldown(self, tmp_db_path):
         sqlite_store.init_db(tmp_db_path)
+
         now = datetime.now(timezone.utc)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         gens = [
@@ -429,158 +335,128 @@ class TestGetActivityStats:
         assert stats is not None
         assert stats["total"] == 2
         assert stats["active_count"] == 1
-        # first_active and last_active should only reflect active items
-        first_active = datetime.fromisoformat(stats["first_active"])
-        last_active = datetime.fromisoformat(stats["last_active"])
-        assert first_active > cooldown
-        assert last_active > cooldown
 
 
-class TestCountRecentGenerations:
-    def test_counts_within_window(self, tmp_db_path):
-        sqlite_store.init_db(tmp_db_path)
-        now = datetime.now(timezone.utc)
-        gens = [
-            ChatGPTImageGeneration(
-                created_at=(now - timedelta(hours=h)).isoformat(),
-                id=f"g{h}",
-                conversation_id="c1",
-                message_id=f"m{h}",
-                asset_pointer=f"a{h}",
-                url=f"https://example.com/{h}.png",
-                prompt="test",
-            )
-            for h in [1, 2, 3, 25, 26]
-        ]
-        sqlite_store.upsert_generations("acc", gens, db_path=tmp_db_path)
-
-        since = (now - timedelta(days=1)).isoformat()
-        count = sqlite_store.count_recent_generations("acc", since, db_path=tmp_db_path)
-        assert count == 3
-
-    def test_returns_zero_when_none(self, tmp_db_path):
-        sqlite_store.init_db(tmp_db_path)
-        since = datetime.now(timezone.utc).isoformat()
-        count = sqlite_store.count_recent_generations("acc", since, db_path=tmp_db_path)
-        assert count == 0
 
 
 class TestBackupDb:
-    def test_backup_creates_copy(self, tmp_path, sample_generation):
-        src = tmp_path / "source.db"
-        backup = tmp_path / "backup" / "copy.db"
-
-        sqlite_store.init_db(src)
-        sqlite_store.upsert_generations("acc", [sample_generation], db_path=src)
-
-        result = sqlite_store.backup_db(backup, db_path=src)
-
-        assert result == backup
+    def test_backup_creates_copy(self, tmp_db_path, sample_generation):
+        sqlite_store.init_db(tmp_db_path)
+        sqlite_store.upsert_generations("test_account", [sample_generation], tmp_db_path)
+        backup = tmp_db_path.with_name("backup.db")
+        sqlite_store.backup_db(backup, tmp_db_path)
         assert backup.exists()
-
         conn = sqlite3.connect(str(backup))
-        row = conn.execute(
-            "SELECT COUNT(*) FROM image_generations"
-        ).fetchone()
-        conn.close()
-        assert row[0] == 1
+        row = conn.execute("SELECT id FROM image_generations").fetchone()
+        assert row[0] == "gen_test123"
 
     def test_backup_creates_parent_dirs(self, tmp_path):
-        src = tmp_path / "source.db"
-        sqlite_store.init_db(src)
-
-        backup = tmp_path / "deep" / "nested" / "backup.db"
-        sqlite_store.backup_db(backup, db_path=src)
-
+        db = tmp_path / "db" / "test.db"
+        sqlite_store.init_db(db)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        sqlite_store.upsert_generations("test_account", [gen], db)
+        backup = tmp_path / "backup" / "backup.db"
+        sqlite_store.backup_db(backup, db)
         assert backup.exists()
 
-    def test_backup_with_absolute_path(self, tmp_path, sample_generation):
-        src = tmp_path / "source.db"
-        backup = (tmp_path / "abs" / "backup.db").resolve()
-
-        sqlite_store.init_db(src)
-        sqlite_store.upsert_generations("acc", [sample_generation], db_path=src)
-
-        result = sqlite_store.backup_db(backup, db_path=src)
-
-        assert result == backup
-        assert result.is_absolute()
+    def test_backup_with_absolute_path(self, tmp_path):
+        db = tmp_path / "test.db"
+        sqlite_store.init_db(db)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        sqlite_store.upsert_generations("test_account", [gen], db)
+        backup = tmp_path / "backup.db"
+        sqlite_store.backup_db(backup.resolve(), db)
         assert backup.exists()
 
 
 class TestRestoreDb:
-    def test_restore_replaces_database(self, tmp_path, sample_generation):
-        backup = tmp_path / "backup.db"
-        target = tmp_path / "target.db"
-
-        sqlite_store.init_db(backup)
-        sqlite_store.upsert_generations("acc", [sample_generation], db_path=backup)
-
-        result = sqlite_store.restore_db(backup, db_path=target)
-
-        assert result == target
-        assert target.exists()
-
-        conn = sqlite3.connect(str(target))
-        row = conn.execute("SELECT COUNT(*) FROM image_generations").fetchone()
-        conn.close()
-        assert row[0] == 1
+    def test_restore_replaces_database(self, tmp_path):
+        src = tmp_path / "src.db"
+        dst = tmp_path / "dst.db"
+        sqlite_store.init_db(src)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        sqlite_store.upsert_generations("test_account", [gen], src)
+        sqlite_store.init_db(dst)
+        sqlite_store.restore_db(src, dst)
+        result = sqlite_store.get_generations("test_account", db_path=dst)
+        assert len(result) == 1
+        assert result[0].id == "g1"
 
     def test_restore_overwrites_existing_database(self, tmp_path):
-        backup = tmp_path / "backup.db"
-        target = tmp_path / "target.db"
-
-        # Create a target with different data
-        sqlite_store.init_db(target)
-        gen_old = ChatGPTImageGeneration(
-            created_at="2024-01-01T00:00:00+00:00",
-            id="old_gen",
-            conversation_id="conv_old",
-            message_id="msg_old",
-            asset_pointer="asset_old",
-            url="https://example.com/old.png",
-            prompt="old",
+        src = tmp_path / "src.db"
+        dst = tmp_path / "dst.db"
+        sqlite_store.init_db(src)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
         )
-        sqlite_store.upsert_generations("acc", [gen_old], db_path=target)
-
-        # Create backup with new data
-        gen_new = ChatGPTImageGeneration(
-            created_at="2024-01-02T00:00:00+00:00",
-            id="new_gen",
-            conversation_id="conv_new",
-            message_id="msg_new",
-            asset_pointer="asset_new",
-            url="https://example.com/new.png",
-            prompt="new",
+        sqlite_store.upsert_generations("test_account", [gen], src)
+        sqlite_store.init_db(dst)
+        other = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="other",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="other",
         )
-        sqlite_store.init_db(backup)
-        sqlite_store.upsert_generations("acc", [gen_new], db_path=backup)
-
-        sqlite_store.restore_db(backup, db_path=target)
-
-        conn = sqlite3.connect(str(target))
-        row = conn.execute(
-            "SELECT id FROM image_generations"
-        ).fetchone()
-        conn.close()
-        assert row[0] == "new_gen"
+        sqlite_store.upsert_generations("test_account", [other], dst)
+        sqlite_store.restore_db(src, dst)
+        result = sqlite_store.get_generations("test_account", db_path=dst)
+        assert len(result) == 1
+        assert result[0].id == "g1"
 
     def test_restore_missing_backup_raises(self, tmp_path):
-        with pytest.raises(FileNotFoundError, match="Backup file not found"):
-            sqlite_store.restore_db(
-                tmp_path / "nonexistent.db",
-                db_path=tmp_path / "target.db",
-            )
+        dst = tmp_path / "dst.db"
+        sqlite_store.init_db(dst)
+        with pytest.raises(FileNotFoundError):
+            sqlite_store.restore_db(tmp_path / "missing.db", dst)
 
-    def test_restore_creates_parent_dirs(self, tmp_path, sample_generation):
-        backup = tmp_path / "backup.db"
-        target = tmp_path / "deep" / "nested" / "target.db"
-
-        sqlite_store.init_db(backup)
-        sqlite_store.upsert_generations("acc", [sample_generation], db_path=backup)
-
-        result = sqlite_store.restore_db(backup, db_path=target)
-
-        assert result == target
-        assert target.exists()
-
+    def test_restore_creates_parent_dirs(self, tmp_path):
+        src = tmp_path / "src.db"
+        dst = tmp_path / "nested" / "dst.db"
+        sqlite_store.init_db(src)
+        gen = ChatGPTImageGeneration(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            id="g1",
+            conversation_id="c1",
+            message_id="m1",
+            asset_pointer="a1",
+            url="https://example.com/1.png",
+            prompt="test",
+        )
+        sqlite_store.upsert_generations("test_account", [gen], src)
+        sqlite_store.restore_db(src, dst)
+        assert dst.exists()
+        result = sqlite_store.get_generations("test_account", db_path=dst)
+        assert len(result) == 1

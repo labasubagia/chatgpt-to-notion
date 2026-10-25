@@ -325,61 +325,6 @@ class TestDownloadImageRetry:
         assert call_count == 2
 
 
-class TestAddPromptToImagesRetry:
-    """Tests for add_prompt_to_images retry behavior."""
-
-    def test_retries_on_edit_failure(self, tmp_path):
-        from chatgpt_to_notion.services.image_service import add_prompt_to_images
-        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
-
-        test_file = tmp_path / "test-1.png"
-        test_file.write_bytes(PNG_BYTES)
-
-        generation = ChatGPTImageGeneration(
-            id="test-1",
-            url="http://example.com/image.png",
-            prompt="test prompt",
-            asset_pointer="asset-1",
-            conversation_id="conv-1",
-            message_id="msg-1",
-            created_at="2024-01-01T00:00:00Z",
-        )
-
-        call_count = 0
-
-        def mock_edit_png_info(path, payload):
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise Exception("edit failed")
-
-        with patch("chatgpt_to_notion.services.image_service.edit_png_info", mock_edit_png_info):
-            add_prompt_to_images([generation], str(tmp_path))
-
-        assert call_count == 2
-
-    def test_fails_after_max_retries(self, tmp_path):
-        from chatgpt_to_notion.services.image_service import add_prompt_to_images
-        from chatgpt_to_notion.shared.constants import MAX_RETRIES
-        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
-
-        test_file = tmp_path / "test-1.png"
-        test_file.write_bytes(PNG_BYTES)
-
-        generation = ChatGPTImageGeneration(
-            id="test-1",
-            url="http://example.com/image.png",
-            prompt="test prompt",
-            asset_pointer="asset-1",
-            conversation_id="conv-1",
-            message_id="msg-1",
-            created_at="2024-01-01T00:00:00Z",
-        )
-
-        with patch("chatgpt_to_notion.services.image_service.edit_png_info", side_effect=Exception("always fails")):
-            with patch("chatgpt_to_notion.services.image_service.time.sleep", return_value=None):
-                add_prompt_to_images([generation], str(tmp_path))
-
 class TestUploadRetry:
     """Tests for upload retry behavior."""
 

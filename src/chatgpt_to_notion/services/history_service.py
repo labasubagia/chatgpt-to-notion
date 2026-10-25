@@ -1,38 +1,20 @@
 """History retrieval and download orchestration."""
 
-import asyncio
 import os
 import tempfile
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
 import aiohttp
-from pydantic import BaseModel
-from tqdm.asyncio import tqdm
 
-from ..adapters import chatgpt_api, sqlite_store
-from ..adapters.config_loader import get_provider_context, resolve_config
+from ..adapters import chatgpt_api, config_loader, sqlite_store
 from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
-from ..shared.constants import (
-    MAX_CONCURRENT_DOWNLOADS,
-    image_ext_from_url,
-)
 from ..shared.http import (
-    exc_detail,
-    get_download_timeout,
-    get_http_timeout,
     raise_for_status_with_detail,
     retry_http,
 )
 from ..shared.logging import get_logger
-from ..shared.verbosity import (
-    StageCounter,
-    is_verbose,
-    log_service_error,
-    write_fail_log,
-)
 
 logger = get_logger("history")
 
@@ -41,34 +23,14 @@ get_conversation_details = chatgpt_api.get_conversation_details
 get_prompt_from_image_node_in_conversation = (
     chatgpt_api.get_prompt_from_image_node_in_conversation
 )
+resolve_config = config_loader.resolve_config
+logger = get_logger("history")
 
-
-def save_generations(
-    account: str,
-    data: Sequence[dict] | Sequence[BaseModel],
-    keep_days: int = 3,
-    display_days: int = 1,
-) -> None:
-    if len(data) == 0:
-        print("No generations to save.")
-        return
-
-    generations: list[ChatGPTImageGeneration] = []
-    for item in data:
-        if isinstance(item, ChatGPTImageGeneration):
-            generations.append(item)
-        elif isinstance(item, BaseModel):
-            generations.append(ChatGPTImageGeneration(**item.model_dump()))
-        elif isinstance(item, dict):
-            generations.append(ChatGPTImageGeneration(**item))
-    sqlite_store.upsert_generations(account, generations)
-    sqlite_store.delete_old_generations(account, keep_days=keep_days)
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=display_days)
-    today_count = sqlite_store.count_recent_generations(account, cutoff.isoformat())
-    print(
-        f"✅ Saved generations for account '{account}' (Total Today: {today_count})\n"
-    )
+get_image_generations = chatgpt_api.get_image_generations
+get_conversation_details = chatgpt_api.get_conversation_details
+get_prompt_from_image_node_in_conversation = (
+    chatgpt_api.get_prompt_from_image_node_in_conversation
+)
 
 
 def get_uploaded_generation_ids(account: str | None) -> set[str]:
@@ -109,121 +71,6 @@ async def download_image(
         except OSError:
             pass
         raise
-
-
-def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_provider_context(options).headers
-
-
-async def fetch_image_generations(
-    limit: int = 100,
-    options: RuntimeOptions | None = None,
-    no_cache: bool = False,
-) -> tuple[list[ChatGPTImageGeneration], list[ChatGPTImageGeneration]]:
-    del no_cache
-    account = options.account if options and options.account else "default"
-    headers = get_headers(options)
-
-    # Get delay and batch config from resolved config
-    resolved = resolve_config(options)
-    fetch_delay = resolved.fetch_conversation_delay
-    fetch_batch_size = resolved.fetch_batch_size
-    fetch_batch_pause = 5.0  # seconds between batches
-
-    if fetch_delay > 0 or fetch_batch_size > 0:
-        logger.info(
-            "Rate limiting enabled: delay=%.1fs, batch_size=%d, batch_pause=%.1fs",
-            fetch_delay,
-            fetch_batch_size,
-            fetch_batch_pause,
-        )
-
-    async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
-        data = await get_image_generations(session, headers=headers, limit=limit)
-
-        items = data.get("items", [])
-        api_ids = {item["id"] for item in items}
-        existing_ids = sqlite_store.get_existing_ids(account, api_ids)
-        new_items = [item for item in items if item["id"] not in existing_ids]
-
-        if new_items:
-            # Group by conversation_id to avoid duplicate fetches
-            conv_ids = list({str(item["conversation_id"]) for item in new_items})
-
-            # Fetch all conversation details with delay and batching
-            conv_details_map = await chatgpt_api.get_conversation_details_batch(
-                session,
-                conv_ids,
-                headers=headers,
-                delay=fetch_delay,
-                batch_size=fetch_batch_size,
-                batch_pause=fetch_batch_pause,
-            )
-
-            pbar = tqdm(total=len(new_items), desc="Fetching new generation details")
-            counter = StageCounter("Fetched")
-
-            new_generations: list[ChatGPTImageGeneration] = []
-            for image_generation in new_items:
-                try:
-                    conv_id = str(image_generation["conversation_id"])
-                    detail = conv_details_map.get(conv_id)
-                    if detail is None:
-                        raise ValueError(
-                            f"Conversation details not found for {conv_id}"
-                        )
-
-                    prompt = get_prompt_from_image_node_in_conversation(
-                        detail,
-                        str(image_generation["message_id"]),
-                        str(image_generation["asset_pointer"]),
-                    )
-                    created_at_value = image_generation["created_at"]
-                    assert isinstance(created_at_value, int | float)
-                    created_at = datetime.fromtimestamp(
-                        created_at_value,
-                        tz=timezone.utc,
-                    ).isoformat(timespec="microseconds")
-                    if is_verbose():
-                        pbar.write(f"✅ img ID {image_generation['id']}")
-                    counter.add("success")
-                    new_generations.append(
-                        ChatGPTImageGeneration(
-                            created_at=created_at,
-                            id=str(image_generation["id"]),
-                            conversation_id=conv_id,
-                            message_id=str(image_generation["message_id"]),
-                            asset_pointer=str(image_generation["asset_pointer"]),
-                            url=str(image_generation["url"]),
-                            prompt=prompt or "",
-                        )
-                    )
-                except Exception as exc:
-                    counter.add("failed")
-                    if is_verbose():
-                        pbar.write(f"❌ img ID {image_generation['id']} failed: {exc}")
-                    log_service_error(
-                        logger,
-                        f"Failed to fetch image generation {image_generation['id']}",
-                        exc_detail(exc),
-                    )
-                finally:
-                    pbar.update(1)
-
-            pbar.close()
-            if not is_verbose():
-                print(counter.summary_line())
-            print()
-
-            await sqlite_store.async_upsert_generations(account, new_generations)
-
-        generations = sqlite_store.get_generations(
-            account,
-            include_uploaded=True,
-            ids_filter=api_ids,
-        )
-        remote_generations = [gen for gen in generations if gen.id in api_ids]
-        return remote_generations, generations
 
 
 def load_image_generations(
@@ -284,74 +131,3 @@ async def fetch_generations_for_conversation(
             )
         )
     return generations
-
-
-async def download_all_images(
-    generations: list[ChatGPTImageGeneration],
-    download_folder: str,
-    options: RuntimeOptions | None = None,
-    fail_log_path: Path | None = None,
-) -> None:
-    total = len(generations)
-    pbar = tqdm(total=total, desc="Downloading images")
-    counter = StageCounter("Downloaded")
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
-    download_path = Path(download_folder)
-
-    results: list[str] = []
-
-    async with aiohttp.ClientSession(
-        headers=get_headers(options), timeout=get_download_timeout()
-    ) as session:
-
-        async def download(row: ChatGPTImageGeneration) -> str:
-            async with semaphore:
-                ext = image_ext_from_url(row.url)
-                file_name = f"{row.id}{ext}"
-                file_path = download_path / file_name
-
-                if os.path.exists(file_path):
-                    counter.add("skipped")
-                    if is_verbose():
-                        pbar.write(f"⏭️  {file_name} skipped, already exists")
-                    pbar.update(1)
-                    return "skipped"
-
-                try:
-                    await download_image(
-                        session, row.url, str(file_path), headers=get_headers(options)
-                    )
-                    counter.add("success")
-                    if is_verbose():
-                        pbar.write(f"✅ {file_name}")
-                    pbar.update(1)
-                    return "success"
-                except Exception as exc:
-                    counter.add("failed")
-                    if is_verbose():
-                        pbar.write(f"❌ {file_name} failed: {exc}")
-                    log_service_error(
-                        logger,
-                        "Failed to download " + file_name,
-                        exc_detail(exc),
-                    )
-                    if fail_log_path:
-                        write_fail_log(
-                            fail_log_path,
-                            {"stage": "download", "file": file_name, "error": str(exc)},
-                        )
-                    pbar.update(1)
-                    return "failed"
-
-        results = await asyncio.gather(*[download(row) for row in generations])
-
-    pbar.close()
-    if not is_verbose():
-        print(counter.summary_line())
-    logger.info(
-        "Download summary: %d success, %d skipped, %d failed",
-        results.count("success"),
-        results.count("skipped"),
-        results.count("failed"),
-    )
-    print()

@@ -35,20 +35,6 @@ def _resolve_folder_path(folder_str: str | None, default_subpath: str) -> Path:
     return path
 
 
-def get_history_folder(options: RuntimeOptions | None = None) -> Path:
-    options = options or RuntimeOptions()
-    if options.history_folder:
-        return _resolve_folder_path(options.history_folder, "")
-    if options.config_path or options.account:
-        try:
-            resolved = resolve_config(options)
-            if resolved.history_folder:
-                return _resolve_folder_path(resolved.history_folder, "")
-        except ValueError:
-            pass
-    return Path(constants.OUTPUT_PATH).resolve() / "history"
-
-
 def get_image_folder(options: RuntimeOptions | None = None) -> Path:
     options = options or RuntimeOptions()
     if options.image_folder:
