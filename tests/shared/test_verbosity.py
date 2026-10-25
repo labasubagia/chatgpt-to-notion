@@ -7,36 +7,27 @@ from chatgpt_to_notion.shared.verbosity import (
     SIMPLE,
     VERBOSE,
     StageCounter,
-    get_verbosity,
-    is_quiet,
     is_verbose,
     set_verbosity,
     write_fail_log,
 )
 
-
 class TestVerbosityLevel:
     def test_default_is_simple(self):
         set_verbosity(SIMPLE)
-        assert get_verbosity() == SIMPLE
+        assert is_verbose() is False
 
     def test_set_verbose(self):
         set_verbosity(VERBOSE)
-        assert get_verbosity() == VERBOSE
         assert is_verbose() is True
-        assert is_quiet() is False
 
     def test_set_quiet(self):
         set_verbosity(QUIET)
-        assert get_verbosity() == QUIET
         assert is_verbose() is False
-        assert is_quiet() is True
 
-    def test_simple_not_verbose_not_quiet(self):
+    def test_simple_not_verbose(self):
         set_verbosity(SIMPLE)
         assert is_verbose() is False
-        assert is_quiet() is False
-
 
 class TestStageCounter:
     def test_single_category(self):
@@ -62,7 +53,6 @@ class TestStageCounter:
         c = StageCounter("Test")
         c.add("success")
         assert c.summary_line() == "Test: 1 success"
-
 
 class TestWriteFailLog:
     def test_creates_file(self, tmp_path):

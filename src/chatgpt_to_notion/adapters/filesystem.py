@@ -7,8 +7,6 @@ from pathlib import Path
 from ..domain.models import RuntimeOptions
 from ..shared import constants
 from .config_loader import resolve_config
-
-
 def get_output_path(input_path_str: str, is_dir: bool = False) -> Path:
     input_path = Path(input_path_str)
     if input_path.is_absolute():
@@ -34,19 +32,6 @@ def _resolve_folder_path(folder_str: str | None, default_subpath: str) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-
-def get_history_folder(options: RuntimeOptions | None = None) -> Path:
-    options = options or RuntimeOptions()
-    if options.history_folder:
-        return _resolve_folder_path(options.history_folder, "")
-    if options.config_path or options.account:
-        try:
-            resolved = resolve_config(options)
-            if resolved.history_folder:
-                return _resolve_folder_path(resolved.history_folder, "")
-        except ValueError:
-            pass
-    return Path(constants.OUTPUT_PATH).resolve() / "history"
 
 
 def get_image_folder(options: RuntimeOptions | None = None) -> Path:

@@ -18,16 +18,8 @@ def set_verbosity(level: int) -> None:
     _verbosity = level
 
 
-def get_verbosity() -> int:
-    return _verbosity
-
-
 def is_verbose() -> bool:
     return _verbosity >= VERBOSE
-
-
-def is_quiet() -> bool:
-    return _verbosity <= QUIET
 
 
 class StageCounter:

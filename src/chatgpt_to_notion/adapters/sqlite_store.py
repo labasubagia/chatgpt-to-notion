@@ -13,12 +13,10 @@ from ..shared import constants
 
 _lock = threading.Lock()
 
-
 def _get_db_path() -> Path:
     db_dir = Path(constants.OUTPUT_PATH).resolve()
     db_dir.mkdir(parents=True, exist_ok=True)
     return db_dir / "chatgpt.db"
-
 
 def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     path = db_path or _get_db_path()
@@ -28,7 +26,6 @@ def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=10000")
     conn.row_factory = sqlite3.Row
     return conn
-
 
 def init_db(db_path: Path | None = None) -> None:
     with _lock:
@@ -63,7 +60,6 @@ def init_db(db_path: Path | None = None) -> None:
         )
         conn.commit()
         conn.close()
-
 
 def upsert_generations(
     account: str,
@@ -107,7 +103,6 @@ def upsert_generations(
             conn.commit()
         finally:
             conn.close()
-
 
 def get_generations(
     account: str,
@@ -162,7 +157,6 @@ def get_generations(
         finally:
             conn.close()
 
-
 def get_uploaded_ids(account: str, db_path: Path | None = None) -> set[str]:
     with _lock:
         conn = _get_connection(db_path)
@@ -175,7 +169,6 @@ def get_uploaded_ids(account: str, db_path: Path | None = None) -> set[str]:
             return {row["id"] for row in rows}
         finally:
             conn.close()
-
 
 def get_existing_ids(
     account: str, ids: set[str], db_path: Path | None = None
@@ -194,7 +187,6 @@ def get_existing_ids(
             return {row["id"] for row in rows}
         finally:
             conn.close()
-
 
 def mark_uploaded(
     account: str,
@@ -217,7 +209,6 @@ def mark_uploaded(
         finally:
             conn.close()
 
-
 def delete_old_generations(
     account: str,
     keep_days: int = 3,
@@ -235,7 +226,6 @@ def delete_old_generations(
             return cursor.rowcount
         finally:
             conn.close()
-
 
 def get_cached_data_sources(
     db_id: str,
@@ -260,8 +250,7 @@ def get_cached_data_sources(
         finally:
             conn.close()
 
-
-def set_cached_data_sources(
+async def async_set_cached_data_sources(
     db_id: str,
     sources: list[dict[str, Any]],
     ttl_days: int = 1,
@@ -285,7 +274,6 @@ def set_cached_data_sources(
         finally:
             conn.close()
 
-
 def has_generations(account: str, db_path: Path | None = None) -> bool:
     with _lock:
         conn = _get_connection(db_path)
@@ -297,7 +285,6 @@ def has_generations(account: str, db_path: Path | None = None) -> bool:
             return row is not None
         finally:
             conn.close()
-
 
 def get_activity_stats(
     account: str,
@@ -341,7 +328,6 @@ def get_activity_stats(
         finally:
             conn.close()
 
-
 def count_recent_generations(
     account: str, since: str, db_path: Path | None = None
 ) -> int:
@@ -357,31 +343,12 @@ def count_recent_generations(
         finally:
             conn.close()
 
-
 async def async_upsert_generations(
     account: str,
     generations: list[ChatGPTImageGeneration],
     db_path: Path | None = None,
 ) -> None:
     upsert_generations(account, generations, db_path)
-
-
-async def async_mark_uploaded(
-    account: str,
-    generation_ids: set[str],
-    db_path: Path | None = None,
-) -> None:
-    mark_uploaded(account, generation_ids, db_path)
-
-
-async def async_set_cached_data_sources(
-    db_id: str,
-    sources: list[dict[str, Any]],
-    ttl_days: int = 1,
-    db_path: Path | None = None,
-) -> None:
-    set_cached_data_sources(db_id, sources, ttl_days, db_path)
-
 
 def backup_db(backup_path: Path, db_path: Path | None = None) -> Path:
     """Copy the database to *backup_path* using the SQLite backup API.
@@ -403,7 +370,6 @@ def backup_db(backup_path: Path, db_path: Path | None = None) -> Path:
         src_conn.close()
 
     return backup_path
-
 
 def restore_db(backup_path: Path, db_path: Path | None = None) -> Path:
     """Overwrite the database at *db_path* with *backup_path*.

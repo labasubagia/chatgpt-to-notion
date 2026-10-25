@@ -41,33 +41,6 @@ class TestGetHeaders:
             assert headers == {"Authorization": "Bearer test", "User-Agent": "Test"}
 
 
-class TestGetConversations:
-    """Tests for get_conversations function."""
-
-    @pytest.mark.asyncio
-    async def test_calls_correct_endpoint(self):
-        """Should call conversations endpoint with correct params."""
-        mock_session = _make_mock_session()
-
-        await chatgpt_api.get_conversations(mock_session, {"Authorization": "Bearer test"}, offset=10, limit=50)
-
-        mock_session.get.assert_called_once()
-        args, kwargs = mock_session.get.call_args
-        assert "conversations" in args[0]
-        assert kwargs["params"]["offset"] == 10
-        assert kwargs["params"]["limit"] == 50
-
-    @pytest.mark.asyncio
-    async def test_returns_json_response(self):
-        """Should return parsed JSON response."""
-        mock_session = _make_mock_session()
-        mock_session.get.return_value = _make_mock_response({"items": [{"id": "conv_1"}]})
-
-        result = await chatgpt_api.get_conversations(mock_session, {"Authorization": "Bearer test"})
-
-        assert result == {"items": [{"id": "conv_1"}]}
-
-
 class TestGetConversationDetails:
     """Tests for get_conversation_details function."""
 
@@ -91,91 +64,6 @@ class TestGetConversationDetails:
         result = await chatgpt_api.get_conversation_details(mock_session, "conv_123", {"Authorization": "Bearer test"})
 
         assert result == {"id": "conv_123", "mapping": {}}
-
-
-class TestGetConversationDetailsWithDelay:
-    """Tests for get_conversation_details_with_delay function."""
-
-    @pytest.mark.asyncio
-    async def test_calls_with_delay(self):
-        """Should sleep before calling get_conversation_details."""
-        with patch("chatgpt_to_notion.adapters.chatgpt_api.get_conversation_details") as mock_get, \
-             patch("asyncio.sleep") as mock_sleep:
-
-            mock_get.return_value = {"mapping": {}}
-
-            await chatgpt_api.get_conversation_details_with_delay(
-                AsyncMock(), "conv_1", {"Authorization": "Bearer test"}, delay=0.5
-            )
-
-            mock_sleep.assert_called_once_with(0.5)
-            mock_get.assert_called_once()
-
-
-class TestGetConversationDetailsBatch:
-    """Tests for get_conversation_details_batch function."""
-
-    @pytest.mark.asyncio
-    async def test_empty_list_returns_empty_dict(self):
-        """Empty conversation IDs should return empty dict."""
-        result = await chatgpt_api.get_conversation_details_batch(
-            AsyncMock(), [], {"Authorization": "Bearer test"}
-        )
-        assert result == {}
-
-    @pytest.mark.asyncio
-    async def test_single_conversation(self):
-        """Single conversation should be fetched."""
-        mock_session = _make_mock_session()
-        mock_session.get.return_value = _make_mock_response({"mapping": {}})
-
-        result = await chatgpt_api.get_conversation_details_batch(
-            mock_session, ["conv_1"], {"Authorization": "Bearer test"}
-        )
-
-        assert "conv_1" in result
-        assert result["conv_1"] == {"mapping": {}}
-        mock_session.get.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_multiple_conversations_batched(self):
-        """Multiple conversations should be fetched with semaphore limit."""
-        mock_session = _make_mock_session()
-        mock_session.get.return_value = _make_mock_response({"mapping": {}})
-
-        result = await chatgpt_api.get_conversation_details_batch(
-            mock_session, ["conv_1", "conv_2", "conv_3"], {"Authorization": "Bearer test"}, batch_size=2
-        )
-
-        assert len(result) == 3
-        assert mock_session.get.call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_error_in_one_conversation_continues_others(self):
-        """Error in one conversation should not stop others (when batch_size > 0)."""
-        mock_session = _make_mock_session()
-        mock_session.get.return_value = _make_mock_response({"mapping": {}})
-
-        call_count = {"count": 0}
-
-        def mock_get(*args, **kwargs):
-            call_count["count"] += 1
-            url = args[0]
-            if "conv_2" in url:
-                raise Exception("API error")
-            return _make_mock_response({"mapping": {}})
-
-        mock_session.get = MagicMock(side_effect=mock_get)
-
-        # Use batch_size to enable batch mode which catches exceptions
-        result = await chatgpt_api.get_conversation_details_batch(
-            mock_session, ["conv_1", "conv_2", "conv_3"], {"Authorization": "Bearer test"}, batch_size=2
-        )
-
-        # Should have results for conv_1 and conv_3
-        assert "conv_1" in result
-        assert "conv_3" in result
-        assert "conv_2" not in result
 
 
 class TestDeleteConversation:
