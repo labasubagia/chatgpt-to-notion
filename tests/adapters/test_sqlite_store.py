@@ -200,33 +200,6 @@ class TestGetExistingIds:
         assert result == set()
 
 
-class TestDeleteOldGenerations:
-    def test_deletes_rows_older_than_keep_days(self, tmp_db_path, sample_generation):
-        sqlite_store.init_db(tmp_db_path)
-        recent = ChatGPTImageGeneration(
-            created_at=datetime.now(timezone.utc).isoformat(),
-            id="recent",
-            conversation_id="c1",
-            message_id="m1",
-            asset_pointer="a1",
-            url="u1",
-            prompt="p1",
-        )
-        old = sample_generation.model_copy(
-            update={
-                "id": "old",
-                "created_at": (
-                    datetime.now(timezone.utc) - timedelta(days=10)
-                ).isoformat(),
-            }
-        )
-        sqlite_store.upsert_generations("test_account", [recent, old], tmp_db_path)
-        sqlite_store.upsert_generations("other_account", [old.model_copy(update={"id": "other_old"})], tmp_db_path)
-
-        sqlite_store.delete_old_generations("test_account", keep_days=2, db_path=tmp_db_path)
-
-        other = sqlite_store.get_generations("other_account", include_uploaded=True, db_path=tmp_db_path)
-        assert len(other) == 1
 
 
 class TestDataSourcesCache:
@@ -364,27 +337,6 @@ class TestGetActivityStats:
         assert stats["active_count"] == 1
 
 
-class TestCountRecentGenerations:
-    def test_counts_within_window(self, tmp_db_path):
-        sqlite_store.init_db(tmp_db_path)
-        now = datetime.now(timezone.utc)
-        gen = ChatGPTImageGeneration(
-            created_at=now.isoformat(),
-            id="g1",
-            conversation_id="c1",
-            message_id="m1",
-            asset_pointer="a1",
-            url="u1",
-            prompt="p1",
-        )
-        sqlite_store.upsert_generations("test_account", [gen], tmp_db_path)
-        count = sqlite_store.count_recent_generations("test_account", now.isoformat(), tmp_db_path)
-        assert count == 1
-
-    def test_returns_zero_when_none(self, tmp_db_path):
-        sqlite_store.init_db(tmp_db_path)
-        count = sqlite_store.count_recent_generations("empty_account", "2024-01-01", tmp_db_path)
-        assert count == 0
 
 
 class TestBackupDb:

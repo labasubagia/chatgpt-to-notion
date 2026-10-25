@@ -218,25 +218,6 @@ def mark_uploaded(
             conn.close()
 
 
-def delete_old_generations(
-    account: str,
-    keep_days: int = 3,
-    db_path: Path | None = None,
-) -> int:
-    cutoff = datetime.now().astimezone() - timedelta(days=keep_days)
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            cursor = conn.execute(
-                "DELETE FROM image_generations WHERE account = ? AND created_at < ?",
-                (account, cutoff.isoformat()),
-            )
-            conn.commit()
-            return cursor.rowcount
-        finally:
-            conn.close()
-
-
 def get_cached_data_sources(
     db_id: str,
     db_path: Path | None = None,
@@ -338,22 +319,6 @@ def get_activity_stats(
                 "first_active": row["first_active"],
                 "last_active": row["last_active"],
             }
-        finally:
-            conn.close()
-
-
-def count_recent_generations(
-    account: str, since: str, db_path: Path | None = None
-) -> int:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM image_generations "
-                "WHERE account = ? AND created_at >= ?",
-                (account, since),
-            ).fetchone()
-            return row["cnt"] if row else 0
         finally:
             conn.close()
 

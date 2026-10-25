@@ -3,7 +3,6 @@
 import asyncio
 import json
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 from tqdm.asyncio import tqdm
@@ -185,15 +184,6 @@ async def delete_library_file(
         body = await response.text()
         events = _parse_sse_events(body)
         return {"success": True, "events": events}
-
-
-def extract_file_id_from_thumbnail_url(url: str) -> str | None:
-    parsed = urlparse(url)
-    id_value = parse_qs(parsed.query).get("id")
-    if not id_value:
-        return None
-    parts = id_value[0].split("#")
-    return parts[1] if len(parts) > 1 else None
 
 
 async def count_library_images(

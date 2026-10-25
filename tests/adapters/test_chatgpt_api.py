@@ -10,7 +10,6 @@ from chatgpt_to_notion.adapters.chatgpt_api import (
     get_image_generations,
     get_library_images,
     delete_library_file,
-    extract_file_id_from_thumbnail_url,
     delete_library_images_by_query,
     _parse_sse_events,
 )
@@ -212,25 +211,6 @@ class TestParseSSEEvents:
         assert events[0]["event"] == "file.deletion.started"
         assert events[1]["event"] == "file.deletion.completed"
 
-
-class TestExtractFileIdFromThumbnailUrl:
-    def test_extract_success(self):
-        """Should extract file_id from thumbnail_url id param."""
-        url = (
-            "https://chatgpt.com/backend-api/estuary/content"
-            "?id=3f9f1716e9284b6%23file_00000000a20481fa8d7f9a49f06f7841"
-            "%23thumbnail_fit_256x256"
-        )
-        assert extract_file_id_from_thumbnail_url(url) == "file_00000000a20481fa8d7f9a49f06f7841"
-
-    def test_extract_no_id_param(self):
-        """Should return None when id param is missing."""
-        assert extract_file_id_from_thumbnail_url("https://example.com") is None
-
-    def test_extract_malformed_id(self):
-        """Should return None when id has no # separators."""
-        url = "https://example.com?id=just_single_value"
-        assert extract_file_id_from_thumbnail_url(url) is None
 
 
 @pytest.mark.integration
