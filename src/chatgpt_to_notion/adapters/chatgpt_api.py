@@ -119,7 +119,8 @@ async def get_conversation_details_batch(
 
             for conv_id, result in batch_results:  # type: ignore[misc]
                 if isinstance(result, BaseException):
-                    raise result
+                    # Skip failed conversations in batch mode
+                    continue
                 if result is not None:
                     results[conv_id] = result  # type: ignore[assignment]
 

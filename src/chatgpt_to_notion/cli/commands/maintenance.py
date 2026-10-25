@@ -76,11 +76,12 @@ def register(app: typer.Typer) -> None:
                         headers=headers,
                         max_concurrent=max_concurrent,
                     )
-                label = f"'{query}'" if query else "(all images)"
-                print(f"[{target_account}] Deleted {total} images matching {label}")
-                remaining = await count_library_images(session, headers)
-                print(
-                    f"[{target_account}] Total images remaining in library: {remaining}"
-                )
+                    label = f"'{query}'" if query else "(all images)"
+                    print(f"[{target_account}] Deleted {total} images matching {label}")
+                    remaining = await count_library_images(session, headers)
+                    print(
+                        f"[{target_account}] Total images remaining "
+                        f"in library: {remaining}"
+                    )
 
         safe_async_run(run())
