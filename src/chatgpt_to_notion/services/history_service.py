@@ -33,13 +33,15 @@ get_prompt_from_image_node_in_conversation = (
 )
 
 
-def get_uploaded_generation_ids(account: str | None) -> set[str]:
+async def get_uploaded_generation_ids(account: str | None) -> set[str]:
     if not account:
         return set()
     return sqlite_store.get_uploaded_ids(account)
 
 
-def mark_generations_uploaded(account: str | None, generation_ids: set[str]) -> None:
+async def mark_generations_uploaded(
+    account: str | None, generation_ids: set[str]
+) -> None:
     if not account or not generation_ids:
         return
     sqlite_store.mark_uploaded(account, generation_ids)
@@ -73,7 +75,7 @@ async def download_image(
         raise
 
 
-def load_image_generations(
+async def load_image_generations(
     account: str,
     include_uploaded: bool = False,
     keep_days: int | None = None,
