@@ -77,10 +77,11 @@ class TestRestoreDb:
 
     def test_restore_db(self, tmp_path, monkeypatch):
         from chatgpt_to_notion.adapters import sqlite_store
+        from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
         import sqlite3
 
         isolated_db = tmp_path / "isolated_test.db"
-        sqlite_store.init_db(isolated_db)
+        SqliteStore(db_path=isolated_db).init_db()
 
         monkeypatch.setattr(sqlite_store, "_get_db_path", lambda: isolated_db)
 
@@ -122,9 +123,10 @@ class TestRestoreDb:
 
     def test_restore_db_missing_backup_raises(self, tmp_path, monkeypatch):
         from chatgpt_to_notion.adapters import sqlite_store
+        from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
 
         isolated_db = tmp_path / "isolated_test.db"
-        sqlite_store.init_db(isolated_db)
+        SqliteStore(db_path=isolated_db).init_db()
 
         monkeypatch.setattr(sqlite_store, "_get_db_path", lambda: isolated_db)
 
@@ -159,7 +161,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["test@example.com"]):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["test@example.com"]):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
                         result = runner.invoke(app, ["delete-library", "test query", "--max-concurrent", "5"])
 
@@ -190,7 +192,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["test@example.com"]):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["test@example.com"]):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
                         result = runner.invoke(app, ["delete-library", "--max-concurrent", "5"])
 
@@ -221,7 +223,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["a@test.com", "b@test.com"]):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["a@test.com", "b@test.com"]):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
                         result = runner.invoke(app, ["delete-library", "query"])
 
@@ -251,7 +253,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", return_value=3):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["test@example.com"]):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["test@example.com"]):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=TrackingSessionContext()):
                         result = runner.invoke(app, ["delete-library"])
 

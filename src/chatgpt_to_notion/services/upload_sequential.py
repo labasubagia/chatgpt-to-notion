@@ -8,8 +8,11 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..adapters import sqlite_store
-from ..adapters.filesystem import resolve_image_folder
+from ..adapters.config_loader import ConfigLoader
+from ..adapters.filesystem import Filesystem
+from ..adapters.filesystem import filesystem as default_fs
+from ..adapters.sqlite_store import SqliteStore
+from ..adapters.sqlite_store import sqlite_store as default_store
 from ..domain.models import (
     ChatGPTClient,
     ChatGPTImageGeneration,
@@ -56,6 +59,9 @@ async def upload_to_notion_sequential(
     history_service: HistoryServiceProtocol | None = None,
     image_service: ImageServiceProtocol | None = None,
     remove_library_func: RemoveLibraryFunc | None = None,
+    sqlite_store: SqliteStore | None = None,
+    filesystem: Filesystem | None = None,
+    config_loader: ConfigLoader | None = None,
 ) -> None:
     """Process conversations sequentially (one at a time) to minimize 429 errors.
 
@@ -81,15 +87,17 @@ async def upload_to_notion_sequential(
     remove_library_func_impl: RemoveLibraryFunc = (
         remove_library_func or remove_library_images
     )
+    store = sqlite_store or default_store
+    fs = filesystem or default_fs
 
     if not db_id:
         raise ValueError("db_id must not be empty")
     if not account:
         raise ValueError("account is required")
 
-    resolved_image_folder = resolve_image_folder(image_folder, options)
+    resolved_image_folder = fs.resolve_image_folder(image_folder, options)
 
-    sqlite_store.init_db()
+    store.init_db()
 
     uploaded_ids = await history_service_impl.get_uploaded_generation_ids(account)
     counter = StageCounter("Processed")
@@ -125,7 +133,7 @@ async def upload_to_notion_sequential(
                 )
                 items = data.get("items", [])
                 api_ids = {str(item["id"]) for item in items}
-                existing_ids = sqlite_store.get_existing_ids(account, api_ids)
+                existing_ids = store.get_existing_ids(account, api_ids)
                 conv_items_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
                 for item in items:
                     conv_items_map[str(item["conversation_id"])].append(item)
@@ -224,12 +232,12 @@ async def upload_to_notion_sequential(
                         existing_ids,
                     )
                     if new_generations:
-                        await sqlite_store.async_upsert_generations(
+                        await store.async_upsert_generations(
                             account, new_generations
                         )
                         existing_ids.update(g.id for g in new_generations)
                     conv_ids = {str(item["id"]) for item in payload}
-                    conv_generations = sqlite_store.get_generations(
+                    conv_generations = store.get_generations(
                         account,
                         include_uploaded=True,
                         ids_filter=conv_ids,

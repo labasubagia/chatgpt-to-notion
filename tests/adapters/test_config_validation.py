@@ -6,11 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from chatgpt_to_notion.adapters.config_loader import (
-    _load_toml_config,
-    resolve_config,
-    get_account_names,
-)
+from chatgpt_to_notion.adapters.config_loader import _load_toml_config, config_loader
 from chatgpt_to_notion.domain.models import AppConfig, AccountConfig
 
 
@@ -134,7 +130,7 @@ authorization_token = "token2"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user1@example.com")
-        resolved = resolve_config(options)
+        resolved = config_loader.resolve(options)
         assert resolved.notion.database_id == "global_db_id"
 
     def test_per_account_override_works(self, tmp_path):
@@ -162,8 +158,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = resolve_config(options1)
-        resolved2 = resolve_config(options2)
+        resolved1 = config_loader.resolve(options1)
+        resolved2 = config_loader.resolve(options2)
 
         assert resolved1.notion.database_id == "account1_db"
         assert resolved2.notion.database_id == "global_db_id"
@@ -194,8 +190,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = resolve_config(options1)
-        resolved2 = resolve_config(options2)
+        resolved1 = config_loader.resolve(options1)
+        resolved2 = config_loader.resolve(options2)
 
         assert resolved1.fetch_conversation_delay == 1.5
         assert resolved2.fetch_conversation_delay == 5.0
@@ -225,8 +221,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = resolve_config(options1)
-        resolved2 = resolve_config(options2)
+        resolved1 = config_loader.resolve(options1)
+        resolved2 = config_loader.resolve(options2)
 
         import base64
         assert base64.b64decode(resolved1.account.cookie_string_base64).decode() == "account1_cookie"
@@ -242,7 +238,7 @@ class TestConfigLoadingEdgeCases:
         assert result is None
 
     def test_empty_accounts_dict_allowed(self, tmp_path):
-        """Config with no accounts should be valid (but resolve_config will fail)."""
+        """Config with no accounts should be valid (but config_loader.resolve will fail)."""
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -260,7 +256,7 @@ database_id = "test_db"
         assert app_config.accounts == {}
 
     def test_get_account_names_returns_keys(self, tmp_path):
-        """get_account_names should return account keys in insertion order."""
+        """config_loader.account_names should return account keys in insertion order."""
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -279,7 +275,7 @@ authorization_token = "token2"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        names = get_account_names(str(config_file))
+        names = config_loader.account_names(str(config_file))
         # Returns in insertion order (Python 3.7+ dict preserves insertion order)
         assert names == ["zebra@example.com", "alpha@example.com"]
 
@@ -386,7 +382,7 @@ extra_field = "not allowed"
 
 
 class TestResolveConfigWithOptions:
-    """Tests for resolve_config with RuntimeOptions."""
+    """Tests for config_loader.resolve with RuntimeOptions."""
 
     def test_account_option_selects_account(self, tmp_path):
         """--account option should select specific account."""
@@ -410,7 +406,7 @@ authorization_token = "token2"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user2@example.com")
-        resolved = resolve_config(options)
+        resolved = config_loader.resolve(options)
 
         assert resolved.account_name == "user2@example.com"
         assert resolved.account.authorization_token == "token2"
@@ -436,7 +432,7 @@ authorization_token = "token1"
         options = RuntimeOptions(account="nonexistent@example.com")
 
         with pytest.raises(ValueError, match="Unknown account: nonexistent@example.com"):
-            resolve_config(options)
+            config_loader.resolve(options)
 
     def test_no_account_with_multiple_accounts_raises(self, tmp_path):
         """No --account with multiple accounts should raise ValueError."""
@@ -462,7 +458,7 @@ authorization_token = "token2"
         options = RuntimeOptions()  # no account specified
 
         with pytest.raises(ValueError, match="No account selected"):
-            resolve_config(options)
+            config_loader.resolve(options)
 
     def test_single_account_auto_selected(self, tmp_path):
         """Single account should be auto-selected when no --account given."""
@@ -483,7 +479,7 @@ authorization_token = "token1"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions()  # no account specified
-        resolved = resolve_config(options)
+        resolved = config_loader.resolve(options)
 
         assert resolved.account_name == "user1@example.com"
 
@@ -507,7 +503,7 @@ authorization_token = "token1"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user@example.com", fetch_conversation_delay=2.5)
-        resolved = resolve_config(options)
+        resolved = config_loader.resolve(options)
 
         assert resolved.fetch_conversation_delay == 2.5
 
@@ -531,6 +527,6 @@ authorization_token = "token1"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user@example.com", fetch_batch_size=5)
-        resolved = resolve_config(options)
+        resolved = config_loader.resolve(options)
 
         assert resolved.fetch_batch_size == 5

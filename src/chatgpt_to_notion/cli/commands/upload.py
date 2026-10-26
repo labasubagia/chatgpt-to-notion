@@ -5,11 +5,7 @@ from typing import Any
 
 import typer
 
-from ...adapters.config_loader import (
-    get_account_names,
-    resolve_config,
-    validate_runtime_config,
-)
+from ...adapters.config_loader import config_loader
 from ...domain.models import RuntimeOptions
 from ...services import upload_sequential
 from ...shared.console import (
@@ -31,7 +27,7 @@ def validate_db_id(db_id: str | None) -> str | None:
 def _resolve_target_accounts(account: str | None, config: str | None) -> list[str]:
     if account:
         return [account]
-    accounts = get_account_names(config)
+    accounts = config_loader.account_names(config)
     if not accounts:
         raise typer.BadParameter("No accounts found in config.")
     return accounts
@@ -139,8 +135,8 @@ def register(app: typer.Typer) -> None:
             ]
             if db_id is None:
                 required_vars.append("NOTION_DATABASE_ID")
-            validate_runtime_config(required_vars, options=options)
-            resolved = resolve_config(options)
+            config_loader.validate_runtime(required_vars, options=options)
+            resolved = config_loader.resolve(options)
             print_account_log_header(
                 action="Upload To Notion",
                 account_name=resolved.account_name,

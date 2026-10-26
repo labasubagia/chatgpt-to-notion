@@ -8,7 +8,7 @@ import tomllib
 
 import pytest
 
-from chatgpt_to_notion.adapters import sqlite_store as db
+from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
 from chatgpt_to_notion.adapters.chatgpt_api import get_headers
 from chatgpt_to_notion.domain.models import AppConfig
 from chatgpt_to_notion.services import upload_sequential as chatgpt_sequential
@@ -375,7 +375,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
@@ -498,7 +498,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
@@ -716,7 +716,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
@@ -845,7 +845,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
@@ -973,7 +973,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
@@ -1135,7 +1135,7 @@ class TestUploadToAccountStatus:
         self, tmp_path, monkeypatch, isolated_db
     ):
         """Full flow: load from history -> upload -> mark uploaded -> account-status sees it."""
-        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
         from datetime import datetime, timezone
         from chatgpt_to_notion.services import history_service
@@ -1207,7 +1207,7 @@ class TestUploadToAccountStatus:
         self, tmp_path, monkeypatch, isolated_db
     ):
         """Full flow: fetch from API -> save to DB -> upload -> mark uploaded -> account-status sees it."""
-        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
         from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
         from chatgpt_to_notion.services import upload_sequential
 
@@ -1296,7 +1296,7 @@ authorization_token = "test_token_abc"
         self, tmp_path, monkeypatch, isolated_db
     ):
         """verify_history flag loads all (including uploaded) and syncs with Notion."""
-        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
         from datetime import datetime, timezone
         from chatgpt_to_notion.services import history_service
@@ -1355,7 +1355,7 @@ authorization_token = "test_token_abc"
         self, tmp_path, monkeypatch, isolated_db
     ):
         """With check_notion_api=False (default), already-uploaded generations are skipped."""
-        from chatgpt_to_notion.adapters import sqlite_store as db
+        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
         from datetime import datetime, timezone
         from chatgpt_to_notion.services import history_service
@@ -1513,7 +1513,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
@@ -1780,7 +1780,7 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.get_existing_ids",
+            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
             return_value=set(),
         ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",

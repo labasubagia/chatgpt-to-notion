@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.services import history_service
-from chatgpt_to_notion.adapters import sqlite_store
+from chatgpt_to_notion.adapters.sqlite_store import _get_connection, sqlite_store as db
 
 pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
 def init_db(isolated_db):
     """Ensure database is initialized for each test."""
-    sqlite_store.init_db()
+    db.init_db()
 
 
 def _make_mock_response(status=200, content_type="image/png", data=b"data", headers=None):
@@ -57,8 +57,8 @@ class TestGetUploadedGenerationIds:
             prompt="Test",
         )
         gen2 = gen1.model_copy(update={"id": "gen_2"})
-        sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
-        sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
+        db.upsert_generations("test_account", [gen1, gen2])
+        db.mark_uploaded("test_account", {"gen_1"})
         result = await history_service.get_uploaded_generation_ids("test_account")
         assert result == {"gen_1"}
 
@@ -84,9 +84,9 @@ class TestMarkGenerationsUploaded:
             url="https://example.com/img1.png",
             prompt="Test",
         )
-        sqlite_store.upsert_generations("test_account", [gen], isolated_db)
+        db.upsert_generations("test_account", [gen])
         await history_service.mark_generations_uploaded("test_account", ["gen_1"])
-        conn = sqlite_store._get_connection(isolated_db)
+        conn = _get_connection(isolated_db)
         row = conn.execute(
             "SELECT uploaded_at FROM image_generations WHERE id = ?",
             ("gen_1",),
@@ -106,9 +106,9 @@ class TestMarkGenerationsUploaded:
             prompt="Test",
         )
         gen2 = gen1.model_copy(update={"id": "gen_2"})
-        sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
+        db.upsert_generations("test_account", [gen1, gen2])
         await history_service.mark_generations_uploaded("test_account", ["gen_1", "gen_2"])
-        conn = sqlite_store._get_connection(isolated_db)
+        conn = _get_connection(isolated_db)
         rows = conn.execute(
             "SELECT id, uploaded_at FROM image_generations WHERE id IN (?, ?)",
             ("gen_1", "gen_2"),
@@ -138,8 +138,8 @@ class TestLoadImageGenerations:
             prompt="Test",
         )
         gen2 = gen1.model_copy(update={"id": "gen_2"})
-        sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
-        sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
+        db.upsert_generations("test_account", [gen1, gen2])
+        db.mark_uploaded("test_account", {"gen_1"})
         result = await history_service.load_image_generations("test_account", include_uploaded=False)
         assert len(result) == 1
         assert result[0].id == "gen_2"
@@ -157,8 +157,8 @@ class TestLoadImageGenerations:
             prompt="Test",
         )
         gen2 = gen1.model_copy(update={"id": "gen_2"})
-        sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
-        sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
+        db.upsert_generations("test_account", [gen1, gen2])
+        db.mark_uploaded("test_account", {"gen_1"})
         result = await history_service.load_image_generations("test_account", include_uploaded=True)
         assert len(result) == 2
 
@@ -186,7 +186,7 @@ class TestLoadImageGenerations:
             url="https://example.com/new.png",
             prompt="New",
         )
-        sqlite_store.upsert_generations("test_account", [old_gen, new_gen], isolated_db)
+        db.upsert_generations("test_account", [old_gen, new_gen])
         result = await history_service.load_image_generations("test_account", keep_days=2)
         assert len(result) == 1
         assert result[0].id == "gen_new"
@@ -204,7 +204,7 @@ class TestLoadImageGenerations:
             url="https://example.com/img1.png",
             prompt="Test",
         )
-        sqlite_store.upsert_generations("test_account", [gen], isolated_db)
+        db.upsert_generations("test_account", [gen])
         result = await history_service.load_image_generations("test_account", timezone_name="UTC")
         assert len(result) == 1
 
@@ -221,8 +221,8 @@ class TestLoadImageGenerations:
             prompt="Test",
         )
         gen2 = gen1.model_copy(update={"id": "gen_2"})
-        sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
-        sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
+        db.upsert_generations("test_account", [gen1, gen2])
+        db.mark_uploaded("test_account", {"gen_1"})
         result_true = await history_service.load_image_generations("test_account", include_uploaded=True)
         result_false = await history_service.load_image_generations("test_account", include_uploaded=False)
         assert len(result_true) == 2
@@ -257,7 +257,7 @@ class TestFetchGenerationsForConversation:
             url="https://example.com/existing.png",
             prompt="Existing",
         )
-        sqlite_store.upsert_generations("test_account", [existing_gen], isolated_db)
+        db.upsert_generations("test_account", [existing_gen])
 
         mock_client = AsyncMock()
         mock_session = AsyncMock()

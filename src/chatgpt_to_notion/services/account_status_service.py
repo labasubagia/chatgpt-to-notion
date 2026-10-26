@@ -2,8 +2,8 @@
 
 from datetime import date, datetime, timedelta, timezone
 
-from ..adapters import sqlite_store
-from ..adapters.config_loader import get_account_names
+from ..adapters.config_loader import config_loader
+from ..adapters.sqlite_store import sqlite_store
 from ..shared.time import format_duration, resolve_timezone
 
 
@@ -86,7 +86,7 @@ def get_account_activity_statuses(
     timezone_name: str | None = None,
     now: datetime | None = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], int]:
-    account_names = get_account_names(config_path)
+    account_names = config_loader.account_names(config_path)
     if not account_names:
         return [], [], 0
 

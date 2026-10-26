@@ -40,7 +40,7 @@ def _session_with_post(response):
 class TestGetHeaders:
     def test_returns_headers_from_context(self):
         client = NotionClientImpl()
-        with patch("chatgpt_to_notion.adapters.notion_api.get_notion_context") as mock_ctx:
+        with patch("chatgpt_to_notion.adapters.config_loader.config_loader.notion_context") as mock_ctx:
             mock_ctx.return_value.headers = {
                 "Authorization": "Bearer x",
                 "Notion-Version": "2022-06-28",
@@ -72,9 +72,9 @@ class TestGetDbDataSources:
     async def test_returns_cached(self):
         client = NotionClientImpl()
         session = MagicMock()
-        with patch("chatgpt_to_notion.adapters.notion_api.get_cached_data_sources") as mock_get, \
-             patch("chatgpt_to_notion.adapters.notion_api.init_db") as mock_init, \
-             patch("chatgpt_to_notion.adapters.notion_api.async_set_cached_data_sources") as mock_set:
+        with patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_cached_data_sources") as mock_get, \
+             patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.init_db") as mock_init, \
+             patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.async_set_cached_data_sources") as mock_set:
 
             mock_get.return_value = [{"id": "cached"}]
             mock_init.return_value = None
@@ -90,9 +90,9 @@ class TestGetDbDataSources:
         session = MagicMock()
         session.get.return_value = _async_cm(response)
 
-        with patch("chatgpt_to_notion.adapters.notion_api.get_cached_data_sources") as mock_get, \
-             patch("chatgpt_to_notion.adapters.notion_api.async_set_cached_data_sources") as mock_set, \
-             patch("chatgpt_to_notion.adapters.notion_api.init_db") as mock_init:
+        with patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_cached_data_sources") as mock_get, \
+             patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.async_set_cached_data_sources") as mock_set, \
+             patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.init_db") as mock_init:
 
             mock_get.return_value = None
             mock_init.return_value = None
@@ -256,7 +256,7 @@ class TestAddPageToDb:
             "_send_upload_img",
             new=AsyncMock(return_value={"id": "file1", "status": "complete"}),
         ), patch(
-            "chatgpt_to_notion.adapters.notion_api.get_notion_context"
+            "chatgpt_to_notion.adapters.config_loader.config_loader.notion_context"
         ) as mock_ctx, patch("os.path.exists", return_value=True):
 
             mock_ctx.return_value.headers = {

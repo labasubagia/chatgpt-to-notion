@@ -4,7 +4,6 @@ from pathlib import Path
 from chatgpt_to_notion.services import upload_sequential
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 import sqlite3
-from chatgpt_to_notion.adapters.sqlite_store import init_db
 from chatgpt_to_notion.domain.models import AppConfig
 from chatgpt_to_notion.adapters.config_loader import _load_toml_config
 import tomllib

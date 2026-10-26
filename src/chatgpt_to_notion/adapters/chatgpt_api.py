@@ -9,13 +9,13 @@ from tqdm.asyncio import tqdm
 
 from ..domain.models import RuntimeOptions
 from ..shared.http import raise_for_status_with_detail, retry_http
-from .config_loader import get_provider_context
+from .config_loader import config_loader
 
 BASE_URL = "https://chatgpt.com/backend-api"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_provider_context(options).headers
+    return config_loader.provider_context(options).headers
 
 
 def get_conversation_mapping_key_by_asset_pointer(
@@ -273,7 +273,7 @@ async def remove_library_images(
     Deletes library images based on configured queries or all images.
     """
     from ..shared.http import get_http_timeout
-    from .config_loader import resolve_config
+    from .config_loader import config_loader
 
     queries: list[str] | None = None
     # Get queries from options or resolve from config
@@ -282,7 +282,7 @@ async def remove_library_images(
         if not queries:
             # Try to resolve from config
             try:
-                resolved = resolve_config(options)
+                resolved = config_loader.resolve(options)
                 queries = resolved.delete_library_queries
                 remove_all = resolved.remove_all_library_images
             except Exception:

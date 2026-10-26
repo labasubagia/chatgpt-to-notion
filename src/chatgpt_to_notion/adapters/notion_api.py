@@ -14,12 +14,8 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
-from .config_loader import get_notion_context
-from .sqlite_store import (
-    async_set_cached_data_sources,
-    get_cached_data_sources,
-    init_db,
-)
+from .config_loader import config_loader
+from .sqlite_store import sqlite_store
 
 logger = get_logger("notion")
 
@@ -27,7 +23,7 @@ BASE_URL = "https://api.notion.com"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_notion_context(options).headers
+    return config_loader.notion_context(options).headers
 
 
 def _content_type_for_ext(ext: str) -> str:
@@ -53,8 +49,8 @@ class NotionClientImpl:
         session: aiohttp.ClientSession,
         db_id: str,
     ) -> list[dict[str, Any]]:
-        init_db()
-        cached = get_cached_data_sources(db_id)
+        sqlite_store.init_db()
+        cached = sqlite_store.get_cached_data_sources(db_id)
         if cached is not None:
             return cached
 
@@ -64,7 +60,7 @@ class NotionClientImpl:
             await raise_for_status_with_detail(response)
             data = await response.json()
             data_sources = data.get("data_sources", [])
-            await async_set_cached_data_sources(db_id, data_sources)
+            await sqlite_store.async_set_cached_data_sources(db_id, data_sources)
             return data_sources
 
     @retry_http()
@@ -202,7 +198,7 @@ class NotionClientImpl:
         ext = os.path.splitext(file_name)[1].lower() or ".png"
         content_type = _content_type_for_ext(ext)
 
-        notion_ctx = get_notion_context(self._options)
+        notion_ctx = config_loader.notion_context(self._options)
         headers = notion_ctx.headers
         account_name = notion_ctx.account_name
         create_upload_res = await self._create_upload_img(

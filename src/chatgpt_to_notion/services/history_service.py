@@ -8,7 +8,8 @@ from typing import Any
 
 import aiohttp
 
-from ..adapters import chatgpt_api, sqlite_store
+from ..adapters import chatgpt_api
+from ..adapters.sqlite_store import sqlite_store
 from ..domain.models import ChatGPTClient, ChatGPTImageGeneration, RuntimeOptions
 from ..shared.http import (
     raise_for_status_with_detail,
