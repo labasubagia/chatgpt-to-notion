@@ -281,8 +281,6 @@ async def remove_library_images(
 
     client = ChatGPTClientImpl(config_loader.provider_context(resolved=resolved))
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
-        # Count total images first (for progress reporting)
-        await client.count_library_images(session)
         if remove_all:
             # Delete all images
             await client.delete_library_images_by_query(session)

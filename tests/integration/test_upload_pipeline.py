@@ -775,7 +775,7 @@ authorization_token = "test_token_abc"
             )
 
         remove_lib_mock.assert_awaited_once()
-        count_lib_mock.assert_awaited_once()
+        count_lib_mock.assert_not_awaited()
 
     async def test_delete_library_not_called_when_flag_false(
         self, tmp_path, monkeypatch, isolated_db
@@ -1032,7 +1032,7 @@ authorization_token = "test_token_abc"
             )
 
         remove_lib_mock.assert_awaited_once()
-        count_lib_mock.assert_awaited_once()
+        count_lib_mock.assert_not_awaited()
 
     async def test_delete_library_called_in_from_history_mode(
         self, tmp_path, monkeypatch, isolated_db
@@ -1126,7 +1126,7 @@ authorization_token = "test_token_abc"
             )
 
         remove_lib_mock.assert_awaited_once()
-        count_lib_mock.assert_awaited_once()
+        count_lib_mock.assert_not_awaited()
 @pytest.mark.integration
 class TestUploadToAccountStatus:
     """End-to-end tests verifying upload-to-notion saves history to account-status."""

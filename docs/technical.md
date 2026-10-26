@@ -84,7 +84,7 @@ The pipeline executes as a sequential chain of stages designed to guarantee reli
      1. **Remote Check (Preferred)**: Query the Notion API directly using the unique image ID to verify the page exists in the remote workspace. This remote verification is driven by the `--check-notion-api` option, which is **enabled by default**.
      2. **Local Fallback**: If the remote Notion check is disabled or cannot be reached, verify if the `uploaded_at` timestamp is successfully marked in the local SQLite database.
    - **Safety Boundary**: If neither layer confirms a successful upload (i.e., remote Notion page is missing and local `uploaded_at` is empty), **strictly block deletion**. Output a warning log and abort the deletion request.
-   - **Execution**: If verified as successfully synced, send the patch request to ChatGPT to hide/delete the conversation thread, and mark `is_deleted_from_chatgpt` to true in SQLite.
+- **Execution**: If verified as successfully synced, send the `PATCH /conversation/{id}` request to ChatGPT with `{"is_visible": false}` to hide/delete the conversation thread.
 
 ---
 
@@ -139,24 +139,17 @@ flowchart TD
     class CheckLocalDisk,VerifyPrompt,SyncNotion,CheckNotionRemote,CheckCleanup,VerifyUploadedState decision;
 ```
 
-#### 4.1.3 Execution Modes: Sequential vs. Concurrent (Batch)
-Depending on network stability, bandwidth, and asset volume, the image synchronization pipeline can be run in two distinct execution modes:
+#### 4.1.3 Execution Mode: Sequential
+The image synchronization pipeline runs in a single execution mode:
 
 1. **Sequential Sync Mode (Highly Resilient)**:
    - **Mechanism**: Processes every discovered asset completely sequentially. The pipeline crawls, downloads, prompt-tags, and uploads item `N` before commencing any operations on item `N+1`.
    - **Use Case**: Best for automated daily cron jobs, slow or erratic connections, and minimal API traffic footprints.
    - **Advantages**: Easy to trace, extremely lightweight, and naturally transaction-safe (instant resumption exactly at the failed item).
 
-2. **Concurrent Sync Mode (High-Speed Batching)**:
-   - **Mechanism**: Spawns multiple concurrent worker routines to process assets in parallel. After crawling, downloads and native multi-part page uploads are dispatched to independent concurrent routines running in parallel.
-   - **Use Case**: Best for first-time profile setups, massive backlogs, or fast connections.
-   - **Advantages**: Peak throughput (reduces sync durations by up to 80%), leveraging full network capability.
-   - **Design Boundary**: Requires structured exception handling inside the concurrent loop to guarantee that a failure in one asset's worker routine does not crash or interrupt the execution of other parallel workers.
-
 ---
 
 ### 4.2 Account Status Checker (accounts)
-To efficiently pool generative capacity across multiple ChatGPT accounts, the CLI utility includes a technology-agnostic status checker. This auditor calculates the real-time availability of each account's image generation quota based on historical activity timestamps stored in the local datastore.
 
 #### 4.2.1 Cooldown & Status Logic
 1. **Empty Quota Audit**: Check if the local SQLite database contains any image generations for the account. If no generations are logged, the account is immediately considered **Ready** (`✅`).
