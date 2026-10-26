@@ -1,11 +1,13 @@
-"""Tests upload pipeline edge and flag combinations."""
-
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
-
 from chatgpt_to_notion.services import upload_sequential
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
+import sqlite3
+from chatgpt_to_notion.adapters.sqlite_store import init_db
+from chatgpt_to_notion.domain.models import AppConfig
+from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+import tomllib
 
 
 def make_gen(gen_id: str, conv_id: str = None, prompt: str = None) -> ChatGPTImageGeneration:
@@ -21,450 +23,780 @@ def make_gen(gen_id: str, conv_id: str = None, prompt: str = None) -> ChatGPTIma
     )
 
 
+@pytest.mark.integration
 class TestUploadFromHistoryMode:
     """Tests from_history flag behavior."""
 
     @pytest.mark.asyncio
-    async def test_from_history_loads_only_unuploaded(self, tmp_path, mock_aiohttp_session):
+    async def test_from_history_loads_only_unuploaded(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
         """from_history should only load generations without uploaded_at."""
-        options = RuntimeOptions(account="test@example.com")
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
+
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
 
         # Set up database with one uploaded and one unuploaded generation
-        import sqlite3
-        from chatgpt_to_notion.adapters.sqlite_store import init_db
-        db_path = tmp_path / "test.db"
-        init_db(db_path)
-        with sqlite3.connect(str(db_path)) as conn:
-            conn.execute(
-                "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ("gen1", "2024-01-01T00:00:00Z", "conv1", "msg1", "asset1", "http://example.com/gen1.png", "prompt1", "2024-01-01T01:00:00Z", "test@example.com")
-            )
-            conn.execute(
-                "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ("gen2", "2024-01-01T00:00:00Z", "conv2", "msg2", "asset2", "http://example.com/gen2.png", "prompt2", None, "test@example.com")
-            )
-            conn.commit()
+        now = "2024-01-01T00:00:00Z"
+        uploaded_now = "2024-01-01T01:00:00Z"
+        conn = sqlite3.connect(isolated_db)
+        conn.execute(
+            "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("gen1", now, "conv1", "msg1", "asset1", "http://example.com/gen1.png", "prompt1", uploaded_now, account)
+        )
+        conn.execute(
+            "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("gen2", now, "conv2", "msg2", "asset2", "http://example.com/gen2.png", "prompt2", "", account)
+        )
+        conn.commit()
+        conn.close()
 
+        # Create image file for gen2
         (tmp_path / "images").mkdir(exist_ok=True)
         (tmp_path / "images" / "gen2.png").write_bytes(b"fake")
+        # Note: resolve_image_folder will handle this
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store._get_db_path", return_value=db_path):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value={"gen1"}):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.load_image_generations", return_value=[make_gen("gen2", "conv2")]) as mock_load:
-                            with patch("chatgpt_to_notion.services.upload_sequential.shared.is_page_exists_in_db", return_value=False):
-                                with patch("chatgpt_to_notion.services.upload_sequential.shared.add_page_to_db", return_value=None):
-                                    with patch("chatgpt_to_notion.services.upload_sequential.shared.add_prompt_to_image_single", return_value=None):
-                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.mark_generations_uploaded") as mock_mark:
-                                            with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                                await upload_sequential.upload_to_notion_sequential(
-                                                    image_folder=str(tmp_path / "images"),
-                                                    db_id="test-db-id",
-                                                    upload_to_notion=True,
-                                                    delete_conversation=False,
-                                                    delete_library=False,
-                                                    delete_library_all=False,
-                                                    add_prompt_to_image=True,
-                                                    account="test@example.com",
-                                                    check_notion_api=False,
-                                                    from_history=True,
-                                                    limit=100,
-                                                    keep_days=3,
-                                                    timezone_name=None,
-                                                    no_cache=False,
-                                                    options=options,
-                                                    fail_log_path=None,
-                                                    max_concurrent=1,
-                                                    conversation_delay=0.0,
-                                                )
+        # Configure mocks for from_history mode
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        gen2 = make_gen("gen2", "conv2", "prompt2")
+        # Only gen2 should be loaded (gen1 is already uploaded)
+        mock_history_service.load_image_generations.return_value = [gen2]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        # Use real mark_generations_uploaded
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            from_history=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
 
         # Should only load unuploaded generations
-        mock_load.assert_called_once()
-        call_args = mock_load.call_args
+        mock_history_service.load_image_generations.assert_called_once()
+        call_args = mock_history_service.load_image_generations.call_args
         assert call_args.kwargs.get("include_uploaded") is False
 
         # Should only mark gen2 uploaded
-        mock_mark.assert_called_once()
-        marked_ids = mock_mark.call_args[0][1]
+        mock_history_service.mark_generations_uploaded.assert_called_once()
+        marked_ids = mock_history_service.mark_generations_uploaded.call_args[0][1]
         assert marked_ids == {"gen2"}
 
 
+@pytest.mark.integration
 class TestUploadSequentialMode:
     """Tests sequential upload mode."""
 
     @pytest.mark.asyncio
-    async def test_sequential_processes_conversations_one_at_a_time(self, tmp_path, mock_aiohttp_session):
+    async def test_sequential_processes_conversations_one_at_a_time(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
         """Sequential mode should process conversations one at time."""
-        options = RuntimeOptions(account="test@example.com")
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        from chatgpt_to_notion.adapters.sqlite_store import init_db
-        init_db()
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.get_existing_ids", return_value=set()):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.get_image_generations", return_value={"items": [
-                            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1"},
-                            {"id": "gen2", "conversation_id": "conv2", "message_id": "msg2", "asset_pointer": "asset2", "url": "http://example.com/gen2.png", "prompt": "prompt2"},
-                        ]}):
-                            with patch("chatgpt_to_notion.services.upload_sequential.shared.fetch_generations_for_conversation", side_effect=[
-                                [make_gen("gen1", "conv1")],
-                                [make_gen("gen2", "conv2")],
-                            ]) as mock_fetch_conv:
-                                with patch("chatgpt_to_notion.services.upload_sequential.shared.is_page_exists_in_db", return_value=False):
-                                    with patch("chatgpt_to_notion.services.upload_sequential.shared.add_page_to_db"):
-                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.add_prompt_to_image_single", return_value=None):
-                                            with patch("chatgpt_to_notion.services.upload_sequential.shared.mark_generations_uploaded"):
-                                                with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                                    with patch("chatgpt_to_notion.services.history_service.download_image", return_value=None):
-                                                        await upload_sequential.upload_to_notion_sequential(
-                                                            image_folder=str(tmp_path / "images"),
-                                                            db_id="test-db-id",
-                                                            upload_to_notion=True,
-                                                            delete_conversation=False,
-                                                            delete_library=False,
-                                                            delete_library_all=False,
-                                                            add_prompt_to_image=True,
-                                                            account="test@example.com",
-                                                            check_notion_api=False,
-                                                            from_history=False,
-                                                            limit=100,
-                                                            keep_days=3,
-                                                            timezone_name=None,
-                                                            no_cache=False,
-                                                            options=options,
-                                                            fail_log_path=None,
-                                                            max_concurrent=1,
-                                                            conversation_delay=0.0,
-                                                        )
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+            {"id": "gen2", "conversation_id": "conv2", "message_id": "msg2", "asset_pointer": "asset2", "url": "http://example.com/gen2.png", "prompt": "prompt2", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        mock_chatgpt_client.get_image_generations.return_value = {"items": api_items}
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+                "msg2": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 2"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.side_effect = ["Prompt 1", "Prompt 2"]
+
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        gen2 = make_gen("gen2", "conv2", "prompt2")
+        mock_history_service.fetch_generations_for_conversation.side_effect = [[gen1], [gen2]]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            delete_conversation=False,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
 
         # Should call fetch_generations_for_conversation for each conversation
-        assert mock_fetch_conv.call_count == 2
+        assert mock_history_service.fetch_generations_for_conversation.call_count == 2
 
 
+@pytest.mark.integration
 class TestUploadFlagCombinations:
-    """Tests flag combinations and interactions."""
+    """Tests combinations of upload flags."""
 
-    def test_verify_history_implies_from_history(self):
-        """verify_history should imply from_history."""
-        from_history = False
-        verify_history = True
+    @pytest.mark.asyncio
+    async def test_upload_to_notion_false_skips_notion_calls(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """upload_to_notion=False should skip Notion API calls but still download."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        effective_from_history = from_history or verify_history
-        effective_check_notion_api = True or verify_history
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        assert effective_from_history is True
-        assert effective_check_notion_api is True
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
 
-    def test_from_history_with_all_flag_uses_no_keep_days(self):
-        """from_history --all should not use keep_days."""
-        from_history = True
-        all_flag = True
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
 
-        if from_history and not all_flag:
-            effective_keep_days = 3
-        elif all_flag:
-            effective_keep_days = None
-        else:
-            effective_keep_days = None
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        mock_chatgpt_client.get_image_generations.return_value = {"items": api_items}
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.return_value = "Prompt 1"
 
-        assert effective_keep_days is None
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        mock_history_service.fetch_generations_for_conversation.return_value = [gen1]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
 
-    def test_from_history_without_all_uses_3_days(self):
-        """from_history without --all should use 3 days keep_days."""
-        from_history = True
-        all_flag = False
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            upload_to_notion=False,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
 
-        if from_history and not all_flag:
-            effective_keep_days = 3
-        elif all_flag:
-            effective_keep_days = None
-        else:
-            effective_keep_days = None
+        # Should not call add_page_to_db
+        mock_notion_client.add_page_to_db.assert_not_called()
+        # But should still call download_image via history_service
+        mock_history_service.download_image.assert_called_once()
 
-        assert effective_keep_days == 3
+    @pytest.mark.asyncio
+    async def test_add_prompt_to_image_false_skips_prompt_addition(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """add_prompt_to_image=False should skip prompt addition."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
+
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        mock_chatgpt_client.get_image_generations.return_value = {"items": api_items}
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.return_value = "Prompt 1"
+
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        mock_history_service.fetch_generations_for_conversation.return_value = [gen1]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            add_prompt_to_image=False,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
+
+        mock_image_service.add_prompt_to_image_single.assert_not_called()
 
 
+@pytest.mark.integration
 class TestUploadDeleteFlags:
-    """Tests for delete flag combinations."""
+    """Tests delete conversation and library flags."""
 
     @pytest.mark.asyncio
-    async def test_delete_conversation_called_when_flag_true(self, tmp_path, mock_aiohttp_session):
-        """delete_conversation should be called when flag is True."""
-        options = RuntimeOptions(account="test@example.com")
+    async def test_delete_conversation_called_when_upload_succeeds(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """delete_conversation=True should delete conversation after successful upload."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        from chatgpt_to_notion.adapters.sqlite_store import init_db
-        init_db()
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.get_existing_ids", return_value=set()):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.get_image_generations", return_value={"items": [
-                            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1"},
-                        ]}):
-                            with patch("chatgpt_to_notion.services.upload_sequential.shared.fetch_generations_for_conversation", return_value=[make_gen("gen1", "conv1")]):
-                                with patch("chatgpt_to_notion.services.upload_sequential.shared.is_page_exists_in_db", return_value=False):
-                                    with patch("chatgpt_to_notion.services.upload_sequential.shared.add_page_to_db"):
-                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.mark_generations_uploaded"):
-                                            with patch("chatgpt_to_notion.services.upload_pipeline.delete_conversation") as mock_delete_conv:
-                                                with patch("chatgpt_to_notion.services.history_service.download_image", return_value=None):
-                                                    with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.add_prompt_to_image_single", return_value=None):
-                                                            await upload_sequential.upload_to_notion_sequential(
-                                                                image_folder=str(tmp_path / "images"),
-                                                                db_id="test-db-id",
-                                                                upload_to_notion=True,
-                                                                delete_conversation=True,
-                                                                delete_library=False,
-                                                                delete_library_all=False,
-                                                                add_prompt_to_image=True,
-                                                                account="test@example.com",
-                                                                check_notion_api=False,
-                                                                from_history=False,
-                                                                limit=100,
-                                                                keep_days=None,
-                                                                timezone_name=None,
-                                                                no_cache=False,
-                                                                options=options,
-                                                                fail_log_path=None,
-                                                                max_concurrent=1,
-                                                                conversation_delay=0.0,
-                                                            )
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
 
-        mock_delete_conv.assert_called_once()
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
 
-    @pytest.mark.asyncio
-    async def test_delete_conversation_not_called_when_flag_false(self, tmp_path, mock_aiohttp_session):
-        """delete_conversation should not be called when flag is False."""
-        options = RuntimeOptions(account="test@example.com")
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        mock_chatgpt_client.get_image_generations.return_value = {"items": api_items}
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.return_value = "Prompt 1"
 
-        from chatgpt_to_notion.adapters.sqlite_store import init_db
-        init_db()
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        mock_history_service.fetch_generations_for_conversation.return_value = [gen1]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.get_existing_ids", return_value=set()):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.get_image_generations", return_value={"items": [
-                            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1"},
-                        ]}):
-                            with patch("chatgpt_to_notion.services.upload_sequential.shared.fetch_generations_for_conversation", return_value=[make_gen("gen1", "conv1")]):
-                                with patch("chatgpt_to_notion.services.upload_sequential.shared.is_page_exists_in_db", return_value=False):
-                                    with patch("chatgpt_to_notion.services.upload_sequential.shared.add_page_to_db"):
-                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.mark_generations_uploaded"):
-                                            with patch("chatgpt_to_notion.services.upload_pipeline.delete_conversation") as mock_delete_conv:
-                                                with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                                    with patch("chatgpt_to_notion.services.history_service.download_image", return_value=None):
-                                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.add_prompt_to_image_single", return_value=None):
-                                                            await upload_sequential.upload_to_notion_sequential(
-                                                                image_folder=str(tmp_path / "images"),
-                                                                db_id="test-db-id",
-                                                                upload_to_notion=True,
-                                                                delete_conversation=False,
-                                                                delete_library=False,
-                                                                delete_library_all=False,
-                                                                add_prompt_to_image=True,
-                                                                account="test@example.com",
-                                                                check_notion_api=False,
-                                                                from_history=False,
-                                                                limit=100,
-                                                                keep_days=None,
-                                                                timezone_name=None,
-                                                                no_cache=False,
-                                                                options=options,
-                                                                fail_log_path=None,
-                                                                max_concurrent=1,
-                                                                conversation_delay=0.0,
-                                                            )
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            delete_conversation=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
 
-        mock_delete_conv.assert_not_called()
+        mock_chatgpt_client.delete_conversation.assert_called_once()
+        call_args = mock_chatgpt_client.delete_conversation.call_args
+        assert call_args[0][1] == "conv1"
 
     @pytest.mark.asyncio
-    async def test_delete_library_called_in_from_history_mode(self, tmp_path, mock_aiohttp_session):
-        """delete_library should be called even in from_history mode."""
-        options = RuntimeOptions(account="test@example.com")
+    async def test_delete_conversation_not_called_when_upload_fails(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """delete_conversation should not be called if upload fails."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.load_image_generations", return_value=[]):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared._remove_library_images") as mock_remove_lib:
-                            with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                await upload_sequential.upload_to_notion_sequential(
-                                    image_folder=str(tmp_path / "images"),
-                                    db_id="test-db-id",
-                                    upload_to_notion=True,
-                                    delete_conversation=False,
-                                    delete_library=True,
-                                    delete_library_all=False,
-                                    add_prompt_to_image=True,
-                                    account="test@example.com",
-                                    check_notion_api=False,
-                                    from_history=True,
-                                    limit=100,
-                                    keep_days=3,
-                                    timezone_name=None,
-                                    no_cache=False,
-                                    options=options,
-                                    fail_log_path=None,
-                                    max_concurrent=1,
-                                    conversation_delay=0.0,
-                                )
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        mock_remove_lib.assert_called_once()
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        mock_chatgpt_client.get_image_generations.return_value = {"items": api_items}
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.return_value = "Prompt 1"
+
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        mock_history_service.fetch_generations_for_conversation.return_value = [gen1]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.side_effect = Exception("Notion error")
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            delete_conversation=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
+
+        mock_chatgpt_client.delete_conversation.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_library_called_when_flag_true(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """delete_library=True should call remove_library_func."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
+
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        mock_chatgpt_client.get_image_generations.return_value = {"items": []}
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            delete_library=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
+
+        mock_remove_library_func.assert_called_once()
+        call_args = mock_remove_library_func.call_args
+        assert call_args.kwargs.get("remove_all") is False
+
+    @pytest.mark.asyncio
+    async def test_delete_library_all_called_when_flag_true(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """delete_library_all=True should call remove_library_func with remove_all=True."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
+
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        mock_chatgpt_client.get_image_generations.return_value = {"items": []}
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            delete_library_all=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
+
+        mock_remove_library_func.assert_called_once()
+        call_args = mock_remove_library_func.call_args
+        assert call_args.kwargs.get("remove_all") is True
 
 
+@pytest.mark.integration
 class TestUploadTimezoneHandling:
-    """Tests for timezone handling in upload."""
+    """Tests timezone handling in upload."""
 
     @pytest.mark.asyncio
-    async def test_timezone_passed_to_load_generations(self, tmp_path, mock_aiohttp_session):
-        """timezone should be passed to load_image_generations."""
-        options = RuntimeOptions(account="test@example.com")
+    async def test_timezone_used_in_from_history(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """Timezone should be passed to history service."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.fetch_generations_for_conversation", return_value=[]):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.load_image_generations") as mock_load:
-                            with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                await upload_sequential.upload_to_notion_sequential(
-                                    image_folder=str(tmp_path / "images"),
-                                    db_id="test-db-id",
-                                    upload_to_notion=True,
-                                    delete_conversation=False,
-                                    delete_library=False,
-                                    delete_library_all=False,
-                                    add_prompt_to_image=True,
-                                    account="test@example.com",
-                                    check_notion_api=False,
-                                    from_history=True,
-                                    limit=100,
-                                    keep_days=3,
-                                    timezone_name="Asia/Jakarta",
-                                    no_cache=False,
-                                    options=options,
-                                    fail_log_path=None,
-                                    max_concurrent=1,
-                                    conversation_delay=0.0,
-                                )
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        mock_load.assert_called_once()
-        assert mock_load.call_args.kwargs.get("timezone_name") == "Asia/Jakarta"
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        mock_history_service.load_image_generations.return_value = [gen1]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            from_history=True,
+            account=account,
+            timezone_name="America/New_York",
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
+
+        # Check timezone was passed to load_image_generations
+        call_args = mock_history_service.load_image_generations.call_args
+        assert call_args.kwargs.get("timezone_name") == "America/New_York"
 
 
+@pytest.mark.integration
 class TestUploadNoCacheFlag:
-    """Tests for no_cache flag."""
+    """Tests no_cache flag behavior."""
 
     @pytest.mark.asyncio
-    async def test_no_cache_bypasses_sqlite_cache(self, tmp_path, mock_aiohttp_session):
-        """no_cache should bypass SQLite cache and fetch from API."""
-        options = RuntimeOptions(account="test@example.com")
+    async def test_no_cache_bypasses_existing_ids_check(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
+        """no_cache=True should bypass existing_ids from sqlite_store."""
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        db_path = tmp_path / "test.db"
-        from chatgpt_to_notion.adapters.sqlite_store import init_db
-        init_db(db_path)
-        import sqlite3
-        with sqlite3.connect(str(db_path)) as conn:
-            conn.execute(
-                "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ("gen1", "2024-01-01T00:00:00Z", "conv1", "msg1", "asset1", "http://example.com/gen1.png", "prompt1", None, "test@example.com")
-            )
-            conn.commit()
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store._get_db_path", return_value=db_path):
-                    with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.get_existing_ids", return_value={"gen1"}):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                            with patch("chatgpt_to_notion.services.upload_sequential.shared.get_image_generations", return_value={"items": [
-                                {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1"},
-                            ]}) as mock_get_gens:
-                                with patch("chatgpt_to_notion.services.upload_sequential.shared.fetch_generations_for_conversation", return_value=[make_gen("gen1", "conv1")]):
-                                    with patch("chatgpt_to_notion.services.upload_sequential.shared.is_page_exists_in_db", return_value=False):
-                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.add_page_to_db"):
-                                            with patch("chatgpt_to_notion.services.upload_sequential.shared.add_prompt_to_image_single", return_value=None):
-                                                with patch("chatgpt_to_notion.services.upload_sequential.shared.mark_generations_uploaded"):
-                                                    with patch("chatgpt_to_notion.services.history_service.download_image", return_value=None):
-                                                        with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                                            await upload_sequential.upload_to_notion_sequential(
-                                                                image_folder=str(tmp_path / "images"),
-                                                                db_id="test-db-id",
-                                                                upload_to_notion=True,
-                                                                delete_conversation=False,
-                                                                delete_library=False,
-                                                                delete_library_all=False,
-                                                                add_prompt_to_image=True,
-                                                                account="test@example.com",
-                                                                check_notion_api=False,
-                                                                from_history=False,
-                                                                limit=100,
-                                                                keep_days=None,
-                                                                timezone_name=None,
-                                                                no_cache=True,
-                                                                options=options,
-                                                                fail_log_path=None,
-                                                                max_concurrent=1,
-                                                                conversation_delay=0.0,
-                                                            )
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
 
-        # Should still fetch from API despite cache having the ID
-        mock_get_gens.assert_called_once()
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        mock_chatgpt_client.get_image_generations.return_value = {"items": api_items}
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.return_value = "Prompt 1"
+
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        mock_history_service.fetch_generations_for_conversation.return_value = [gen1]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            no_cache=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
+
+        # With no_cache=True, existing_ids should be empty set (not fetched from DB)
+        # This is tested implicitly by the fact that the generation is processed
+        mock_chatgpt_client.get_image_generations.assert_called_once()
 
 
+@pytest.mark.integration
 class TestUploadLimitFlag:
-    """Tests limit flag."""
+    """Tests limit flag behavior."""
 
     @pytest.mark.asyncio
-    async def test_limit_restricts_generations_processed(self, tmp_path, mock_aiohttp_session):
+    async def test_limit_restricts_generations_processed(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service, mock_remove_library_func
+    ):
         """limit should restrict number of generations processed."""
-        options = RuntimeOptions(account="test@example.com")
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
 
-        from chatgpt_to_notion.adapters.sqlite_store import init_db
-        init_db()
+        account = "test@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
 
-        with patch("chatgpt_to_notion.services.upload_sequential.resolve_image_folder", return_value=tmp_path / "images"):
-            with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.init_db"):
-                with patch("chatgpt_to_notion.services.upload_sequential.sqlite_store.get_existing_ids", return_value=set()):
-                    with patch("chatgpt_to_notion.services.upload_sequential.shared.get_uploaded_generation_ids", return_value=set()):
-                        with patch("chatgpt_to_notion.services.upload_sequential.shared.get_image_generations", return_value={"items": [
-                            {"id": f"gen{i}", "conversation_id": f"conv{i}", "message_id": f"msg{i}", "asset_pointer": f"asset{i}", "url": f"http://example.com/gen{i}.png", "prompt": f"prompt{i}"}
-                            for i in range(5)
-                        ]}) as mock_get_gens:
-                            with patch("chatgpt_to_notion.services.upload_sequential.shared.fetch_generations_for_conversation") as mock_fetch:
-                                mock_fetch.side_effect = [
-                                    [make_gen(f"gen{i}", f"conv{i}")] for i in range(5)
-                                ]
-                                with patch("chatgpt_to_notion.services.upload_sequential.shared.is_page_exists_in_db", return_value=False):
-                                    with patch("chatgpt_to_notion.services.upload_sequential.shared.add_page_to_db"):
-                                        with patch("chatgpt_to_notion.services.upload_sequential.shared.add_prompt_to_image_single", return_value=None):
-                                            with patch("chatgpt_to_notion.services.upload_sequential.shared.mark_generations_uploaded"):
-                                                with patch("chatgpt_to_notion.services.history_service.download_image", return_value=None):
-                                                    with patch("chatgpt_to_notion.services.upload_pipeline.get_headers", return_value={"Authorization": "Bearer test"}):
-                                                        await upload_sequential.upload_to_notion_sequential(
-                                                            image_folder=str(tmp_path / "images"),
-                                                            db_id="test-db-id",
-                                                            upload_to_notion=True,
-                                                            delete_conversation=False,
-                                                            delete_library=False,
-                                                            delete_library_all=False,
-                                                            add_prompt_to_image=True,
-                                                            account="test@example.com",
-                                                            check_notion_api=False,
-                                                            from_history=False,
-                                                            limit=2,
-                                                            keep_days=None,
-                                                            timezone_name=None,
-                                                            no_cache=False,
-                                                            options=options,
-                                                            fail_log_path=None,
-                                                            max_concurrent=1,
-                                                            conversation_delay=0.0,
-                                                        )
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test-db-id"
+
+[accounts."{account}"]
+authorization_token = "test_token"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        api_items = [
+            {"id": "gen1", "conversation_id": "conv1", "message_id": "msg1", "asset_pointer": "asset1", "url": "http://example.com/gen1.png", "prompt": "prompt1", "created_at": "2024-01-01T00:00:00Z"},
+            {"id": "gen2", "conversation_id": "conv2", "message_id": "msg2", "asset_pointer": "asset2", "url": "http://example.com/gen2.png", "prompt": "prompt2", "created_at": "2024-01-01T00:00:00Z"},
+            {"id": "gen3", "conversation_id": "conv3", "message_id": "msg3", "asset_pointer": "asset3", "url": "http://example.com/gen3.png", "prompt": "prompt3", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        def get_image_generations_with_limit(session, limit=None):
+            if limit is not None:
+                return {"items": api_items[:limit]}
+            return {"items": api_items}
+        mock_chatgpt_client.get_image_generations.side_effect = get_image_generations_with_limit
+        mock_chatgpt_client.get_conversation_details.return_value = {
+            "mapping": {
+                "msg1": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 1"]}}, "parent": None},
+                "msg2": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 2"]}}, "parent": None},
+                "msg3": {"message": {"author": {"role": "user"}, "content": {"parts": ["Prompt 3"]}}, "parent": None},
+            }
+        }
+        mock_chatgpt_client.get_prompt_from_image_node_in_conversation.side_effect = ["Prompt 1", "Prompt 2", "Prompt 3"]
+
+        gen1 = make_gen("gen1", "conv1", "prompt1")
+        gen2 = make_gen("gen2", "conv2", "prompt2")
+        gen3 = make_gen("gen3", "conv3", "prompt3")
+        mock_history_service.fetch_generations_for_conversation.side_effect = [[gen1], [gen2], [gen3]]
+        mock_notion_client.is_page_exists_in_db.return_value = False
+        mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
+        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        mock_history_service.mark_generations_uploaded.side_effect = real_mark
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=str(tmp_path / "images"),
+            db_id="test-db-id",
+            limit=2,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+            remove_library_func=mock_remove_library_func,
+        )
 
         # Should only process 2 generations (limit=2)
-        mock_get_gens.assert_called_once()
-        assert mock_get_gens.call_args.kwargs.get("limit") == 2
+        # fetch_generations_for_conversation called for first 2 conversations
+        assert mock_history_service.fetch_generations_for_conversation.call_count == 2

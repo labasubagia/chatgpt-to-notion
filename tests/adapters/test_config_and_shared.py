@@ -629,7 +629,7 @@ class TestAccountActivityStatus:
 class TestUploadedGenerationHelpers:
     """Tests for uploaded_at helpers."""
 
-    def test_get_and_mark_uploaded(self, isolated_db, monkeypatch):
+    async def test_get_and_mark_uploaded(self, isolated_db, monkeypatch):
         gen_a = ChatGPTImageGeneration(
             created_at="2026-05-14T00:00:00+00:00",
             id="a",
@@ -650,11 +650,11 @@ class TestUploadedGenerationHelpers:
         )
         db.upsert_generations("default@example.com", [gen_a, gen_b])
 
-        assert get_uploaded_generation_ids("default@example.com") == set()
+        assert await get_uploaded_generation_ids("default@example.com") == set()
 
-        mark_generations_uploaded("default@example.com", {"b"})
+        await mark_generations_uploaded("default@example.com", {"b"})
 
-        assert get_uploaded_generation_ids("default@example.com") == {"b"}
+        assert await get_uploaded_generation_ids("default@example.com") == {"b"}
 
 
 class TestCleanOutputPath:

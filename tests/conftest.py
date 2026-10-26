@@ -225,3 +225,67 @@ def isolated_db(tmp_path, monkeypatch):
     )
 
     return db_path
+# Mock client fixtures for DI-based tests
+@pytest.fixture
+def mock_chatgpt_client():
+    """Create a mock ChatGPTClient for testing."""
+    from unittest.mock import AsyncMock, MagicMock
+    from chatgpt_to_notion.domain.models import ChatGPTClient
+
+    client = AsyncMock(spec=ChatGPTClient)
+    client.get_headers.return_value = {"Authorization": "Bearer test"}
+    client.get_image_generations.return_value = []
+    client.get_conversation_details.return_value = {}
+    client.get_prompt_from_image_node_in_conversation.return_value = "Test prompt"
+    client.delete_conversation = AsyncMock()
+    return client
+
+
+@pytest.fixture
+def mock_notion_client():
+    """Create a mock NotionClient for testing."""
+    from unittest.mock import AsyncMock
+    from chatgpt_to_notion.domain.models import NotionClient
+
+    client = AsyncMock(spec=NotionClient)
+    client.get_headers.return_value = {"Authorization": "Bearer test", "Notion-Version": "2022-06-28"}
+    client.is_page_exists_in_db = AsyncMock(return_value=False)
+    client.add_page_to_db = AsyncMock()
+    return client
+
+
+@pytest.fixture
+def mock_history_service():
+    """Create a mock HistoryServiceProtocol for testing."""
+    from unittest.mock import AsyncMock, MagicMock
+    from chatgpt_to_notion.domain.models import HistoryServiceProtocol
+
+    service = AsyncMock(spec=HistoryServiceProtocol)
+    service.init_db = MagicMock()
+    service.get_uploaded_generation_ids = AsyncMock(return_value=set())
+    service.get_existing_ids = AsyncMock(return_value=set())
+    service.mark_generations_uploaded = AsyncMock()
+    service.load_image_generations = AsyncMock(return_value=[])
+    service.fetch_generations_for_conversation = AsyncMock(return_value=[])
+    return service
+
+
+@pytest.fixture
+def mock_image_service():
+    """Create a mock ImageServiceProtocol for testing."""
+    from unittest.mock import AsyncMock
+    from chatgpt_to_notion.domain.models import ImageServiceProtocol
+
+    service = AsyncMock(spec=ImageServiceProtocol)
+    service.download_image = AsyncMock()
+    return service
+
+
+@pytest.fixture
+def mock_remove_library_func():
+    """Create a mock RemoveLibraryFunc for testing."""
+    from unittest.mock import AsyncMock
+    from chatgpt_to_notion.domain.models import RemoveLibraryFunc
+
+    func = AsyncMock(spec=RemoveLibraryFunc)
+    return func
