@@ -1,6 +1,6 @@
 """Adapters package."""
 
-from .chatgpt_api import ChatGPTClientImpl, remove_library_images
+from .chatgpt_api import ChatGPTClientImpl
 from .config_loader import ConfigLoader
 from .filesystem import Filesystem
 from .notion_api import NotionClientImpl
@@ -12,5 +12,5 @@ __all__ = [
     "Filesystem",
     "NotionClientImpl",
     "SqliteStore",
-    "remove_library_images",
+    "SqliteStore",
 ]

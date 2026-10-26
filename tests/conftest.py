@@ -280,11 +280,3 @@ def mock_image_service():
     return service
 
 
-@pytest.fixture
-def mock_remove_library_func():
-    """Create a mock RemoveLibraryFunc for testing."""
-    from unittest.mock import AsyncMock
-    from chatgpt_to_notion.domain.models import RemoveLibraryFunc
-
-    func = AsyncMock(spec=RemoveLibraryFunc)
-    return func

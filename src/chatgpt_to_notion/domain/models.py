@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from typing import Any, Literal, Protocol
 
 import aiohttp
@@ -90,6 +90,11 @@ class ChatGPTClient(Protocol):
         query: str | None = None,
         max_concurrent: int = 10,
     ) -> int: ...
+    async def remove_library_images(
+        self,
+        resolved: ResolvedConfig,
+        remove_all: bool = False,
+    ) -> None: ...
 
 
 class NotionClient(Protocol):
@@ -156,9 +161,6 @@ class ImageServiceProtocol(Protocol):
         generation: ImageGeneration,
         folder: str,
     ) -> None: ...
-
-
-RemoveLibraryFunc = Callable[..., Awaitable[None]]
 
 
 class NotionConfig(BaseModel):
