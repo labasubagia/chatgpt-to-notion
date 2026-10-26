@@ -52,8 +52,14 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 4. **Push & PR** → `gh pr create --title "..." --body-file ... --base main --head <branch>`
 5. **Monitor CI** → `gh pr checks <number> --watch` wait for all checks (pre-commit, tests, security) to pass
 6. **Verify PR** → `gh pr view <number>` confirm no conflicts, branch up-to-date, mergeable, squash mode
+7. **Squash merge** → `./scripts/merge-pr.sh <number>` (merges, deletes local+remote branch, removes worktree) only after CI passes **and explicit user approval**
+8. **Cleanup** → Handled by `merge-pr.sh`; verify with `git worktree list`
+7. **Squash merge** → `./scripts/merge-pr.sh <number>` (merges, deletes local+remote branch, removes worktree) only after CI passes **and explicit user approval**
+8. **Cleanup** → Handled by `merge-pr.sh`; verify with `git worktree list`
+=======
 7. **Squash merge** → `gh pr merge <number> --squash --delete-branch` only after CI passes **and explicit user approval**
 8. **Cleanup** → `git worktree remove ./tree/<branch>`
+>>>>>>> origin/main
 
 **Branch naming:** `fix/...`, `feat/...`, `refactor/...`, `chore/...`
 **Direct pushes to `main` are prohibited.** Branch protection rules enforce:
