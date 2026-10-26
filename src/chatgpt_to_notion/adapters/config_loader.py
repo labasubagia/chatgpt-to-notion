@@ -29,17 +29,7 @@ class ConfigLoader:
         pass
 
     def resolve(self, options: RuntimeOptions | None = None) -> ResolvedConfig:
-        if options is None:
-            runtime_options = RuntimeOptions()
-        elif isinstance(options, RuntimeOptions):
-            runtime_options = options
-        else:
-            runtime_options = RuntimeOptions(
-                config_path=getattr(options, "config_path", None),
-                account=getattr(options, "account", None),
-                history_folder=getattr(options, "history_folder", None),
-                image_folder=getattr(options, "image_folder", None),
-            )
+        runtime_options = options or RuntimeOptions()
         app_config = _load_toml_config(runtime_options.config_path)
 
         if not app_config or not app_config.accounts:
@@ -70,21 +60,6 @@ class ConfigLoader:
         remove_all_library_images = (
             account.remove_all_library_images or shared.remove_all_library_images
         )
-        fetch_conversation_delay = (
-            runtime_options.fetch_conversation_delay
-            if runtime_options.fetch_conversation_delay is not None
-            else (
-                account.fetch_conversation_delay
-                or shared.fetch_conversation_delay
-                or 0.0
-            )
-        )
-        fetch_batch_size = (
-            runtime_options.fetch_batch_size
-            if runtime_options.fetch_batch_size is not None
-            else (account.fetch_batch_size or shared.fetch_batch_size or 0)
-        )
-
         return ResolvedConfig(
             account_name=account_name,
             account=account.model_copy(
@@ -100,8 +75,6 @@ class ConfigLoader:
             image_folder=image_folder,
             delete_library_queries=delete_library_queries,
             remove_all_library_images=remove_all_library_images,
-            fetch_conversation_delay=fetch_conversation_delay,
-            fetch_batch_size=fetch_batch_size,
         )
 
     def provider_context(

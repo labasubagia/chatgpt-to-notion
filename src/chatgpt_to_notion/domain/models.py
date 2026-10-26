@@ -183,8 +183,6 @@ class AccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
-    fetch_conversation_delay: float = 0.0
-    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -199,8 +197,6 @@ class SharedAccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
-    fetch_conversation_delay: float = 0.0
-    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -240,8 +236,6 @@ class ResolvedConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
-    fetch_conversation_delay: float = 0.0
-    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -254,9 +248,6 @@ class RuntimeOptions(BaseModel):
     account: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
-    # Legacy rate limit fields (for config.toml, not CLI options)
-    fetch_conversation_delay: float | None = None
-    fetch_batch_size: int | None = None
 
 
 class ProviderContext(BaseModel):

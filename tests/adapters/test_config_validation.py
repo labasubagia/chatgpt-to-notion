@@ -164,38 +164,6 @@ authorization_token = "token2"
         assert resolved1.notion.database_id == "account1_db"
         assert resolved2.notion.database_id == "global_db_id"
 
-    def test_per_account_fetch_conversation_delay_override(self, tmp_path):
-        """Per-account fetch_conversation_delay should override global."""
-        config_text = """
-[shared]
-user_agent = "TestAgent/1.0"
-cookie_string_base64 = "Y29va2llX2RhdGE="
-fetch_conversation_delay = 5.0
-
-[notion]
-api_key = "secret_test"
-database_id = "global_db"
-
-[accounts."user1@example.com"]
-authorization_token = "token1"
-fetch_conversation_delay = 1.5
-
-[accounts."user2@example.com"]
-authorization_token = "token2"
-"""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(config_text.strip())
-
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options1 = RuntimeOptions(account="user1@example.com")
-        options2 = RuntimeOptions(account="user2@example.com")
-
-        resolved1 = config_loader.resolve(options1)
-        resolved2 = config_loader.resolve(options2)
-
-        assert resolved1.fetch_conversation_delay == 1.5
-        assert resolved2.fetch_conversation_delay == 5.0
-
     def test_per_account_cookie_override(self, tmp_path):
         """Per-account cookie_string_base64 should override global."""
         config_text = """
@@ -482,51 +450,3 @@ authorization_token = "token1"
         resolved = config_loader.resolve(options)
 
         assert resolved.account_name == "user1@example.com"
-
-    def test_cli_fetch_conversation_delay_overrides_config(self, tmp_path):
-        """CLI fetch_conversation_delay should override config."""
-        config_text = """
-[shared]
-user_agent = "TestAgent/1.0"
-cookie_string_base64 = "Y29va2llX2RhdGE="
-fetch_conversation_delay = 5.0
-
-[notion]
-api_key = "secret_test"
-database_id = "global_db"
-
-[accounts."user@example.com"]
-authorization_token = "token1"
-"""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(config_text.strip())
-
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions(account="user@example.com", fetch_conversation_delay=2.5)
-        resolved = config_loader.resolve(options)
-
-        assert resolved.fetch_conversation_delay == 2.5
-
-    def test_cli_fetch_batch_size_overrides_config(self, tmp_path):
-        """CLI fetch_batch_size should override config."""
-        config_text = """
-[shared]
-user_agent = "TestAgent/1.0"
-cookie_string_base64 = "Y29va2llX2RhdGE="
-fetch_batch_size = 10
-
-[notion]
-api_key = "secret_test"
-database_id = "global_db"
-
-[accounts."user@example.com"]
-authorization_token = "token1"
-"""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(config_text.strip())
-
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions(account="user@example.com", fetch_batch_size=5)
-        resolved = config_loader.resolve(options)
-
-        assert resolved.fetch_batch_size == 5

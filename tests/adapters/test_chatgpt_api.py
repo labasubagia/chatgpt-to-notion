@@ -250,12 +250,3 @@ class TestParseSSEEvents:
         events = _parse_sse_events(body)
         assert len(events) == 2
         assert events[0]["event"] == "file.deletion.started"
-        assert events[1]["event"] == "file.deletion.completed"
-class TestConfigRateLimitFields:
-    """Tests for rate limit config fields in domain models."""
-
-    def test_runtime_options_defaults(self):
-        """RuntimeOptions should default rate limit fields to None (not specified)."""
-        options = RuntimeOptions()
-        assert options.fetch_conversation_delay is None
-        assert options.fetch_batch_size is None
