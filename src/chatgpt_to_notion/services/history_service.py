@@ -10,7 +10,7 @@ import aiohttp
 
 from ..adapters import chatgpt_api
 from ..adapters.sqlite_store import SqliteStore, sqlite_store
-from ..domain.models import ChatGPTClient, ChatGPTImageGeneration, RuntimeOptions
+from ..domain.models import ChatGPTClient, ChatGPTImageGeneration
 from ..shared.http import (
     raise_for_status_with_detail,
     retry_http,
@@ -73,10 +73,8 @@ async def load_image_generations(
     include_uploaded: bool = False,
     keep_days: int | None = None,
     timezone_name: str | None = None,
-    options: RuntimeOptions | None = None,
     store: SqliteStore | None = None,
 ) -> list[ChatGPTImageGeneration]:
-    del options
     db = store or sqlite_store
     return db.get_generations(
         account,

@@ -7,9 +7,8 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..domain.models import RuntimeOptions
+from ..domain.models import ProviderContext, RuntimeOptions
 from ..shared.http import raise_for_status_with_detail, retry_http
-from .config_loader import ConfigLoader
 from .config_loader import config_loader as default_config_loader
 
 BASE_URL = "https://chatgpt.com/backend-api"
@@ -95,16 +94,11 @@ def _parse_sse_events(body: str) -> list[dict[str, Any]]:
 class ChatGPTClientImpl:
     """Concrete implementation of ChatGPTClient protocol."""
 
-    def __init__(
-        self,
-        options: RuntimeOptions | None = None,
-        config_loader: ConfigLoader | None = None,
-    ):
-        self._options = options
-        self._config_loader = config_loader or default_config_loader
+    def __init__(self, provider_context: ProviderContext):
+        self._provider_context = provider_context
 
     def get_headers(self) -> dict[str, str]:
-        return self._config_loader.provider_context(self._options).headers
+        return self._provider_context.headers
 
     @retry_http()
     async def get_conversation_details(
@@ -297,7 +291,7 @@ async def remove_library_images(
     if not remove_all and not queries:
         return
 
-    client = ChatGPTClientImpl(options)
+    client = ChatGPTClientImpl(default_config_loader.provider_context(options))
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
         # Count total images first (for progress reporting)
         await client.count_library_images(session)

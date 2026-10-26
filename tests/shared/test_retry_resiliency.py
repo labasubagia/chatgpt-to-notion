@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chatgpt_to_notion.adapters.config_loader import config_loader
 from chatgpt_to_notion.shared.http import (
     DetailedHTTPError,
     http_retryable,
@@ -356,7 +357,7 @@ class TestUploadRetry:
         test_file.write_bytes(PNG_BYTES)
 
         with patch("chatgpt_to_notion.adapters.notion_api.get_headers", return_value={"Authorization": "Bearer test"}):
-            client = NotionClientImpl()
+            client = NotionClientImpl(config_loader.notion_context())
             result = await client._create_upload_img(mock_aiohttp_session, str(test_file))
 
         assert result["id"] == "upload-1"
@@ -382,9 +383,8 @@ class TestUploadRetry:
         test_file.write_bytes(PNG_BYTES)
 
         with patch("chatgpt_to_notion.adapters.notion_api.get_headers", return_value={"Authorization": "Bearer test", "Notion-Version": "2025-09-03"}):
-            client = NotionClientImpl()
+            client = NotionClientImpl(config_loader.notion_context())
             result = await client._send_upload_img(mock_aiohttp_session, "upload-1", str(test_file))
-
         assert result["id"] == "upload-1"
         call_args = mock_post.call_args
         assert "data" in call_args.kwargs

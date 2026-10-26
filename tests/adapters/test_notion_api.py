@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chatgpt_to_notion.adapters.config_loader import config_loader
 from chatgpt_to_notion.adapters.notion_api import (
     NotionClientImpl,
     _content_type_for_ext,
@@ -39,16 +40,16 @@ def _session_with_post(response):
 
 class TestGetHeaders:
     def test_returns_headers_from_context(self):
-        client = NotionClientImpl()
-        with patch("chatgpt_to_notion.adapters.config_loader.config_loader.notion_context") as mock_ctx:
-            mock_ctx.return_value.headers = {
-                "Authorization": "Bearer x",
-                "Notion-Version": "2022-06-28",
-            }
-            assert client.get_headers() == {
-                "Authorization": "Bearer x",
-                "Notion-Version": "2022-06-28",
-            }
+        ctx = MagicMock()
+        ctx.headers = {
+            "Authorization": "Bearer x",
+            "Notion-Version": "2022-06-28",
+        }
+        client = NotionClientImpl(ctx)
+        assert client.get_headers() == {
+            "Authorization": "Bearer x",
+            "Notion-Version": "2022-06-28",
+        }
 
 
 class TestContentTypeForExt:
@@ -70,7 +71,7 @@ class TestContentTypeForExt:
 class TestGetDbDataSources:
     @pytest.mark.asyncio
     async def test_returns_cached(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_cached_data_sources") as mock_get, \
              patch("chatgpt_to_notion.adapters.sqlite_store.sqlite_store.init_db") as mock_init, \
@@ -97,7 +98,7 @@ class TestGetDbDataSources:
             mock_get.return_value = None
             mock_init.return_value = None
 
-            client = NotionClientImpl()
+            client = NotionClientImpl(config_loader.notion_context())
             result = await client._get_db_data_sources(session, "db1")
             assert result == [{"id": "ds1"}]
             mock_set.assert_awaited_once_with("db1", [{"id": "ds1"}])
@@ -108,7 +109,7 @@ class TestQueryDataSource:
     async def test_posts_query(self):
         response = _response_with_status(200, {"results": []})
         session = _session_with_post(response)
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
 
         result = await client._query_data_source(session, "ds1", "query")
         assert result == {"results": []}
@@ -118,7 +119,7 @@ class TestQueryDataSource:
 class TestQueryDataSourceForPage:
     @pytest.mark.asyncio
     async def test_returns_true_on_match(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with patch.object(
             client,
@@ -140,7 +141,7 @@ class TestQueryDataSourceForPage:
 
     @pytest.mark.asyncio
     async def test_returns_false_on_no_match(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with patch.object(
             client,
@@ -154,7 +155,7 @@ class TestQueryDataSourceForPage:
 class TestIsPageExistsInDb:
     @pytest.mark.asyncio
     async def test_false_on_empty_data_sources(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with patch.object(
             client,
@@ -166,7 +167,7 @@ class TestIsPageExistsInDb:
 
     @pytest.mark.asyncio
     async def test_true_on_any_match(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with patch.object(
             client,
@@ -184,7 +185,7 @@ class TestIsPageExistsInDb:
 class TestCreateUploadImg:
     @pytest.mark.asyncio
     async def test_raises_on_missing_file(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with pytest.raises(FileNotFoundError):
             await client._create_upload_img(session, "/nonexistent.png")
@@ -193,7 +194,7 @@ class TestCreateUploadImg:
     async def test_creates_upload(self):
         response = _response_with_status(200, {"id": "upload1"})
         session = _session_with_post(response)
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
 
         with patch("os.path.exists", return_value=True):
             result = await client._create_upload_img(session, "test.png")
@@ -203,7 +204,7 @@ class TestCreateUploadImg:
 class TestSendUploadImg:
     @pytest.mark.asyncio
     async def test_raises_on_missing_file(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with pytest.raises(FileNotFoundError):
             await client._send_upload_img(session, "upload1", "/nonexistent.png")
@@ -218,7 +219,7 @@ class TestSendUploadImg:
         session = MagicMock()
         session.post.return_value = mgr
 
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         with patch.object(
             client,
             "get_headers",
@@ -236,7 +237,7 @@ class TestSendUploadImg:
 class TestAddPageToDb:
     @pytest.mark.asyncio
     async def test_raises_on_missing_file(self):
-        client = NotionClientImpl()
+        client = NotionClientImpl(config_loader.notion_context())
         session = MagicMock()
         with pytest.raises(FileNotFoundError):
             await client.add_page_to_db(session, "db1", "/nonexistent.png", "prompt")
@@ -245,7 +246,13 @@ class TestAddPageToDb:
     async def test_uploads_and_creates_page(self):
         response = _response_with_status(200, {"id": "upload1"})
         session = _session_with_post(response)
-        client = NotionClientImpl()
+        ctx = MagicMock()
+        ctx.headers = {
+            "Authorization": "Bearer x",
+            "Notion-Version": "2022-06-28",
+        }
+        ctx.account_name = "test@example.com"
+        client = NotionClientImpl(ctx)
 
         with patch.object(
             client,
@@ -255,15 +262,7 @@ class TestAddPageToDb:
             client,
             "_send_upload_img",
             new=AsyncMock(return_value={"id": "file1", "status": "complete"}),
-        ), patch(
-            "chatgpt_to_notion.adapters.config_loader.config_loader.notion_context"
-        ) as mock_ctx, patch("os.path.exists", return_value=True):
-
-            mock_ctx.return_value.headers = {
-                "Authorization": "Bearer x",
-                "Notion-Version": "2022-06-28",
-            }
-            mock_ctx.return_value.account_name = "test@example.com"
+        ), patch("os.path.exists", return_value=True):
 
             result = await client.add_page_to_db(session, "db1", "test.png", "my prompt")
             assert "id" in result

@@ -66,7 +66,7 @@ def register(app: typer.Typer) -> None:
             )
             for target_account in target_accounts:
                 options = RuntimeOptions(config_path=config, account=target_account)
-                client = ChatGPTClientImpl(options)
+                client = ChatGPTClientImpl(config_loader.provider_context(options))
                 async with aiohttp.ClientSession() as session:
                     total = await client.delete_library_images_by_query(
                         session,

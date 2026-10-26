@@ -7,14 +7,13 @@ from typing import Any
 
 import aiohttp
 
-from ..domain.models import RuntimeOptions
+from ..domain.models import NotionContext, RuntimeOptions
 from ..shared.http import (
     DetailedHTTPError,
     raise_for_status_with_detail,
     retry_http,
 )
 from ..shared.logging import get_logger
-from .config_loader import ConfigLoader
 from .config_loader import config_loader as default_config_loader
 from .sqlite_store import SqliteStore
 from .sqlite_store import sqlite_store as default_store
@@ -41,16 +40,14 @@ class NotionClientImpl:
 
     def __init__(
         self,
-        options: RuntimeOptions | None = None,
+        notion_context: NotionContext,
         sqlite_store: SqliteStore | None = None,
-        config_loader: ConfigLoader | None = None,
     ):
-        self._options = options
+        self._notion_context = notion_context
         self._sqlite_store = sqlite_store or default_store
-        self._config_loader = config_loader or default_config_loader
 
     def get_headers(self) -> dict[str, str]:
-        return self._config_loader.notion_context(self._options).headers
+        return self._notion_context.headers
 
     @retry_http()
     async def _get_db_data_sources(
@@ -207,7 +204,7 @@ class NotionClientImpl:
         ext = os.path.splitext(file_name)[1].lower() or ".png"
         content_type = _content_type_for_ext(ext)
 
-        notion_ctx = self._config_loader.notion_context(self._options)
+        notion_ctx = self._notion_context
         headers = notion_ctx.headers
         account_name = notion_ctx.account_name
         create_upload_res = await self._create_upload_img(

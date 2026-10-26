@@ -122,7 +122,6 @@ class HistoryServiceProtocol(Protocol):
         include_uploaded: bool = False,
         keep_days: int | None = None,
         timezone_name: str | None = None,
-        options: RuntimeOptions | None = None,
     ) -> list[ChatGPTImageGeneration]: ...
 
     async def fetch_generations_for_conversation(

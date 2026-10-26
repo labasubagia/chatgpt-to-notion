@@ -24,8 +24,8 @@ def _load_toml_config(config_path: str | None = None) -> AppConfig | None:
         return AppConfig.model_validate(tomllib.load(file_obj))
 
 class ConfigLoader:
-    def __init__(self, options: RuntimeOptions | None = None):
-        self._options = options
+    def __init__(self) -> None:
+        pass
 
     def resolve(self, options: RuntimeOptions | None = None) -> ResolvedConfig:
         if options is None:
