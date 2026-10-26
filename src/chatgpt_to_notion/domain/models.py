@@ -278,6 +278,3 @@ class NotionContext(BaseModel):
     headers: dict[str, str]
     database_id: str | None = None
     account_name: str = ""
-
-
-ConfigDictType = dict[str, Any]
