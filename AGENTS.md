@@ -40,7 +40,7 @@ When using coding agents in this repository, prefer small, verifiable changes. S
 
 ## Commit & Pull Request Guidelines
 
-Recent history follows concise Conventional Commit-style subjects such as `refactor: simplify cli naming` and `fix: improve conversation deletion logic`. Keep commits scoped to one logical change. PRs should include a short summary, the user-visible impact, and a testing section listing commands run, e.g. `uv run pytest`. Link the relevant issue or context when available.
+Recent history follows concise Conventional Commit-style subjects such as `refactor: simplify cli naming` and `fix: improve conversation deletion logic`. Keep commits scoped to one logical change. PRs should use the `.github/PULL_REQUEST_TEMPLATE.md` template; keep the summary short, describe user-visible impact, and list commands run (e.g. `uv run pytest`). Link the relevant issue or context when available.
 
 ## Development Process
 
@@ -63,23 +63,6 @@ Recent history follows concise Conventional Commit-style subjects such as `refac
 **Never auto-merge PRs without explicit user permission.** Wait for confirmation before merging.
 **Never commit:** `config.toml`, tokens, cookies, downloaded output, `.venv/`, `__pycache__/`.
 
-## PR Format
-
-**Ensure good markdown formatting** in PR descriptions. Use this template:
-
-### Summary
-- Brief description of the changes.
-
-### Changes Made
-- Change 1
-- Change 2
-
-### Testing
-- [ ] Tested locally
-- [ ] Tests passed (`uv run pytest`)
-- **Do not include test logs/output in PR description**
-### Notes
-- Any additional information (optional)
 ## Security & Configuration Tips
 
 Do not commit `config.toml`, tokens, cookies, or downloaded output. Start from `config.toml.example`, keep secrets local, and use per-account configuration only when needed for the current task.
