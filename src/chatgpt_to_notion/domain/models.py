@@ -1,7 +1,11 @@
 """Type definitions for image generation data structures and app config."""
 
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol
 
+import aiohttp
 from email_validator import EmailNotValidError, validate_email
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -31,6 +35,116 @@ class ChatGPTImageGeneration(BaseModel):
     prompt: str = ""
 
 
+class ChatGPTClient(Protocol):
+    """Protocol for ChatGPT API operations."""
+
+    async def get_conversation_details(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+    ) -> dict[str, Any]: ...
+
+    async def delete_conversation(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+    ) -> dict[str, Any]: ...
+
+    async def get_image_generations(
+        self,
+        session: aiohttp.ClientSession,
+        limit: int = 100,
+    ) -> dict[str, Any]: ...
+
+    async def get_library_images(
+        self,
+        session: aiohttp.ClientSession,
+        query: str | None = None,
+        cursor: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def get_prompt_from_image_node_in_conversation(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+        message_id: str,
+        asset_pointer: str,
+    ) -> str: ...
+
+    async def delete_library_file(
+        self,
+        session: aiohttp.ClientSession,
+        item: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    def get_headers(self) -> dict[str, str]: ...
+
+
+class NotionClient(Protocol):
+    """Protocol for Notion API operations."""
+
+    async def is_page_exists_in_db(
+        self,
+        session: aiohttp.ClientSession,
+        db_id: str,
+        query: str,
+    ) -> bool: ...
+
+    async def add_page_to_db(
+        self,
+        session: aiohttp.ClientSession,
+        db_id: str,
+        file_path: str,
+        prompt: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_headers(self) -> dict[str, str]: ...
+
+
+class HistoryServiceProtocol(Protocol):
+    """Protocol for history retrieval operations."""
+
+    async def load_image_generations(
+        self,
+        account: str,
+    ) -> list[ChatGPTImageGeneration]: ...
+
+    async def fetch_generations_for_conversation(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+        chatgpt_client: ChatGPTClient,
+        options: RuntimeOptions | None,
+    ) -> list[ChatGPTImageGeneration]: ...
+
+    async def download_image(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        file_path: str,
+    ) -> None: ...
+
+    def get_uploaded_generation_ids(self, account: str) -> set[str]: ...
+
+    async def mark_generations_uploaded(
+        self, account: str, generation_ids: set[str]
+    ) -> None: ...
+
+
+class ImageServiceProtocol(Protocol):
+    """Protocol for image metadata operations."""
+
+    def add_prompt_to_image_single(
+        self,
+        generation: ImageGeneration,
+        folder: str,
+    ) -> None: ...
+
+
+
+RemoveLibraryFunc = Callable[..., Awaitable[None]]
+
+
 class NotionConfig(BaseModel):
     """Notion credentials and defaults."""
 
@@ -39,6 +153,8 @@ class NotionConfig(BaseModel):
     api_key: str | None = None
     database_id: str | None = None
     version: str = "2025-09-03"
+
+
 
 
 class AccountConfig(BaseModel):
@@ -84,7 +200,7 @@ class AppConfig(BaseModel):
     accounts: dict[str, AccountConfig] = {}
 
     @model_validator(mode="after")
-    def _validate_account_keys_are_emails(self) -> "AppConfig":
+    def _validate_account_keys_are_emails(self) -> AppConfig:
         invalid: list[str] = []
         for name in self.accounts:
             try:
