@@ -8,12 +8,11 @@ import pytest
 from chatgpt_to_notion.services import account_status_service
 
 
-
 class TestGetActivityStatusForDate:
     """Formatting/calculation behavior exercised through the public entrypoint."""
 
     @pytest.fixture
-    def config_file(self, tmp_path):
+    def config_file(self, tmp_path, monkeypatch):
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -28,6 +27,12 @@ authorization_token = "token1"
 """
         f = tmp_path / "config.toml"
         f.write_text(config_text.strip())
+        import tomllib
+        from chatgpt_to_notion.domain.models import AppConfig
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config._load_config",
+            lambda _path: AppConfig.model_validate(tomllib.loads(config_text)),
+        )
         return str(f)
 
     def _today_rows(self, config_file, stats, now=None, has_data=True):
@@ -39,7 +44,6 @@ authorization_token = "token1"
             return_value=stats,
         ):
             today, _, _ = account_status_service.get_account_activity_statuses(
-                config_path=config_file,
                 timezone_name="UTC",
                 now=now or datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
             )
@@ -145,7 +149,6 @@ database_id = "test_db"
         config_file.write_text(config_text.strip())
 
         today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-            config_path=str(config_file),
             timezone_name=None,
         )
 
@@ -177,7 +180,6 @@ authorization_token = "token2"
             mock_has.return_value = False
 
             today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                config_path=str(config_file),
                 timezone_name="UTC",
             )
 
@@ -238,7 +240,6 @@ authorization_token = "token3"
             now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 
             today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                config_path=str(config_file),
                 timezone_name="UTC",
                 now=now,
             )
@@ -292,7 +293,6 @@ authorization_token = "token1"
                     mock_dt.side_effect = dt_constructor
 
                     today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                        config_path=str(config_file),
                         timezone_name="UTC",
                     )
 
@@ -325,7 +325,6 @@ authorization_token = "token1"
             mock_has.return_value = False
 
             today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                config_path=str(config_file),
                 timezone_name="Asia/Singapore",
             )
 
@@ -352,7 +351,6 @@ authorization_token = "token1"
             mock_has.return_value = False
 
             today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                config_path=str(config_file),
                 timezone_name=None,
             )
 
@@ -404,7 +402,6 @@ authorization_token = "token1"
                     mock_dt.side_effect = dt_constructor
 
                     today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                        config_path=str(config_file),
                         timezone_name="UTC",
                     )
 
@@ -443,7 +440,6 @@ authorization_token = "token1"
                 "last_active": cooldown_threshold.isoformat(),
             }
             today_rows, _, total = account_status_service.get_account_activity_statuses(
-                config_path=str(config_file),
                 timezone_name="UTC",
                 now=now,
             )

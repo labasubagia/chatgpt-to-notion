@@ -6,13 +6,12 @@ from pathlib import Path
 
 from ..domain.models import RuntimeOptions
 from ..shared import constants
-from .config_loader import ConfigLoader
-from .config_loader import config_loader as default_config_loader
+from .config import Config, get_config
 
 
 class Filesystem:
-    def __init__(self, config_loader: ConfigLoader | None = None):
-        self._config_loader = config_loader or default_config_loader
+    def __init__(self, config: Config | None = None):
+        self._config = config or get_config()
 
     def output_path(self, input_path_str: str, is_dir: bool = False) -> Path:
         input_path = Path(input_path_str)
@@ -44,9 +43,9 @@ class Filesystem:
         options = options or RuntimeOptions()
         if options.image_folder:
             return self._resolve_folder_path(options.image_folder, "")
-        if options.config_path or options.account:
+        if options.account:
             try:
-                resolved = self._config_loader.resolve(options)
+                resolved = self._config.resolve(options)
                 if resolved.image_folder:
                     return self._resolve_folder_path(resolved.image_folder, "")
             except ValueError:

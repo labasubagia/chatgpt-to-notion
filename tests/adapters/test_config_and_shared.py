@@ -11,7 +11,7 @@ import aiohttp
 import pytest
 
 from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
-from chatgpt_to_notion.adapters.config_loader import config_loader
+from chatgpt_to_notion.adapters.config import get_config
 from chatgpt_to_notion.adapters.filesystem import filesystem
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
@@ -216,7 +216,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        resolved = config_loader.resolve(RuntimeOptions(account="work@example.com"))
+        resolved = get_config().resolve(RuntimeOptions(account="work@example.com"))
 
         assert resolved.account_name == "work@example.com"
         assert resolved.account.authorization_token == "token_work"
@@ -239,10 +239,10 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = config_loader.provider_context(
+        provider = get_config().provider_context(
             RuntimeOptions(account="personal@example.com")
         )
-        notion = config_loader.notion_context(RuntimeOptions(account="personal@example.com"))
+        notion = get_config().notion_context(RuntimeOptions(account="personal@example.com"))
 
         assert provider.headers["Authorization"] == "Bearer token_personal"
         assert notion.headers["Authorization"] == "Bearer notion_key"
@@ -262,7 +262,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = config_loader.provider_context(
+        provider = get_config().provider_context(
             RuntimeOptions(account="personal@example.com")
         )
 
@@ -286,7 +286,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        notion = config_loader.notion_context(RuntimeOptions(account="personal@example.com"))
+        notion = get_config().notion_context(RuntimeOptions(account="personal@example.com"))
 
         assert notion.account_name == "personal@example.com"
 
@@ -310,13 +310,13 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         # 1. Test shared default resolution & decoding
-        provider_personal = config_loader.provider_context(
+        provider_personal = get_config().provider_context(
             RuntimeOptions(account="personal@example.com")
         )
         assert provider_personal.headers["Cookie"] == "cookie_shared"
 
         # 2. Test account-level override resolution & decoding
-        provider_override = config_loader.provider_context(
+        provider_override = get_config().provider_context(
             RuntimeOptions(account="override@example.com")
         )
         assert provider_override.headers["Cookie"] == "cookie_override"
@@ -335,7 +335,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="Invalid base64 in cookie_string_base64"):
-            config_loader.provider_context(
+            get_config().provider_context(
                 RuntimeOptions(account="personal@example.com")
             )
 
@@ -356,7 +356,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        assert config_loader.account_names() == ["a@example.com", "b@example.com"]
+        assert get_config().account_names() == ["a@example.com", "b@example.com"]
 
     def test_account_keys_must_be_valid_emails(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
@@ -371,7 +371,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="valid email"):
-            config_loader.resolve(RuntimeOptions(account="not_an_email"))
+            get_config().resolve(RuntimeOptions(account="not_an_email"))
 
 
 class TestAccountActivityStatus:

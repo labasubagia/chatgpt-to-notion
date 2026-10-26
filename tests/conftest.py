@@ -6,6 +6,32 @@ from unittest.mock import MagicMock
 import pytest
 
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
+_MINIMAL_TEST_CONFIG = """\
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+[accounts."default@example.com"]
+authorization_token = "test_token_abc"
+"""
+
+_root_config = Path("config.toml")
+_root_config_created = False
+if not _root_config.exists():
+    _root_config.write_text(_MINIMAL_TEST_CONFIG)
+    _root_config_created = True
+
+
+def pytest_unconfigure(config) -> None:
+    """Remove the generated config.toml if we created it."""
+    if _root_config_created and _root_config.exists():
+        _root_config.unlink()
+
+
 
 
 @pytest.fixture
@@ -83,11 +109,11 @@ def sample_notion_response():
 
 @pytest.fixture(autouse=True)
 def clear_config_cache():
-    """Clear the config cache before each test to avoid stale results."""
-    from chatgpt_to_notion.adapters.config_loader import _load_toml_config
-    _load_toml_config.cache_clear()
+    """Reset the cached Config singleton before each test so it reloads."""
+    from chatgpt_to_notion.adapters import config
+    config._config = None
     yield
-    _load_toml_config.cache_clear()
+    config._config = None
 
 
 @pytest.fixture(autouse=True)

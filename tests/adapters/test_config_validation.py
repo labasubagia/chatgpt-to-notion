@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from chatgpt_to_notion.adapters.config_loader import _load_toml_config, config_loader
+from chatgpt_to_notion.adapters.config import _load_config, get_config
 from chatgpt_to_notion.domain.models import AppConfig, AccountConfig
 
 
@@ -33,7 +33,7 @@ authorization_token = "token2"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        app_config = _load_toml_config(str(config_file))
+        app_config = _load_config(str(config_file))
         assert app_config is not None
         assert "user@example.com" in app_config.accounts
         assert "test.user@domain.org" in app_config.accounts
@@ -59,7 +59,7 @@ authorization_token = "token2"
         config_file.write_text(config_text.strip())
 
         with pytest.raises(ValidationError, match="Account keys must be valid email addresses"):
-            _load_toml_config(str(config_file))
+            _load_config(str(config_file))
 
     def test_mixed_valid_invalid_fails(self, tmp_path):
         """One invalid key should fail entire config."""
@@ -82,7 +82,7 @@ authorization_token = "token2"
         config_file.write_text(config_text.strip())
 
         with pytest.raises(ValidationError, match="Account keys must be valid email addresses"):
-            _load_toml_config(str(config_file))
+            _load_config(str(config_file))
 
     def test_empty_account_key_fails(self, tmp_path):
         """Empty string key should fail."""
@@ -102,13 +102,13 @@ authorization_token = "token1"
         config_file.write_text(config_text.strip())
 
         with pytest.raises(ValidationError, match="Account keys must be valid email addresses"):
-            _load_toml_config(str(config_file))
+            _load_config(str(config_file))
 
 
 class TestPerAccountNotionDatabaseOverride:
     """Tests for per-account Notion database ID override."""
 
-    def test_global_database_used_by_default(self, tmp_path):
+    def test_global_database_used_by_default(self, tmp_path, monkeypatch):
         """Accounts without override use global database_id."""
         config_text = """
 [shared]
@@ -127,13 +127,14 @@ authorization_token = "token2"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user1@example.com")
-        resolved = config_loader.resolve(options)
+        resolved = get_config().resolve(options)
         assert resolved.notion.database_id == "global_db_id"
 
-    def test_per_account_override_works(self, tmp_path):
+    def test_per_account_override_works(self, tmp_path, monkeypatch):
         """Per-account notion_database_id should override global."""
         config_text = """
 [shared]
@@ -153,18 +154,19 @@ authorization_token = "token2"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = config_loader.resolve(options1)
-        resolved2 = config_loader.resolve(options2)
+        resolved1 = get_config().resolve(options1)
+        resolved2 = get_config().resolve(options2)
 
         assert resolved1.notion.database_id == "account1_db"
         assert resolved2.notion.database_id == "global_db_id"
 
-    def test_per_account_cookie_override(self, tmp_path):
+    def test_per_account_cookie_override(self, tmp_path, monkeypatch):
         """Per-account cookie_string_base64 should override global."""
         config_text = """
 [shared]
@@ -184,13 +186,14 @@ authorization_token = "token2"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = config_loader.resolve(options1)
-        resolved2 = config_loader.resolve(options2)
+        resolved1 = get_config().resolve(options1)
+        resolved2 = get_config().resolve(options2)
 
         import base64
         assert base64.b64decode(resolved1.account.cookie_string_base64).decode() == "account1_cookie"
@@ -200,13 +203,13 @@ authorization_token = "token2"
 class TestConfigLoadingEdgeCases:
     """Tests for config loading edge cases."""
 
-    def test_missing_config_file_returns_none(self):
-        """Non-existent config path should return None."""
-        result = _load_toml_config("/nonexistent/path/config.toml")
-        assert result is None
+    def test_missing_config_file_raises(self):
+        """Non-existent config path should raise ValueError."""
+        with pytest.raises(ValueError, match="Missing configuration"):
+            _load_config("/nonexistent/path/config.toml")
 
     def test_empty_accounts_dict_allowed(self, tmp_path):
-        """Config with no accounts should be valid (but config_loader.resolve will fail)."""
+        """Config with no accounts should be valid (but config.resolve will fail)."""
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -219,12 +222,12 @@ database_id = "test_db"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        app_config = _load_toml_config(str(config_file))
+        app_config = _load_config(str(config_file))
         assert app_config is not None
         assert app_config.accounts == {}
 
-    def test_get_account_names_returns_keys(self, tmp_path):
-        """config_loader.account_names should return account keys in insertion order."""
+    def test_get_account_names_returns_keys(self, tmp_path, monkeypatch):
+        """config.account_names should return account keys in insertion order."""
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -242,8 +245,9 @@ authorization_token = "token2"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
-        names = config_loader.account_names(str(config_file))
+        names = get_config().account_names()
         # Returns in insertion order (Python 3.7+ dict preserves insertion order)
         assert names == ["zebra@example.com", "alpha@example.com"]
 
@@ -261,7 +265,7 @@ authorization_token = "token1"
         config_file.write_text(config_text.strip())
 
         # Shared fields are all optional with defaults, so this should pass
-        app_config = _load_toml_config(str(config_file))
+        app_config = _load_config(str(config_file))
         assert app_config is not None
         assert app_config.shared.user_agent is None
         assert app_config.shared.cookie_string_base64 is None
@@ -280,7 +284,7 @@ authorization_token = "token1"
         config_file.write_text(config_text.strip())
 
         # Notion fields are optional with defaults
-        app_config = _load_toml_config(str(config_file))
+        app_config = _load_config(str(config_file))
         assert app_config is not None
         assert app_config.notion.api_key is None
         assert app_config.notion.database_id is None
@@ -303,7 +307,7 @@ database_id = "test_db"
         config_file.write_text(config_text.strip())
 
         with pytest.raises(ValidationError):
-            _load_toml_config(str(config_file))
+            _load_config(str(config_file))
 
     def test_extra_fields_in_shared_forbidden(self, tmp_path):
         """Extra fields in [shared] section should be rejected."""
@@ -324,8 +328,8 @@ authorization_token = "token1"
         config_file.write_text(config_text.strip())
 
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            _load_toml_config(str(config_file))
-            _load_toml_config(str(config_file))
+            _load_config(str(config_file))
+            _load_config(str(config_file))
 
     def test_extra_fields_in_account_forbidden(self, tmp_path):
         """Extra fields in [accounts.*] section should be rejected."""
@@ -346,13 +350,13 @@ extra_field = "not allowed"
         config_file.write_text(config_text.strip())
 
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-            _load_toml_config(str(config_file))
+            _load_config(str(config_file))
 
 
 class TestResolveConfigWithOptions:
-    """Tests for config_loader.resolve with RuntimeOptions."""
+    """Tests for config.resolve with RuntimeOptions."""
 
-    def test_account_option_selects_account(self, tmp_path):
+    def test_account_option_selects_account(self, tmp_path, monkeypatch):
         """--account option should select specific account."""
         config_text = """
 [shared]
@@ -371,15 +375,16 @@ authorization_token = "token2"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user2@example.com")
-        resolved = config_loader.resolve(options)
+        resolved = get_config().resolve(options)
 
         assert resolved.account_name == "user2@example.com"
         assert resolved.account.authorization_token == "token2"
 
-    def test_account_option_invalid_raises(self, tmp_path):
+    def test_account_option_invalid_raises(self, tmp_path, monkeypatch):
         """Invalid --account should raise ValueError."""
         config_text = """
 [shared]
@@ -395,14 +400,15 @@ authorization_token = "token1"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="nonexistent@example.com")
 
         with pytest.raises(ValueError, match="Unknown account: nonexistent@example.com"):
-            config_loader.resolve(options)
+            get_config().resolve(options)
 
-    def test_no_account_with_multiple_accounts_raises(self, tmp_path):
+    def test_no_account_with_multiple_accounts_raises(self, tmp_path, monkeypatch):
         """No --account with multiple accounts should raise ValueError."""
         config_text = """
 [shared]
@@ -421,14 +427,15 @@ authorization_token = "token2"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions()  # no account specified
 
         with pytest.raises(ValueError, match="No account selected"):
-            config_loader.resolve(options)
+            get_config().resolve(options)
 
-    def test_single_account_auto_selected(self, tmp_path):
+    def test_single_account_auto_selected(self, tmp_path, monkeypatch):
         """Single account should be auto-selected when no --account given."""
         config_text = """
 [shared]
@@ -444,9 +451,10 @@ authorization_token = "token1"
 """
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
+        monkeypatch.chdir(tmp_path)
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions()  # no account specified
-        resolved = config_loader.resolve(options)
+        resolved = get_config().resolve(options)
 
         assert resolved.account_name == "user1@example.com"

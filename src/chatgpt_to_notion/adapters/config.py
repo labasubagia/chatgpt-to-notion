@@ -2,7 +2,6 @@
 
 import base64
 import tomllib
-from functools import lru_cache
 from pathlib import Path
 
 from ..domain.models import (
@@ -15,24 +14,23 @@ from ..domain.models import (
 from ..shared.constants import DEFAULT_CONFIG_PATH
 
 
-@lru_cache(maxsize=8)
-def _load_toml_config(config_path: str | None = None) -> AppConfig | None:
+def _load_config(config_path: str | None = None) -> AppConfig:
     path = Path(config_path or DEFAULT_CONFIG_PATH)
     if not path.exists():
-        return None
+        raise ValueError(f"Missing configuration: {path} not found")
     with path.open("rb") as file_obj:
         return AppConfig.model_validate(tomllib.load(file_obj))
 
 
-class ConfigLoader:
-    def __init__(self) -> None:
-        pass
+class Config:
+    def __init__(self, config_path: str | None = None) -> None:
+        self._app_config = _load_config(config_path)
 
     def resolve(self, options: RuntimeOptions | None = None) -> ResolvedConfig:
         runtime_options = options or RuntimeOptions()
-        app_config = _load_toml_config(runtime_options.config_path)
+        app_config = self._app_config
 
-        if not app_config or not app_config.accounts:
+        if not app_config.accounts:
             raise ValueError(
                 "Missing configuration. Create config.toml with at least one account."
             )
@@ -151,11 +149,15 @@ class ConfigLoader:
                 f"Missing required configuration values: {', '.join(missing)}"
             )
 
-    def account_names(self, config_path: str | None = None) -> list[str]:
-        app_config = _load_toml_config(config_path)
-        if not app_config or not app_config.accounts:
-            return []
-        return list(app_config.accounts.keys())
+    def account_names(self) -> list[str]:
+        return list(self._app_config.accounts.keys())
 
 
-config_loader = ConfigLoader()
+_config: Config | None = None
+
+
+def get_config() -> Config:
+    global _config
+    if _config is None:
+        _config = Config()
+    return _config
