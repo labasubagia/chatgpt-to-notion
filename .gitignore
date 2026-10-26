@@ -24,3 +24,6 @@ htmlcov/
 tests/.env
 tests/cassettes/*.yaml.newdist/
 *.toml
+# Worktree development folder (track folder + README, ignore worktree contents)
+tree/*
+!tree/README.md
