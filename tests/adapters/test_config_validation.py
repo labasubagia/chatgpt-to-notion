@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from chatgpt_to_notion.adapters.config import _load_config, Config, select_account
+from chatgpt_to_notion.adapters.config import _load_config, Config
 from chatgpt_to_notion.domain.models import AppConfig, AccountConfig
 
 
@@ -131,7 +131,7 @@ authorization_token = "token2"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user1@example.com")
-        resolved = select_account(Config(), options)
+        resolved = Config().accounts["user1@example.com"]
         assert resolved.notion.database_id == "global_db_id"
 
     def test_per_account_override_works(self, tmp_path, monkeypatch):
@@ -160,8 +160,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = select_account(Config(), options1)
-        resolved2 = select_account(Config(), options2)
+        resolved1 = Config().accounts["user1@example.com"]
+        resolved2 = Config().accounts["user2@example.com"]
 
         assert resolved1.notion.database_id == "account1_db"
         assert resolved2.notion.database_id == "global_db_id"
@@ -192,8 +192,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = select_account(Config(), options1)
-        resolved2 = select_account(Config(), options2)
+        resolved1 = Config().accounts["user1@example.com"]
+        resolved2 = Config().accounts["user2@example.com"]
 
         import base64
         assert base64.b64decode(resolved1.account.cookie_string_base64).decode() == "account1_cookie"
@@ -354,7 +354,7 @@ extra_field = "not allowed"
 
 
 class TestResolveConfigWithOptions:
-    """Tests for select_account with RuntimeOptions."""
+    """Tests for Config.accounts indexing."""
 
     def test_account_option_selects_account(self, tmp_path, monkeypatch):
         """--account option should select specific account."""
@@ -377,15 +377,13 @@ authorization_token = "token2"
         config_file.write_text(config_text.strip())
         monkeypatch.chdir(tmp_path)
 
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions(account="user2@example.com")
-        resolved = select_account(Config(), options)
+        resolved = Config().accounts["user2@example.com"]
 
         assert resolved.account_name == "user2@example.com"
         assert resolved.account.authorization_token == "token2"
 
     def test_account_option_invalid_raises(self, tmp_path, monkeypatch):
-        """Invalid --account should raise ValueError."""
+        """Unknown account email should raise KeyError."""
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -402,59 +400,5 @@ authorization_token = "token1"
         config_file.write_text(config_text.strip())
         monkeypatch.chdir(tmp_path)
 
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions(account="nonexistent@example.com")
-
-        with pytest.raises(ValueError, match="Unknown account: nonexistent@example.com"):
-            select_account(Config(), options)
-
-    def test_no_account_with_multiple_accounts_raises(self, tmp_path, monkeypatch):
-        """No --account with multiple accounts should raise ValueError."""
-        config_text = """
-[shared]
-user_agent = "TestAgent/1.0"
-cookie_string_base64 = "Y29va2llX2RhdGE="
-
-[notion]
-api_key = "secret_test"
-database_id = "global_db"
-
-[accounts."user1@example.com"]
-authorization_token = "token1"
-
-[accounts."user2@example.com"]
-authorization_token = "token2"
-"""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(config_text.strip())
-        monkeypatch.chdir(tmp_path)
-
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions()  # no account specified
-
-        with pytest.raises(ValueError, match="No account selected"):
-            select_account(Config(), options)
-
-    def test_single_account_auto_selected(self, tmp_path, monkeypatch):
-        """Single account should be auto-selected when no --account given."""
-        config_text = """
-[shared]
-user_agent = "TestAgent/1.0"
-cookie_string_base64 = "Y29va2llX2RhdGE="
-
-[notion]
-api_key = "secret_test"
-database_id = "global_db"
-
-[accounts."user1@example.com"]
-authorization_token = "token1"
-"""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(config_text.strip())
-        monkeypatch.chdir(tmp_path)
-
-        from chatgpt_to_notion.domain.models import RuntimeOptions
-        options = RuntimeOptions()  # no account specified
-        resolved = select_account(Config(), options)
-
-        assert resolved.account_name == "user1@example.com"
+        with pytest.raises(KeyError):
+            Config().accounts["nonexistent@example.com"]

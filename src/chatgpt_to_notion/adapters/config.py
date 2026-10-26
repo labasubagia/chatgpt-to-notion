@@ -8,7 +8,6 @@ from types import MappingProxyType
 from ..domain.models import (
     AppConfig,
     ResolvedConfig,
-    RuntimeOptions,
 )
 from ..shared.constants import DEFAULT_CONFIG_PATH
 
@@ -74,20 +73,3 @@ class Config:
 
     def account_names(self) -> list[str]:
         return list(self._accounts)
-
-
-def select_account(
-    config: Config, options: RuntimeOptions | None = None
-) -> ResolvedConfig:
-    """Pick the ResolvedConfig for the active account (default if exactly one)."""
-    name = (options or RuntimeOptions()).account
-    if not name:
-        names = config.account_names()
-        if len(names) == 1:
-            name = names[0]
-        else:
-            raise ValueError("No account selected. Pass --account.")
-    try:
-        return config.accounts[name]
-    except KeyError:
-        raise ValueError(f"Unknown account: {name}") from None

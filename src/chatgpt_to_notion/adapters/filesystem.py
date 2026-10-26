@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..domain.models import RuntimeOptions
 from ..shared import constants
-from .config import Config, select_account
+from .config import Config
 
 
 class Filesystem:
@@ -45,10 +45,10 @@ class Filesystem:
             return self._resolve_folder_path(options.image_folder, "")
         if options.account:
             try:
-                resolved = select_account(self._config, options)
+                resolved = self._config.accounts[options.account]
                 if resolved.image_folder:
                     return self._resolve_folder_path(resolved.image_folder, "")
-            except ValueError:
+            except (KeyError, ValueError):
                 pass
         path = Path(constants.OUTPUT_PATH).resolve() / "images"
         path.mkdir(parents=True, exist_ok=True)
