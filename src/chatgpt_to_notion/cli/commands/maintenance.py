@@ -2,19 +2,10 @@
 
 from pathlib import Path
 
-import aiohttp
 import typer
 
-from ...adapters.chatgpt_api import (
-    count_library_images,
-    delete_library_images_by_query,
-    get_headers,
-)
-from ...adapters.config_loader import get_account_names
 from ...adapters.filesystem import clean_output_path
 from ...adapters.sqlite_store import backup_db, restore_db
-from ...domain.models import RuntimeOptions
-from ...shared.console import safe_async_run
 
 
 def register(app: typer.Typer) -> None:
@@ -46,42 +37,3 @@ def register(app: typer.Typer) -> None:
         print(f"Restoring database from {source}...")
         result = restore_db(source)
         print(f"Database restored from {result}")
-
-    @app.command("delete-library")
-    def delete_library_command(
-        query: str | None = typer.Argument(
-            None, help="Search query to filter library images (omit for all)"
-        ),
-        max_concurrent: int = typer.Option(
-            10, "--max-concurrent", help="Max concurrent delete requests"
-        ),
-        config: str | None = typer.Option(
-            None, "--config", help="Path to TOML config file"
-        ),
-        account: str | None = typer.Option(
-            None, "--account", help="Named account from TOML config"
-        ),
-    ) -> None:
-        """Remove images from ChatGPT library, optionally filtered by query."""
-
-        async def run() -> None:
-            target_accounts = [account] if account else get_account_names(config)
-            for target_account in target_accounts:
-                options = RuntimeOptions(config_path=config, account=target_account)
-                headers = get_headers(options)
-                async with aiohttp.ClientSession() as session:
-                    total = await delete_library_images_by_query(
-                        session,
-                        query=query,
-                        headers=headers,
-                        max_concurrent=max_concurrent,
-                    )
-                    label = f"'{query}'" if query else "(all images)"
-                    print(f"[{target_account}] Deleted {total} images matching {label}")
-                    remaining = await count_library_images(session, headers)
-                    print(
-                        f"[{target_account}] Total images remaining "
-                        f"in library: {remaining}"
-                    )
-
-        safe_async_run(run())
