@@ -8,7 +8,6 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..adapters.config_loader import ConfigLoader
 from ..adapters.filesystem import Filesystem
 from ..adapters.filesystem import filesystem as default_fs
 from ..adapters.sqlite_store import SqliteStore
@@ -61,7 +60,6 @@ async def upload_to_notion_sequential(
     remove_library_func: RemoveLibraryFunc | None = None,
     sqlite_store: SqliteStore | None = None,
     filesystem: Filesystem | None = None,
-    config_loader: ConfigLoader | None = None,
 ) -> None:
     """Process conversations sequentially (one at a time) to minimize 429 errors.
 

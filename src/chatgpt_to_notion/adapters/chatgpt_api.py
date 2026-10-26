@@ -9,13 +9,14 @@ from tqdm.asyncio import tqdm
 
 from ..domain.models import RuntimeOptions
 from ..shared.http import raise_for_status_with_detail, retry_http
-from .config_loader import config_loader
+from .config_loader import ConfigLoader
+from .config_loader import config_loader as default_config_loader
 
 BASE_URL = "https://chatgpt.com/backend-api"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return config_loader.provider_context(options).headers
+    return default_config_loader.provider_context(options).headers
 
 
 def get_conversation_mapping_key_by_asset_pointer(
@@ -94,11 +95,16 @@ def _parse_sse_events(body: str) -> list[dict[str, Any]]:
 class ChatGPTClientImpl:
     """Concrete implementation of ChatGPTClient protocol."""
 
-    def __init__(self, options: RuntimeOptions | None = None):
+    def __init__(
+        self,
+        options: RuntimeOptions | None = None,
+        config_loader: ConfigLoader | None = None,
+    ):
         self._options = options
+        self._config_loader = config_loader or default_config_loader
 
     def get_headers(self) -> dict[str, str]:
-        return get_headers(self._options)
+        return self._config_loader.provider_context(self._options).headers
 
     @retry_http()
     async def get_conversation_details(

@@ -14,8 +14,10 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
-from .config_loader import config_loader
-from .sqlite_store import sqlite_store
+from .config_loader import ConfigLoader
+from .config_loader import config_loader as default_config_loader
+from .sqlite_store import SqliteStore
+from .sqlite_store import sqlite_store as default_store
 
 logger = get_logger("notion")
 
@@ -23,7 +25,7 @@ BASE_URL = "https://api.notion.com"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return config_loader.notion_context(options).headers
+    return default_config_loader.notion_context(options).headers
 
 
 def _content_type_for_ext(ext: str) -> str:
@@ -37,11 +39,18 @@ def _content_type_for_ext(ext: str) -> str:
 class NotionClientImpl:
     """Concrete implementation of NotionClient protocol."""
 
-    def __init__(self, options: RuntimeOptions | None = None):
+    def __init__(
+        self,
+        options: RuntimeOptions | None = None,
+        sqlite_store: SqliteStore | None = None,
+        config_loader: ConfigLoader | None = None,
+    ):
         self._options = options
+        self._sqlite_store = sqlite_store or default_store
+        self._config_loader = config_loader or default_config_loader
 
     def get_headers(self) -> dict[str, str]:
-        return get_headers(self._options)
+        return self._config_loader.notion_context(self._options).headers
 
     @retry_http()
     async def _get_db_data_sources(
@@ -49,8 +58,8 @@ class NotionClientImpl:
         session: aiohttp.ClientSession,
         db_id: str,
     ) -> list[dict[str, Any]]:
-        sqlite_store.init_db()
-        cached = sqlite_store.get_cached_data_sources(db_id)
+        self._sqlite_store.init_db()
+        cached = self._sqlite_store.get_cached_data_sources(db_id)
         if cached is not None:
             return cached
 
@@ -60,7 +69,7 @@ class NotionClientImpl:
             await raise_for_status_with_detail(response)
             data = await response.json()
             data_sources = data.get("data_sources", [])
-            await sqlite_store.async_set_cached_data_sources(db_id, data_sources)
+            await self._sqlite_store.async_set_cached_data_sources(db_id, data_sources)
             return data_sources
 
     @retry_http()
@@ -198,7 +207,7 @@ class NotionClientImpl:
         ext = os.path.splitext(file_name)[1].lower() or ".png"
         content_type = _content_type_for_ext(ext)
 
-        notion_ctx = config_loader.notion_context(self._options)
+        notion_ctx = self._config_loader.notion_context(self._options)
         headers = notion_ctx.headers
         account_name = notion_ctx.account_name
         create_upload_res = await self._create_upload_img(

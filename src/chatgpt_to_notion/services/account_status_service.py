@@ -3,7 +3,7 @@
 from datetime import date, datetime, timedelta, timezone
 
 from ..adapters.config_loader import config_loader
-from ..adapters.sqlite_store import sqlite_store
+from ..adapters.sqlite_store import SqliteStore, sqlite_store
 from ..shared.time import format_duration, resolve_timezone
 
 
@@ -19,8 +19,8 @@ def _make_ready_row(account_name: str, service: str) -> dict[str, str]:
     }
 
 
-def _db_has_valid_data(account_name: str) -> bool:
-    return sqlite_store.has_generations(account_name)
+def _db_has_valid_data(account_name: str, store: SqliteStore | None = None) -> bool:
+    return (store or sqlite_store).has_generations(account_name)
 
 
 def _get_activity_status_for_date(
@@ -29,13 +29,14 @@ def _get_activity_status_for_date(
     service: str,
     now: datetime,
     target_date: date,
+    store: SqliteStore | None = None,
 ) -> tuple[datetime, dict[str, str] | None]:
     tz = now.tzinfo or timezone.utc
     date_start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=tz)
     date_end = date_start + timedelta(days=1)
     cooldown_threshold = now - timedelta(days=1)
 
-    stats = sqlite_store.get_activity_stats(
+    stats = (store or sqlite_store).get_activity_stats(
         account=account_name,
         date_start=date_start.astimezone(timezone.utc).isoformat(),
         date_end=date_end.astimezone(timezone.utc).isoformat(),
@@ -85,6 +86,7 @@ def get_account_activity_statuses(
     config_path: str | None = None,
     timezone_name: str | None = None,
     now: datetime | None = None,
+    store: SqliteStore | None = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], int]:
     account_names = config_loader.account_names(config_path)
     if not account_names:
@@ -102,7 +104,7 @@ def get_account_activity_statuses(
     yesterday_sortable: list[tuple[datetime, dict[str, str]]] = []
 
     for account_name in account_names:
-        has_data = _db_has_valid_data(account_name)
+        has_data = _db_has_valid_data(account_name, store=store)
 
         if not has_data:
             ready_row = _make_ready_row(account_name, "chatgpt")
@@ -115,12 +117,14 @@ def get_account_activity_statuses(
             service="chatgpt",
             now=now,
             target_date=today_date,
+            store=store,
         )
         yesterday_key, yesterday_row = _get_activity_status_for_date(
             account_name=account_name,
             service="chatgpt",
             now=now,
             target_date=yesterday_date,
+            store=store,
         )
         if today_row is not None:
             today_sortable.append((today_key, today_row))

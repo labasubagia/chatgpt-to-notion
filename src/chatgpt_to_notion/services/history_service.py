@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 
 from ..adapters import chatgpt_api
-from ..adapters.sqlite_store import sqlite_store
+from ..adapters.sqlite_store import SqliteStore, sqlite_store
 from ..domain.models import ChatGPTClient, ChatGPTImageGeneration, RuntimeOptions
 from ..shared.http import (
     raise_for_status_with_detail,
@@ -24,18 +24,20 @@ get_prompt_from_image_node_in_conversation = (
 )
 
 
-async def get_uploaded_generation_ids(account: str | None) -> set[str]:
+async def get_uploaded_generation_ids(
+    account: str | None, store: SqliteStore | None = None
+) -> set[str]:
     if not account:
         return set()
-    return sqlite_store.get_uploaded_ids(account)
+    return (store or sqlite_store).get_uploaded_ids(account)
 
 
 async def mark_generations_uploaded(
-    account: str | None, generation_ids: set[str]
+    account: str | None, generation_ids: set[str], store: SqliteStore | None = None
 ) -> None:
     if not account or not generation_ids:
         return
-    sqlite_store.mark_uploaded(account, generation_ids)
+    (store or sqlite_store).mark_uploaded(account, generation_ids)
 
 
 @retry_http()
@@ -72,9 +74,11 @@ async def load_image_generations(
     keep_days: int | None = None,
     timezone_name: str | None = None,
     options: RuntimeOptions | None = None,
+    store: SqliteStore | None = None,
 ) -> list[ChatGPTImageGeneration]:
     del options
-    return sqlite_store.get_generations(
+    db = store or sqlite_store
+    return db.get_generations(
         account,
         include_uploaded=include_uploaded,
         keep_days=keep_days,
