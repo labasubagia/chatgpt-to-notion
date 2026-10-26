@@ -77,8 +77,9 @@ async def upload_to_notion_sequential(
     from ..services import image_service as img_svc
 
     # Use injected or default implementations
-    provider_ctx = config_loader.provider_context(options)
-    notion_ctx = config_loader.notion_context(options)
+    resolved = config_loader.resolve(options)
+    provider_ctx = config_loader.provider_context(resolved=resolved)
+    notion_ctx = config_loader.notion_context(resolved=resolved)
     chatgpt_client_impl: ChatGPTClient = chatgpt_client or ChatGPTClientImpl(
         provider_ctx
     )
@@ -144,7 +145,7 @@ async def upload_to_notion_sequential(
                 print("No generations found.")
                 if delete_library or delete_library_all:
                     await remove_library_func_impl(
-                        options, remove_all=delete_library_all
+                        resolved, remove_all=delete_library_all
                     )
                 return
 
@@ -286,4 +287,4 @@ async def upload_to_notion_sequential(
     print()
 
     if delete_library or delete_library_all:
-        await remove_library_func_impl(options, remove_all=delete_library_all)
+        await remove_library_func_impl(resolved, remove_all=delete_library_all)

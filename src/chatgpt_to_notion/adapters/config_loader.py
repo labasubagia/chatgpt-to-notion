@@ -105,9 +105,13 @@ class ConfigLoader:
         )
 
     def provider_context(
-        self, options: RuntimeOptions | None = None
+        self,
+        options: RuntimeOptions | None = None,
+        *,
+        resolved: ResolvedConfig | None = None,
     ) -> ProviderContext:
-        resolved = self.resolve(options)
+        if resolved is None:
+            resolved = self.resolve(options)
         headers = {
             "Authorization": f"Bearer {resolved.account.authorization_token.strip()}",
             "User-Agent": (resolved.account.user_agent or "").strip(),
@@ -128,8 +132,14 @@ class ConfigLoader:
             account_name=resolved.account_name,
         )
 
-    def notion_context(self, options: RuntimeOptions | None = None) -> NotionContext:
-        resolved = self.resolve(options)
+    def notion_context(
+        self,
+        options: RuntimeOptions | None = None,
+        *,
+        resolved: ResolvedConfig | None = None,
+    ) -> NotionContext:
+        if resolved is None:
+            resolved = self.resolve(options)
         notion = resolved.notion
         return NotionContext(
             headers={

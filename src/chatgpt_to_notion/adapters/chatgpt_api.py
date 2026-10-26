@@ -7,7 +7,7 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..domain.models import ProviderContext, RuntimeOptions
+from ..domain.models import ProviderContext, ResolvedConfig, RuntimeOptions
 from ..shared.http import raise_for_status_with_detail, retry_http
 from .config_loader import config_loader as default_config_loader
 
@@ -263,7 +263,7 @@ class ChatGPTClientImpl:
 
 
 async def remove_library_images(
-    options: RuntimeOptions | None = None,
+    resolved: ResolvedConfig,
     remove_all: bool = False,
 ) -> None:
     """Default implementation for remove_library_func protocol.
@@ -273,23 +273,13 @@ async def remove_library_images(
     from ..shared.http import get_http_timeout
     from .config_loader import config_loader
 
-    queries: list[str] | None = None
-    # Get queries from options or resolve from config
-    if not remove_all:
-        queries = getattr(options, "delete_library_queries", None) if options else None
-        if not queries:
-            # Try to resolve from config
-            try:
-                resolved = config_loader.resolve(options)
-                queries = resolved.delete_library_queries
-                remove_all = resolved.remove_all_library_images
-            except Exception:
-                return
-
+    queries = resolved.delete_library_queries if not remove_all else None
+    if not remove_all and not queries:
+        remove_all = resolved.remove_all_library_images
     if not remove_all and not queries:
         return
 
-    client = ChatGPTClientImpl(default_config_loader.provider_context(options))
+    client = ChatGPTClientImpl(config_loader.provider_context(resolved=resolved))
     async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
         # Count total images first (for progress reporting)
         await client.count_library_images(session)
