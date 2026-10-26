@@ -274,4 +274,3 @@ class NotionClientImpl:
         return await add_page_to_db(
             session, db_id, file_path, prompt, options=self._options
         )
-
