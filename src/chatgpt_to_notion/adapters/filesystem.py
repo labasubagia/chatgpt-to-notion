@@ -6,12 +6,12 @@ from pathlib import Path
 
 from ..domain.models import RuntimeOptions
 from ..shared import constants
-from .config import Config, get_config
+from .config import Config
 
 
 class Filesystem:
-    def __init__(self, config: Config | None = None):
-        self._config = config or get_config()
+    def __init__(self, config: Config):
+        self._config = config
 
     def output_path(self, input_path_str: str, is_dir: bool = False) -> Path:
         input_path = Path(input_path_str)
@@ -81,6 +81,3 @@ class Filesystem:
                 shutil.rmtree(item)
             else:
                 item.unlink()
-
-
-filesystem = Filesystem()

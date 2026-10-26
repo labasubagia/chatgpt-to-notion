@@ -7,15 +7,10 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..domain.models import ProviderContext, ResolvedConfig, RuntimeOptions
+from ..domain.models import ProviderContext, ResolvedConfig
 from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
-from .config import get_config
 
 BASE_URL = "https://chatgpt.com/backend-api"
-
-
-def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_config().provider_context(options).headers
 
 
 def get_conversation_mapping_key_by_asset_pointer(

@@ -7,7 +7,6 @@ import pytest
 
 from chatgpt_to_notion.services import account_status_service
 
-
 class TestGetActivityStatusForDate:
     """Formatting/calculation behavior exercised through the public entrypoint."""
 
@@ -36,18 +35,15 @@ authorization_token = "token1"
         return str(f)
 
     def _today_rows(self, config_file, stats, now=None, has_data=True):
-        with patch(
-            "chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations",
-            return_value=has_data,
-        ), patch(
-            "chatgpt_to_notion.services.account_status_service.sqlite_store.get_activity_stats",
-            return_value=stats,
-        ):
-            today, _, _ = account_status_service.get_account_activity_statuses(
-                timezone_name="UTC",
-                now=now or datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
-            )
-            return today
+        store = MagicMock()
+        store.has_generations.return_value = has_data
+        store.get_activity_stats.return_value = stats
+        today, _, _ = account_status_service.get_account_activity_statuses(
+            timezone_name="UTC",
+            now=now or datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
+            store=store,
+        )
+        return today
 
     def test_no_stats_omits_row(self, config_file):
         assert self._today_rows(config_file, None) == []
@@ -176,16 +172,17 @@ authorization_token = "token2"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations") as mock_has:
-            mock_has.return_value = False
+        store = MagicMock()
+        store.has_generations.return_value = False
 
-            today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                timezone_name="UTC",
-            )
+        today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+            timezone_name="UTC",
+            store=store,
+        )
 
-            assert total == 2
-            assert len(today_rows) == 2
-            assert all("✅" in row["Ready Generate?"] for row in today_rows)
+        assert total == 2
+        assert len(today_rows) == 2
+        assert all("✅" in row["Ready Generate?"] for row in today_rows)
 
     def test_multiple_accounts_mixed_status(self, tmp_path):
         """Should handle multiple accounts with different statuses."""
@@ -210,49 +207,51 @@ authorization_token = "token3"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations") as mock_has, \
-             patch("chatgpt_to_notion.services.account_status_service.sqlite_store.get_activity_stats") as mock_stats:
+        store = MagicMock()
 
-            def has_side_effect(account):
-                return account != "ready@example.com"
+        def has_side_effect(account):
+            return account != "ready@example.com"
 
-            def stats_side_effect(account, date_start, date_end, cooldown_threshold, db_path=None):
-                # cooldown_threshold is now - 1 day = 2026-01-14 12:00:00
-                # Use timestamps AFTER cooldown threshold so they count as active
-                if account == "exhausted@example.com":
-                    return {
-                        "total": 10,
-                        "active_count": 10,
-                        "first_active": "2026-01-14T13:00:00+00:00",
-                        "last_active": "2026-01-14T14:00:00+00:00",
-                    }
-                elif account == "warning@example.com":
-                    return {
-                        "total": 10,
-                        "active_count": 3,
-                        "first_active": "2026-01-14T13:00:00+00:00",
-                        "last_active": "2026-01-14T14:00:00+00:00",
-                    }
-                return None
-            mock_has.side_effect = has_side_effect
-            mock_stats.side_effect = stats_side_effect
+        def stats_side_effect(account, date_start, date_end, cooldown_threshold, db_path=None):
+            # cooldown_threshold is now - 1 day = 2026-01-14 12:00:00
+            # Use timestamps AFTER cooldown threshold so they count as active
+            if account == "exhausted@example.com":
+                return {
+                    "total": 10,
+                    "active_count": 10,
+                    "first_active": "2026-01-14T13:00:00+00:00",
+                    "last_active": "2026-01-14T14:00:00+00:00",
+                }
+            elif account == "warning@example.com":
+                return {
+                    "total": 10,
+                    "active_count": 3,
+                    "first_active": "2026-01-14T13:00:00+00:00",
+                    "last_active": "2026-01-14T14:00:00+00:00",
+                }
+            return None
 
-            now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        store.has_generations.side_effect = has_side_effect
+        store.get_activity_stats.side_effect = stats_side_effect
 
-            today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                timezone_name="UTC",
-                now=now,
-            )
+        now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 
-            assert total == 3
-            # Check statuses
-            ready_rows = [r for r in today_rows if "✅" in r["Ready Generate?"]]
-            exhausted_rows = [r for r in today_rows if "❌" in r["Ready Generate?"]]
-            warning_rows = [r for r in today_rows if "⚠️" in r["Ready Generate?"]]
+        today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+            timezone_name="UTC",
+            now=now,
+            store=store,
+        )
 
-            assert len(ready_rows) == 1
-            assert len(exhausted_rows) == 1
-            assert len(warning_rows) == 1
+        assert total == 3
+        # Check statuses
+        ready_rows = [r for r in today_rows if "✅" in r["Ready Generate?"]]
+        exhausted_rows = [r for r in today_rows if "❌" in r["Ready Generate?"]]
+        warning_rows = [r for r in today_rows if "⚠️" in r["Ready Generate?"]]
+
+        assert len(ready_rows) == 1
+        assert len(exhausted_rows) == 1
+        assert len(warning_rows) == 1
+
     def test_yesterday_date_boundary(self, tmp_path):
         """Should correctly calculate yesterday's date."""
         config_text = """
@@ -270,36 +269,34 @@ authorization_token = "token1"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations") as mock_has:
-            mock_has.return_value = True
+        store = MagicMock()
+        store.has_generations.return_value = True
+        store.get_activity_stats.return_value = {
+            "total": 5,
+            "active_count": 2,
+            "first_active": "2026-01-13T10:00:00+00:00",
+            "last_active": "2026-01-13T14:00:00+00:00",
+        }
 
-            with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.get_activity_stats") as mock_stats:
-                mock_stats.return_value = {
-                    "total": 5,
-                    "active_count": 2,
-                    "first_active": "2026-01-13T10:00:00+00:00",
-                    "last_active": "2026-01-13T14:00:00+00:00",
-                }
+        now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 
-                now = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        with patch("chatgpt_to_notion.services.account_status_service.datetime") as mock_dt:
+            mock_dt.now.return_value = now
+            mock_dt.combine = datetime.combine
+            mock_dt.min = datetime.min
+            mock_dt.timedelta = timedelta
+            def dt_constructor(*args, **kwargs):
+                return datetime(*args, **kwargs)
+            mock_dt.side_effect = dt_constructor
 
-                with patch("chatgpt_to_notion.services.account_status_service.datetime") as mock_dt:
-                    mock_dt.now.return_value = now
-                    mock_dt.combine = datetime.combine
-                    mock_dt.min = datetime.min
-                    mock_dt.timedelta = timedelta
-                    def dt_constructor(*args, **kwargs):
-                        return datetime(*args, **kwargs)
-                    mock_dt.side_effect = dt_constructor
+            today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+                timezone_name="UTC",
+                store=store,
+            )
 
-                    today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                        timezone_name="UTC",
-                    )
-
-                    assert total == 1
-                    assert len(today_rows) == 1
-                    assert len(yesterday_rows) == 1
-
+            assert total == 1
+            assert len(today_rows) == 1
+            assert len(yesterday_rows) == 1
 
 class TestTimezoneHandling:
     """Tests for timezone handling in account status."""
@@ -321,14 +318,15 @@ authorization_token = "token1"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations") as mock_has:
-            mock_has.return_value = False
+        store = MagicMock()
+        store.has_generations.return_value = False
 
-            today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                timezone_name="Asia/Singapore",
-            )
+        today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+            timezone_name="Asia/Singapore",
+            store=store,
+        )
 
-            assert total == 1
+        assert total == 1
 
     def test_system_timezone_when_none_provided(self, tmp_path):
         """Should use system timezone when none provided."""
@@ -347,15 +345,15 @@ authorization_token = "token1"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations") as mock_has:
-            mock_has.return_value = False
+        store = MagicMock()
+        store.has_generations.return_value = False
 
-            today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                timezone_name=None,
-            )
+        today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+            timezone_name=None,
+            store=store,
+        )
 
-            assert total == 1
-
+        assert total == 1
 
 class TestEdgeCases:
     """Edge case tests for account status service."""
@@ -377,35 +375,32 @@ authorization_token = "token1"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations") as mock_has:
-            mock_has.return_value = True
+        store = MagicMock()
+        store.has_generations.return_value = True
+        store.get_activity_stats.return_value = {
+            "total": 5,
+            "active_count": 1,
+            "first_active": "2026-01-15T00:00:00+00:00",
+            "last_active": "2026-01-15T00:00:00+00:00",
+        }
 
-            with patch("chatgpt_to_notion.services.account_status_service.sqlite_store.get_activity_stats") as mock_stats:
-                # Activity exactly at midnight
-                mock_stats.return_value = {
-                    "total": 5,
-                    "active_count": 1,
-                    "first_active": "2026-01-15T00:00:00+00:00",
-                    "last_active": "2026-01-15T00:00:00+00:00",
-                }
+        now = datetime(2026, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
 
-                # Test at midnight
-                now = datetime(2026, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
+        with patch("chatgpt_to_notion.services.account_status_service.datetime") as mock_dt:
+            mock_dt.now.return_value = now
+            mock_dt.combine = datetime.combine
+            mock_dt.min = datetime.min
+            mock_dt.timedelta = timedelta
+            def dt_constructor(*args, **kwargs):
+                return datetime(*args, **kwargs)
+            mock_dt.side_effect = dt_constructor
 
-                with patch("chatgpt_to_notion.services.account_status_service.datetime") as mock_dt:
-                    mock_dt.now.return_value = now
-                    mock_dt.combine = datetime.combine
-                    mock_dt.min = datetime.min
-                    mock_dt.timedelta = timedelta
-                    def dt_constructor(*args, **kwargs):
-                        return datetime(*args, **kwargs)
-                    mock_dt.side_effect = dt_constructor
+            today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+                timezone_name="UTC",
+                store=store,
+            )
 
-                    today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
-                        timezone_name="UTC",
-                    )
-
-                    assert total == 1
+            assert total == 1
 
     def test_active_count_edge_at_cooldown_boundary(self, tmp_path):
         """Activity exactly at cooldown boundary (24h ago) should not count as active."""
@@ -427,25 +422,22 @@ authorization_token = "token1"
         config_file = tmp_path / "config.toml"
         config_file.write_text(config_text.strip())
 
-        with patch(
-            "chatgpt_to_notion.services.account_status_service.sqlite_store.has_generations",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.account_status_service.sqlite_store.get_activity_stats"
-        ) as mock:
-            mock.return_value = {
-                "total": 5,
-                "active_count": 1,
-                "first_active": cooldown_threshold.isoformat(),
-                "last_active": cooldown_threshold.isoformat(),
-            }
-            today_rows, _, total = account_status_service.get_account_activity_statuses(
-                timezone_name="UTC",
-                now=now,
-            )
-            assert total == 1
-            assert len(today_rows) == 1
+        store = MagicMock()
+        store.has_generations.return_value = True
+        store.get_activity_stats.return_value = {
+            "total": 5,
+            "active_count": 1,
+            "first_active": cooldown_threshold.isoformat(),
+            "last_active": cooldown_threshold.isoformat(),
+        }
+        today_rows, _, total = account_status_service.get_account_activity_statuses(
+            timezone_name="UTC",
+            now=now,
+            store=store,
+        )
 
+        assert total == 1
+        assert len(today_rows) == 1
 
 class TestFormatDuration:
     """Tests for format_duration helper."""

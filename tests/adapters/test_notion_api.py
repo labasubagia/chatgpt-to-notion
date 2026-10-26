@@ -41,7 +41,7 @@ class TestGetHeaders:
             "Authorization": "Bearer x",
             "Notion-Version": "2022-06-28",
         }
-        client = NotionClientImpl(ctx)
+        client = NotionClientImpl(ctx, sqlite_store=MagicMock())
         assert client.get_headers() == {
             "Authorization": "Bearer x",
             "Notion-Version": "2022-06-28",

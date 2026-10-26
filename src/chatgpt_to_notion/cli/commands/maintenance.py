@@ -6,19 +6,25 @@ import aiohttp
 import typer
 
 from ...adapters.chatgpt_api import ChatGPTClientImpl
-from ...adapters.config import get_config
-from ...adapters.filesystem import filesystem
-from ...adapters.sqlite_store import sqlite_store
-from ...domain.models import RuntimeOptions
+from ...adapters.config import Config
+from ...adapters.filesystem import Filesystem
+from ...adapters.sqlite_store import SqliteStore
+from ...domain.models import ChatGPTClient, RuntimeOptions
 from ...shared.console import safe_async_run
 
 
-def register(app: typer.Typer) -> None:
+def register(
+    app: typer.Typer,
+    config: Config,
+    store: SqliteStore,
+    fs: Filesystem,
+    chatgpt_client: ChatGPTClient | None = None,
+) -> None:
     @app.command("clean-output-path")
     def clean_output_path_command() -> None:
         """Clean the output directory (except .gitkeep)."""
         print("Cleaning output path...")
-        filesystem.clean_output_path()
+        fs.clean_output_path()
         print("Output path cleaned.")
 
     @app.command("backup-db")
@@ -29,7 +35,7 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Copy the local SQLite database to TARGET."""
         print(f"Backing up database to {target}...")
-        result = sqlite_store.backup(target)
+        result = store.backup(target)
         print(f"Backup saved to {result}")
 
     @app.command("restore-db")
@@ -40,7 +46,7 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Overwrite the local SQLite database with SOURCE."""
         print(f"Restoring database from {source}...")
-        result = sqlite_store.restore(source)
+        result = store.restore(source)
         print(f"Database restored from {result}")
 
     @app.command("delete-library")
@@ -58,10 +64,12 @@ def register(app: typer.Typer) -> None:
         """Remove images from ChatGPT library, optionally filtered by query."""
 
         async def run() -> None:
-            target_accounts = [account] if account else get_config().account_names()
+            target_accounts = [account] if account else config.account_names()
             for target_account in target_accounts:
                 options = RuntimeOptions(account=target_account)
-                client = ChatGPTClientImpl(get_config().provider_context(options))
+                client = chatgpt_client or ChatGPTClientImpl(
+                    config.provider_context(options)
+                )
                 async with aiohttp.ClientSession() as session:
                     total = await client.delete_library_images_by_query(
                         session,

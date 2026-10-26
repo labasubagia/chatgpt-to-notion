@@ -351,7 +351,7 @@ class TestUploadRetry:
         ctx = MagicMock()
         ctx.headers = {"Authorization": "Bearer x", "Notion-Version": "2022-06-28"}
         ctx.account_name = "test@example.com"
-        client = NotionClientImpl(ctx)
+        client = NotionClientImpl(ctx, sqlite_store=MagicMock())
 
         result = await client.add_page_to_db(mock_aiohttp_session, "db1", str(test_file))
 
@@ -378,7 +378,7 @@ class TestUploadRetry:
         ctx = MagicMock()
         ctx.headers = {"Authorization": "Bearer x", "Notion-Version": "2022-06-28"}
         ctx.account_name = "test@example.com"
-        client = NotionClientImpl(ctx)
+        client = NotionClientImpl(ctx, sqlite_store=MagicMock())
 
         result = await client.add_page_to_db(mock_aiohttp_session, "db1", str(test_file))
         assert result["id"] == "page1"

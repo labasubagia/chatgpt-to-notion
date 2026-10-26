@@ -151,13 +151,3 @@ class Config:
 
     def account_names(self) -> list[str]:
         return list(self._app_config.accounts.keys())
-
-
-_config: Config | None = None
-
-
-def get_config() -> Config:
-    global _config
-    if _config is None:
-        _config = Config()
-    return _config

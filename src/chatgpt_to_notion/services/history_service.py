@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 
 from ..adapters import chatgpt_api
-from ..adapters.sqlite_store import SqliteStore, sqlite_store
+from ..adapters.sqlite_store import SqliteStore
 from ..domain.models import ChatGPTClient, ChatGPTImageGeneration
 from ..shared.http import (
     raise_for_status_with_detail,
@@ -29,7 +29,7 @@ async def get_uploaded_generation_ids(
 ) -> set[str]:
     if not account:
         return set()
-    return (store or sqlite_store).get_uploaded_ids(account)
+    return (store or SqliteStore()).get_uploaded_ids(account)
 
 
 async def mark_generations_uploaded(
@@ -37,7 +37,7 @@ async def mark_generations_uploaded(
 ) -> None:
     if not account or not generation_ids:
         return
-    (store or sqlite_store).mark_uploaded(account, generation_ids)
+    (store or SqliteStore()).mark_uploaded(account, generation_ids)
 
 
 @retry_http()
@@ -75,7 +75,7 @@ async def load_image_generations(
     timezone_name: str | None = None,
     store: SqliteStore | None = None,
 ) -> list[ChatGPTImageGeneration]:
-    db = store or sqlite_store
+    db = store or SqliteStore()
     return db.get_generations(
         account,
         include_uploaded=include_uploaded,

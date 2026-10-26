@@ -7,24 +7,18 @@ from typing import Any
 
 import aiohttp
 
-from ..domain.models import NotionContext, RuntimeOptions
+from ..domain.models import NotionContext
 from ..shared.http import (
     DetailedHTTPError,
     raise_for_status_with_detail,
     retry_http,
 )
 from ..shared.logging import get_logger
-from .config import get_config
 from .sqlite_store import SqliteStore
-from .sqlite_store import sqlite_store as default_store
 
 logger = get_logger("notion")
 
 BASE_URL = "https://api.notion.com"
-
-
-def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return get_config().notion_context(options).headers
 
 
 def _content_type_for_ext(ext: str) -> str:
@@ -41,10 +35,10 @@ class NotionClientImpl:
     def __init__(
         self,
         notion_context: NotionContext,
-        sqlite_store: SqliteStore | None = None,
+        sqlite_store: SqliteStore,
     ):
         self._notion_context = notion_context
-        self._sqlite_store = sqlite_store or default_store
+        self._sqlite_store = sqlite_store
 
     def get_headers(self) -> dict[str, str]:
         return self._notion_context.headers

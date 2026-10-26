@@ -5,7 +5,9 @@ from typing import Any
 
 import typer
 
-from ...adapters.config import get_config
+from ...adapters.config import Config
+from ...adapters.filesystem import Filesystem
+from ...adapters.sqlite_store import SqliteStore
 from ...domain.models import RuntimeOptions
 from ...services import upload_sequential
 from ...shared.console import (
@@ -24,16 +26,18 @@ def validate_db_id(db_id: str | None) -> str | None:
     return db_id
 
 
-def _resolve_target_accounts(account: str | None) -> list[str]:
+def _resolve_target_accounts(account: str | None, config: Config) -> list[str]:
     if account:
         return [account]
-    accounts = get_config().account_names()
+    accounts = config.account_names()
     if not accounts:
         raise typer.BadParameter("No accounts found in config.")
     return accounts
 
 
-def register(app: typer.Typer) -> None:
+def register(
+    app: typer.Typer, config: Config, store: SqliteStore, fs: Filesystem
+) -> None:
     @app.command("upload-to-notion")
     def upload_to_notion_command(
         history_folder: str | None = typer.Option(
@@ -125,7 +129,7 @@ def register(app: typer.Typer) -> None:
                 "--all only applies with --from-history or --verify-history"
             )
 
-        target_accounts = _resolve_target_accounts(account)
+        target_accounts = _resolve_target_accounts(account, config)
         total_accounts = len(target_accounts)
         for index, target_account in enumerate(target_accounts, start=1):
             options = RuntimeOptions(
@@ -141,8 +145,8 @@ def register(app: typer.Typer) -> None:
             ]
             if db_id is None:
                 required_vars.append("NOTION_DATABASE_ID")
-            get_config().validate_runtime(required_vars, options=options)
-            resolved = get_config().resolve(options)
+            config.validate_runtime(required_vars, options=options)
+            resolved = config.resolve(options)
             print_account_log_header(
                 action="Upload To Notion",
                 account_name=resolved.account_name,
@@ -177,6 +181,9 @@ def register(app: typer.Typer) -> None:
                 "options": options,
                 "fail_log_path": fail_log,
                 "conversation_delay": conversation_delay,
+                "config": config,
+                "sqlite_store": store,
+                "filesystem": fs,
             }
             ok = safe_async_run(upload_fn(**kwargs))
             if not ok:

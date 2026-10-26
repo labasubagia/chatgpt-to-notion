@@ -103,34 +103,25 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
-    @patch("chatgpt_to_notion.cli.commands.upload.get_config")
     @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
     def test_upload_to_notion_multiple_accounts(
-        self, mock_upload, mock_cfg, mock_config_toml
+        self, mock_upload, mock_config_toml
     ):
         """Should call upload_to_notion_sequential for every configured account."""
+        from unittest.mock import MagicMock
+
+        from chatgpt_to_notion.cli.app import create_app
         from chatgpt_to_notion.domain.models import AccountConfig, NotionConfig, ResolvedConfig
 
-        mock_cfg.return_value.validate_runtime.return_value = None
-        mock_cfg.return_value.account_names.return_value = ["acc1@example.com", "acc2@example.com"]
-        mock_cfg.return_value.resolve.side_effect = [
-            ResolvedConfig(
-                account_name="acc1@example.com",
-                account=AccountConfig(
-                    authorization_token="token1",
-                    user_agent="ua",
-                ),
-                notion=NotionConfig(api_key="key", database_id="db"),
-            ),
-            ResolvedConfig(
-                account_name="acc2@example.com",
-                account=AccountConfig(
-                    authorization_token="token2",
-                    user_agent="ua",
-                ),
-                notion=NotionConfig(api_key="key", database_id="db"),
-            ),
-        ]
+        mock_cfg = MagicMock()
+        mock_cfg.validate_runtime.return_value = None
+        mock_cfg.account_names.return_value = ["acc1@example.com", "acc2@example.com"]
+        mock_cfg.resolve.return_value = ResolvedConfig(
+            account_name="acc",
+            account=AccountConfig(authorization_token="token", user_agent="ua"),
+            notion=NotionConfig(api_key="key", database_id="db"),
+        )
+        app = create_app(config=mock_cfg)
         result = runner.invoke(
             app, ["upload-to-notion", "--db-id", "test_db_12345678901234567890"]
         )
@@ -383,19 +374,24 @@ class TestCLICommands:
 class TestCLIConfigValidation:
     """Tests for TOML configuration validation."""
 
-    def test_missing_config_values_chatgpt(self):
+    def test_missing_config_values_chatgpt(self, mock_config_toml):
         """Should fail if required TOML config values are missing."""
-        with patch("chatgpt_to_notion.cli.commands.upload.get_config") as mock_cfg:
-            mock_cfg.return_value.account_names.return_value = ["default@example.com"]
-            mock_cfg.return_value.validate_runtime.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
-            result = runner.invoke(
-                app,
-                [
-                    "upload-to-notion",
-                    "--db-id", "test_db_12345678901234567890",
-                ],
-            )
-            assert result.exit_code != 0
+        from unittest.mock import MagicMock
+
+        from chatgpt_to_notion.cli.app import create_app
+
+        mock_cfg = MagicMock()
+        mock_cfg.account_names.return_value = ["default@example.com"]
+        mock_cfg.validate_runtime.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
+        app = create_app(config=mock_cfg)
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id", "test_db_12345678901234567890",
+            ],
+        )
+        assert result.exit_code != 0
 
 
 class TestCLIDefaults:

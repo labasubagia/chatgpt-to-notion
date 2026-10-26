@@ -2,8 +2,8 @@
 
 from datetime import date, datetime, timedelta, timezone
 
-from ..adapters.config import get_config
-from ..adapters.sqlite_store import SqliteStore, sqlite_store
+from ..adapters.config import Config
+from ..adapters.sqlite_store import SqliteStore
 from ..shared.time import format_duration, resolve_timezone
 
 
@@ -20,7 +20,7 @@ def _make_ready_row(account_name: str, service: str) -> dict[str, str]:
 
 
 def _db_has_valid_data(account_name: str, store: SqliteStore | None = None) -> bool:
-    return (store or sqlite_store).has_generations(account_name)
+    return (store or SqliteStore()).has_generations(account_name)
 
 
 def _get_activity_status_for_date(
@@ -36,7 +36,7 @@ def _get_activity_status_for_date(
     date_end = date_start + timedelta(days=1)
     cooldown_threshold = now - timedelta(days=1)
 
-    stats = (store or sqlite_store).get_activity_stats(
+    stats = (store or SqliteStore()).get_activity_stats(
         account=account_name,
         date_start=date_start.astimezone(timezone.utc).isoformat(),
         date_end=date_end.astimezone(timezone.utc).isoformat(),
@@ -86,8 +86,10 @@ def get_account_activity_statuses(
     timezone_name: str | None = None,
     now: datetime | None = None,
     store: SqliteStore | None = None,
+    config: Config | None = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], int]:
-    account_names = get_config().account_names()
+    config = config or Config()
+    account_names = config.account_names()
     if not account_names:
         return [], [], 0
 
