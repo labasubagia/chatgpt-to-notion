@@ -5,7 +5,7 @@ from typing import Any
 
 import typer
 
-from ...adapters.config import Config
+from ...adapters.config import Config, select_account
 from ...adapters.filesystem import Filesystem
 from ...adapters.sqlite_store import SqliteStore
 from ...domain.models import RuntimeOptions
@@ -145,8 +145,8 @@ def register(
             ]
             if db_id is None:
                 required_vars.append("NOTION_DATABASE_ID")
-            config.validate_runtime(required_vars, options=options)
-            resolved = config.resolve(options)
+            resolved = select_account(config, options)
+            resolved.validate_runtime(required_vars)
             print_account_log_header(
                 action="Upload To Notion",
                 account_name=resolved.account_name,

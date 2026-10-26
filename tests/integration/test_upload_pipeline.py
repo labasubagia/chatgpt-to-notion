@@ -10,7 +10,7 @@ import pytest
 
 from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
 from chatgpt_to_notion.adapters.chatgpt_api import ChatGPTClientImpl
-from chatgpt_to_notion.adapters.config import Config
+from chatgpt_to_notion.adapters.config import Config, select_account
 from chatgpt_to_notion.domain.models import AppConfig, RuntimeOptions
 from chatgpt_to_notion.services import upload_sequential as chatgpt_sequential
 from chatgpt_to_notion.shared.verbosity import SIMPLE, VERBOSE, set_verbosity
@@ -35,7 +35,7 @@ class TestChatGPTHeaders:
     def test_headers_contain_auth(self, mock_config_toml):
         """Headers should contain Authorization."""
         headers = ChatGPTClientImpl(
-            Config().provider_context(RuntimeOptions())
+            select_account(Config(), RuntimeOptions()).provider_context()
         ).get_headers()
         assert "Authorization" in headers
         assert headers["Authorization"].startswith("Bearer ")
@@ -43,14 +43,14 @@ class TestChatGPTHeaders:
     def test_headers_contain_user_agent(self, mock_config_toml):
         """Headers should contain User-Agent."""
         headers = ChatGPTClientImpl(
-            Config().provider_context(RuntimeOptions())
+            select_account(Config(), RuntimeOptions()).provider_context()
         ).get_headers()
         assert "User-Agent" in headers
 
     def test_headers_contain_content_type(self, mock_config_toml):
         """Headers should contain Content-Type."""
         headers = ChatGPTClientImpl(
-            Config().provider_context(RuntimeOptions())
+            select_account(Config(), RuntimeOptions()).provider_context()
         ).get_headers()
         assert "Content-Type" in headers
         assert headers["Content-Type"] == "application/json"
@@ -73,7 +73,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         headers = ChatGPTClientImpl(
-            Config().provider_context(RuntimeOptions())
+            select_account(Config(), RuntimeOptions()).provider_context()
         ).get_headers()
         assert isinstance(headers, dict)
         assert "Authorization" in headers

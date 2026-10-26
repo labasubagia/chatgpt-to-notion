@@ -3,7 +3,7 @@ Integration and unit tests for chatgpt_api.py using pure mocking.
 """
 
 import pytest
-from chatgpt_to_notion.adapters.config import Config
+from chatgpt_to_notion.adapters.config import Config, select_account
 from chatgpt_to_notion.adapters.chatgpt_api import (
     ChatGPTClientImpl,
     _parse_sse_events,
@@ -17,7 +17,7 @@ from tests.conftest import make_mock_response
 class TestChatGPTHeaders:
     def test_get_headers_with_default(self, mock_config_toml):
         """Should return correct default headers from config.toml."""
-        headers = ChatGPTClientImpl(Config().provider_context()).get_headers()
+        headers = ChatGPTClientImpl(select_account(Config()).provider_context()).get_headers()
         assert "Authorization" in headers
         assert headers["Authorization"] == "Bearer test_token_abc"
         assert headers["User-Agent"] == "TestAgent/1.0"
@@ -25,7 +25,7 @@ class TestChatGPTHeaders:
     def test_get_headers_with_options(self, mock_config_toml):
         """Should return headers corresponding to specified options/account."""
         options = RuntimeOptions(account="default@example.com")
-        headers = ChatGPTClientImpl(Config().provider_context(options)).get_headers()
+        headers = ChatGPTClientImpl(select_account(Config(), options).provider_context()).get_headers()
         assert headers["Authorization"] == "Bearer test_token_abc"
 
 
@@ -38,7 +38,7 @@ class TestChatGPTApiOperations:
         mock_response = make_mock_response({"id": "conv_123", "title": "Test Title"})
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.get_conversation_details(mock_aiohttp_session, "conv_123")
         assert res["id"] == "conv_123"
 
@@ -49,7 +49,7 @@ class TestChatGPTApiOperations:
         mock_response = make_mock_response({"success": True})
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.delete_conversation(mock_aiohttp_session, "conv_123")
         assert res["success"] is True
 
@@ -68,7 +68,7 @@ class TestChatGPTApiOperations:
         )
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.delete_conversation(mock_aiohttp_session, "conv_123")
         assert res == {"already_deleted": True}
 
@@ -84,7 +84,7 @@ class TestChatGPTApiOperations:
         )
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         with pytest.raises(DetailedHTTPError) as exc_info:
             await client.delete_conversation(mock_aiohttp_session, "conv_123")
         assert exc_info.value.status == 404
@@ -97,7 +97,7 @@ class TestChatGPTApiOperations:
         mock_response = make_mock_response({"items": [{"id": "gen_1"}]})
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.get_image_generations(mock_aiohttp_session)
         assert res == {"items": [{"id": "gen_1"}]}
 
@@ -128,7 +128,7 @@ class TestChatGPTLibraryOperations:
         })
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.get_library_images(
             mock_aiohttp_session, query="ocean", cursor="prev_cursor"
         )
@@ -142,7 +142,7 @@ class TestChatGPTLibraryOperations:
         mock_response = make_mock_response({"items": [self.SAMPLE_ITEM]})
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.get_library_images(mock_aiohttp_session, query="test")
         assert len(res["items"]) == 1
 
@@ -153,7 +153,7 @@ class TestChatGPTLibraryOperations:
         mock_response = make_mock_response({"success": True})
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.delete_library_file(mock_aiohttp_session, self.SAMPLE_ITEM)
         assert res["success"] is True
 
@@ -166,7 +166,7 @@ class TestChatGPTLibraryOperations:
         )
         mock_aiohttp_session._responses = [mock_response]
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         res = await client.delete_library_file(mock_aiohttp_session, self.SAMPLE_ITEM)
         assert res == {"already_deleted": True}
 
@@ -189,7 +189,7 @@ class TestChatGPTLibraryOperations:
         ]
         mock_aiohttp_session._responses = responses
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         total = await client.delete_library_images_by_query(
             mock_aiohttp_session, query="ocean", max_concurrent=2
         )
@@ -209,7 +209,7 @@ class TestChatGPTLibraryOperations:
         ]
         mock_aiohttp_session._responses = responses
 
-        client = ChatGPTClientImpl(Config().provider_context())
+        client = ChatGPTClientImpl(select_account(Config()).provider_context())
         total = await client.count_library_images(mock_aiohttp_session)
         assert total == 3
 

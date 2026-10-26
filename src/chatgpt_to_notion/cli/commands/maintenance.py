@@ -6,7 +6,7 @@ import aiohttp
 import typer
 
 from ...adapters.chatgpt_api import ChatGPTClientImpl
-from ...adapters.config import Config
+from ...adapters.config import Config, select_account
 from ...adapters.filesystem import Filesystem
 from ...adapters.sqlite_store import SqliteStore
 from ...domain.models import ChatGPTClient, RuntimeOptions
@@ -68,7 +68,7 @@ def register(
             for target_account in target_accounts:
                 options = RuntimeOptions(account=target_account)
                 client = chatgpt_client or ChatGPTClientImpl(
-                    config.provider_context(options)
+                    select_account(config, options).provider_context()
                 )
                 async with aiohttp.ClientSession() as session:
                     total = await client.delete_library_images_by_query(

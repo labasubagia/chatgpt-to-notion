@@ -382,7 +382,9 @@ class TestCLIConfigValidation:
 
         mock_cfg = MagicMock()
         mock_cfg.account_names.return_value = ["default@example.com"]
-        mock_cfg.validate_runtime.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
+        resolved = MagicMock()
+        resolved.validate_runtime.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
+        mock_cfg.accounts = {"default@example.com": resolved}
         app = create_app(config=mock_cfg)
         result = runner.invoke(
             app,

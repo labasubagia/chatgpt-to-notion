@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Sequence
 from typing import Any, Literal, Protocol
 
@@ -239,6 +240,66 @@ class ResolvedConfig(BaseModel):
     image_folder: str | None = None
     delete_library_queries: list[str] = []
     remove_all_library_images: bool = False
+
+    def provider_context(self) -> ProviderContext:
+        """Build the ChatGPT provider context (headers + notion defaults)."""
+        headers = {
+            "Authorization": f"Bearer {self.account.authorization_token.strip()}",
+            "User-Agent": (self.account.user_agent or "").strip(),
+            "Content-Type": "application/json",
+        }
+        cookie_b64 = self.account.cookie_string_base64
+        if cookie_b64:
+            try:
+                cookie_b64 = cookie_b64.strip()
+                decoded_cookie = base64.b64decode(cookie_b64).decode("utf-8")
+                headers["Cookie"] = decoded_cookie
+            except Exception as e:
+                raise ValueError(f"Invalid base64 in cookie_string_base64: {e}") from e
+        return ProviderContext(
+            provider="chatgpt",
+            headers=headers,
+            notion=self.notion,
+            account_name=self.account_name,
+        )
+
+    def notion_context(self) -> NotionContext:
+        """Build the Notion context (headers + database selection)."""
+        notion = self.notion
+        return NotionContext(
+            headers={
+                "Authorization": f"Bearer {(notion.api_key or '').strip()}",
+                "Notion-Version": notion.version,
+                "Content-Type": "application/json",
+            },
+            database_id=notion.database_id,
+            account_name=self.account_name,
+        )
+
+    def validate_runtime(self, required_vars: list[str]) -> None:
+        """Raise if any required configuration value is missing."""
+        missing: list[str] = []
+        for key in required_vars:
+            match key:
+                case "NOTION_API_KEY":
+                    if not (self.notion.api_key or "").strip():
+                        missing.append(key)
+                case "NOTION_DATABASE_ID":
+                    if not (self.notion.database_id or "").strip():
+                        missing.append(key)
+                case "CHATGPT_AUTHORIZATION_TOKEN":
+                    if not self.account.authorization_token.strip():
+                        missing.append(key)
+                case "CHATGPT_USER_AGENT":
+                    if not (self.account.user_agent or "").strip():
+                        missing.append(key)
+                case "CHATGPT_COOKIE_STRING":
+                    if not (self.account.cookie_string_base64 or "").strip():
+                        missing.append(key)
+        if missing:
+            raise ValueError(
+                f"Missing required configuration values: {', '.join(missing)}"
+            )
 
 
 class RuntimeOptions(BaseModel):

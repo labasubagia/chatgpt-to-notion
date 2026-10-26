@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from chatgpt_to_notion.adapters.config import _load_config, Config
+from chatgpt_to_notion.adapters.config import _load_config, Config, select_account
 from chatgpt_to_notion.domain.models import AppConfig, AccountConfig
 
 
@@ -131,7 +131,7 @@ authorization_token = "token2"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user1@example.com")
-        resolved = Config().resolve(options)
+        resolved = select_account(Config(), options)
         assert resolved.notion.database_id == "global_db_id"
 
     def test_per_account_override_works(self, tmp_path, monkeypatch):
@@ -160,8 +160,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = Config().resolve(options1)
-        resolved2 = Config().resolve(options2)
+        resolved1 = select_account(Config(), options1)
+        resolved2 = select_account(Config(), options2)
 
         assert resolved1.notion.database_id == "account1_db"
         assert resolved2.notion.database_id == "global_db_id"
@@ -192,8 +192,8 @@ authorization_token = "token2"
         options1 = RuntimeOptions(account="user1@example.com")
         options2 = RuntimeOptions(account="user2@example.com")
 
-        resolved1 = Config().resolve(options1)
-        resolved2 = Config().resolve(options2)
+        resolved1 = select_account(Config(), options1)
+        resolved2 = select_account(Config(), options2)
 
         import base64
         assert base64.b64decode(resolved1.account.cookie_string_base64).decode() == "account1_cookie"
@@ -209,7 +209,7 @@ class TestConfigLoadingEdgeCases:
             _load_config("/nonexistent/path/config.toml")
 
     def test_empty_accounts_dict_allowed(self, tmp_path):
-        """Config with no accounts should be valid (but config.resolve will fail)."""
+        """Config with no accounts parses (but Config() raises at construction)."""
         config_text = """
 [shared]
 user_agent = "TestAgent/1.0"
@@ -354,7 +354,7 @@ extra_field = "not allowed"
 
 
 class TestResolveConfigWithOptions:
-    """Tests for config.resolve with RuntimeOptions."""
+    """Tests for select_account with RuntimeOptions."""
 
     def test_account_option_selects_account(self, tmp_path, monkeypatch):
         """--account option should select specific account."""
@@ -379,7 +379,7 @@ authorization_token = "token2"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions(account="user2@example.com")
-        resolved = Config().resolve(options)
+        resolved = select_account(Config(), options)
 
         assert resolved.account_name == "user2@example.com"
         assert resolved.account.authorization_token == "token2"
@@ -406,7 +406,7 @@ authorization_token = "token1"
         options = RuntimeOptions(account="nonexistent@example.com")
 
         with pytest.raises(ValueError, match="Unknown account: nonexistent@example.com"):
-            Config().resolve(options)
+            select_account(Config(), options)
 
     def test_no_account_with_multiple_accounts_raises(self, tmp_path, monkeypatch):
         """No --account with multiple accounts should raise ValueError."""
@@ -433,7 +433,7 @@ authorization_token = "token2"
         options = RuntimeOptions()  # no account specified
 
         with pytest.raises(ValueError, match="No account selected"):
-            Config().resolve(options)
+            select_account(Config(), options)
 
     def test_single_account_auto_selected(self, tmp_path, monkeypatch):
         """Single account should be auto-selected when no --account given."""
@@ -455,6 +455,6 @@ authorization_token = "token1"
 
         from chatgpt_to_notion.domain.models import RuntimeOptions
         options = RuntimeOptions()  # no account specified
-        resolved = Config().resolve(options)
+        resolved = select_account(Config(), options)
 
         assert resolved.account_name == "user1@example.com"

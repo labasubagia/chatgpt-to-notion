@@ -132,19 +132,11 @@ class TestGetAccountActivityStatuses:
 
     def test_no_accounts_returns_empty(self, tmp_path):
         """Should return empty lists when no accounts in config."""
-        config_text = """
-[shared]
-user_agent = "TestAgent/1.0"
-cookie_string_base64 = "Y29va2llX2RhdGE="
-
-[notion]
-api_key = "secret_test"
-database_id = "test_db"
-"""
-        config_file = tmp_path / "config.toml"
-        config_file.write_text(config_text.strip())
-
+        from unittest.mock import MagicMock
+        config = MagicMock()
+        config.account_names.return_value = []
         today_rows, yesterday_rows, total = account_status_service.get_account_activity_statuses(
+            config=config,
             timezone_name=None,
         )
 
