@@ -1,0 +1,50 @@
+name: PR Template
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  verify-template:
+    name: PR Template Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR description against template
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 - <<'EOF'
+          import os, sys
+
+          body = os.environ.get("PR_BODY", "") or ""
+          errors = []
+
+          # Required sections from .github/PULL_REQUEST_TEMPLATE.md
+          required = ["### Summary", "### Changes Made", "### Testing"]
+          for section in required:
+              if section not in body:
+                  errors.append(f"missing section: {section}")
+
+          # Placeholder text not replaced (template fill-in lines)
+          placeholders = [
+              "Brief description of the changes.",
+              "Change 1",
+              "Change 2",
+              "Any additional information (optional)",
+          ]
+          for p in placeholders:
+              if p.lower() in body.lower():
+                  errors.append(f"placeholder text remains: '{p}'")
+
+          # At least one testing checkbox must be checked
+          testing = body.split("### Testing", 1)[1] if "### Testing" in body else ""
+          if "- [x]" not in testing.lower():
+              errors.append("no testing checkbox checked (mark at least one '- [x]')")
+
+          if errors:
+              print("PR description does not comply with .github/PULL_REQUEST_TEMPLATE.md:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          print("PR description complies with template.")
+          EOF
