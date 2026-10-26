@@ -330,7 +330,7 @@ class TestUploadRetry:
 
     @pytest.mark.asyncio
     async def test_create_upload_img_retries_on_429(self, mock_aiohttp_session, tmp_path):
-        from chatgpt_to_notion.adapters.notion_api import create_upload_img
+        from chatgpt_to_notion.adapters.notion_api import NotionClientImpl
 
         call_count = 0
 
@@ -356,14 +356,15 @@ class TestUploadRetry:
         test_file.write_bytes(PNG_BYTES)
 
         with patch("chatgpt_to_notion.adapters.notion_api.get_headers", return_value={"Authorization": "Bearer test"}):
-            result = await create_upload_img(mock_aiohttp_session, str(test_file))
+            client = NotionClientImpl()
+            result = await client._create_upload_img(mock_aiohttp_session, str(test_file))
 
         assert result["id"] == "upload-1"
         assert call_count == 3
 
     @pytest.mark.asyncio
     async def test_send_upload_img_streaming(self, mock_aiohttp_session, tmp_path):
-        from chatgpt_to_notion.adapters.notion_api import send_upload_img
+        from chatgpt_to_notion.adapters.notion_api import NotionClientImpl
 
         mock_response = make_mock_response({"id": "upload-1", "status": "complete"}, status=200)
 
@@ -381,7 +382,8 @@ class TestUploadRetry:
         test_file.write_bytes(PNG_BYTES)
 
         with patch("chatgpt_to_notion.adapters.notion_api.get_headers", return_value={"Authorization": "Bearer test", "Notion-Version": "2025-09-03"}):
-            result = await send_upload_img(mock_aiohttp_session, "upload-1", str(test_file))
+            client = NotionClientImpl()
+            result = await client._send_upload_img(mock_aiohttp_session, "upload-1", str(test_file))
 
         assert result["id"] == "upload-1"
         call_args = mock_post.call_args

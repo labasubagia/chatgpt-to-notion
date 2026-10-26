@@ -79,6 +79,18 @@ class ChatGPTClient(Protocol):
 
     def get_headers(self) -> dict[str, str]: ...
 
+    async def count_library_images(
+        self,
+        session: aiohttp.ClientSession,
+    ) -> int: ...
+
+    async def delete_library_images_by_query(
+        self,
+        session: aiohttp.ClientSession,
+        query: str | None = None,
+        max_concurrent: int = 10,
+    ) -> int: ...
+
 
 class NotionClient(Protocol):
     """Protocol for Notion API operations."""
@@ -115,10 +127,10 @@ class HistoryServiceProtocol(Protocol):
 
     async def fetch_generations_for_conversation(
         self,
+        client: ChatGPTClient,
         session: aiohttp.ClientSession,
         conv_id: str,
         image_items: Sequence[dict[str, Any]],
-        headers: dict[str, str],
         existing_ids: set[str],
     ) -> list[ChatGPTImageGeneration]: ...
 

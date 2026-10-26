@@ -217,10 +217,10 @@ async def upload_to_notion_sequential(
                 else:
                     func = history_service_impl.fetch_generations_for_conversation
                     new_generations = await func(
+                        chatgpt_client_impl,
                         chatgpt_session,
                         conv_id,
                         payload,
-                        chatgpt_client_impl.get_headers(),
                         existing_ids,
                     )
                     if new_generations:

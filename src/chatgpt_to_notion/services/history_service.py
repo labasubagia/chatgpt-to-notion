@@ -8,8 +8,8 @@ from typing import Any
 
 import aiohttp
 
-from ..adapters import chatgpt_api, config_loader, sqlite_store
-from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
+from ..adapters import chatgpt_api, sqlite_store
+from ..domain.models import ChatGPTClient, ChatGPTImageGeneration, RuntimeOptions
 from ..shared.http import (
     raise_for_status_with_detail,
     retry_http,
@@ -18,16 +18,6 @@ from ..shared.logging import get_logger
 
 logger = get_logger("history")
 
-get_image_generations = chatgpt_api.get_image_generations
-get_conversation_details = chatgpt_api.get_conversation_details
-get_prompt_from_image_node_in_conversation = (
-    chatgpt_api.get_prompt_from_image_node_in_conversation
-)
-resolve_config = config_loader.resolve_config
-logger = get_logger("history")
-
-get_image_generations = chatgpt_api.get_image_generations
-get_conversation_details = chatgpt_api.get_conversation_details
 get_prompt_from_image_node_in_conversation = (
     chatgpt_api.get_prompt_from_image_node_in_conversation
 )
@@ -92,10 +82,10 @@ async def load_image_generations(
 
 
 async def fetch_generations_for_conversation(
+    client: ChatGPTClient,
     session: aiohttp.ClientSession,
     conv_id: str,
     image_items: Sequence[dict[str, Any]],
-    headers: dict[str, str],
     existing_ids: set[str],
 ) -> list[ChatGPTImageGeneration]:
     """Build generations for one conversation.
@@ -106,8 +96,7 @@ async def fetch_generations_for_conversation(
     new_items = [item for item in image_items if str(item["id"]) not in existing_ids]
     if not new_items:
         return []
-
-    detail = await chatgpt_api.get_conversation_details(session, conv_id, headers)
+    detail = await client.get_conversation_details(session, conv_id)
     generations: list[ChatGPTImageGeneration] = []
     for image_generation in new_items:
         prompt = get_prompt_from_image_node_in_conversation(

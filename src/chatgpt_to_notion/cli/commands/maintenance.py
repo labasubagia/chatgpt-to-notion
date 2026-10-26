@@ -5,11 +5,7 @@ from pathlib import Path
 import aiohttp
 import typer
 
-from ...adapters.chatgpt_api import (
-    count_library_images,
-    delete_library_images_by_query,
-    get_headers,
-)
+from ...adapters.chatgpt_api import ChatGPTClientImpl
 from ...adapters.config_loader import get_account_names
 from ...adapters.filesystem import clean_output_path
 from ...adapters.sqlite_store import backup_db, restore_db
@@ -68,17 +64,16 @@ def register(app: typer.Typer) -> None:
             target_accounts = [account] if account else get_account_names(config)
             for target_account in target_accounts:
                 options = RuntimeOptions(config_path=config, account=target_account)
-                headers = get_headers(options)
+                client = ChatGPTClientImpl(options)
                 async with aiohttp.ClientSession() as session:
-                    total = await delete_library_images_by_query(
+                    total = await client.delete_library_images_by_query(
                         session,
                         query=query,
-                        headers=headers,
                         max_concurrent=max_concurrent,
                     )
                     label = f"'{query}'" if query else "(all images)"
                     print(f"[{target_account}] Deleted {total} images matching {label}")
-                    remaining = await count_library_images(session, headers)
+                    remaining = await client.count_library_images(session)
                     print(
                         f"[{target_account}] Total images remaining "
                         f"in library: {remaining}"

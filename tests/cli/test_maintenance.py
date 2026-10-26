@@ -157,12 +157,11 @@ class TestDeleteLibrary:
             async def __aexit__(self, *args):
                 pass
 
-        with patch("chatgpt_to_notion.cli.commands.maintenance.delete_library_images_by_query", mock_delete):
-            with patch("chatgpt_to_notion.cli.commands.maintenance.count_library_images", mock_count):
+        with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
+            with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
                 with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["test@example.com"]):
-                    with patch("chatgpt_to_notion.cli.commands.maintenance.get_headers", return_value={"Authorization": "Bearer test"}):
-                        with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
-                            result = runner.invoke(app, ["delete-library", "test query", "--max-concurrent", "5"])
+                    with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
+                        result = runner.invoke(app, ["delete-library", "test query", "--max-concurrent", "5"])
 
         assert result.exit_code == 0
         assert "Deleted 5 images" in result.output
@@ -189,12 +188,11 @@ class TestDeleteLibrary:
             async def __aexit__(self, *args):
                 pass
 
-        with patch("chatgpt_to_notion.cli.commands.maintenance.delete_library_images_by_query", mock_delete):
-            with patch("chatgpt_to_notion.cli.commands.maintenance.count_library_images", mock_count):
+        with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
+            with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
                 with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["test@example.com"]):
-                    with patch("chatgpt_to_notion.cli.commands.maintenance.get_headers", return_value={"Authorization": "Bearer test"}):
-                        with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
-                            result = runner.invoke(app, ["delete-library", "--max-concurrent", "5"])
+                    with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
+                        result = runner.invoke(app, ["delete-library", "--max-concurrent", "5"])
 
         assert result.exit_code == 0
         assert "Deleted 10 images" in result.output
@@ -221,12 +219,11 @@ class TestDeleteLibrary:
             async def __aexit__(self, *args):
                 pass
 
-        with patch("chatgpt_to_notion.cli.commands.maintenance.delete_library_images_by_query", mock_delete):
-            with patch("chatgpt_to_notion.cli.commands.maintenance.count_library_images", mock_count):
+        with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
+            with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
                 with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["a@test.com", "b@test.com"]):
-                    with patch("chatgpt_to_notion.cli.commands.maintenance.get_headers", return_value={"Authorization": "Bearer test"}):
-                        with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
-                            result = runner.invoke(app, ["delete-library", "query"])
+                    with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
+                        result = runner.invoke(app, ["delete-library", "query"])
 
         assert result.exit_code == 0
         assert "a@test.com" in result.output
@@ -252,12 +249,11 @@ class TestDeleteLibrary:
             count_called_while_active["value"] = session_state["active"]
             return 5
 
-        with patch("chatgpt_to_notion.cli.commands.maintenance.delete_library_images_by_query", return_value=3):
-            with patch("chatgpt_to_notion.cli.commands.maintenance.count_library_images", mock_count):
+        with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", return_value=3):
+            with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
                 with patch("chatgpt_to_notion.cli.commands.maintenance.get_account_names", return_value=["test@example.com"]):
-                    with patch("chatgpt_to_notion.cli.commands.maintenance.get_headers", return_value={"Authorization": "Bearer test"}):
-                        with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=TrackingSessionContext()):
-                            result = runner.invoke(app, ["delete-library"])
+                    with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=TrackingSessionContext()):
+                        result = runner.invoke(app, ["delete-library"])
 
         assert result.exit_code == 0
         assert count_called_while_active["value"] is True, "count_library_images must be called while session is active"
