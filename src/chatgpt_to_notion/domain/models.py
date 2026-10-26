@@ -147,7 +147,6 @@ class ImageServiceProtocol(Protocol):
     ) -> None: ...
 
 
-
 RemoveLibraryFunc = Callable[..., Awaitable[None]]
 
 
@@ -159,8 +158,6 @@ class NotionConfig(BaseModel):
     api_key: str | None = None
     database_id: str | None = None
     version: str = "2025-09-03"
-
-
 
 
 class AccountConfig(BaseModel):

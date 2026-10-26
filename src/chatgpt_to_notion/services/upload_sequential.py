@@ -180,10 +180,7 @@ async def upload_to_notion_sequential(
 
                     if upload_to_notion:
                         await notion_client_impl.add_page_to_db(
-                            notion_session,
-                            db_id,
-                            str(file_path),
-                            generation.prompt
+                            notion_session, db_id, str(file_path), generation.prompt
                         )
 
                     await history_service_impl.mark_generations_uploaded(
@@ -216,9 +213,7 @@ async def upload_to_notion_sequential(
 
             for idx, (conv_id, payload) in enumerate(conv_payloads):
                 if from_history:
-                    conv_generations: list[
-                    ChatGPTImageGeneration
-                ] = payload
+                    conv_generations: list[ChatGPTImageGeneration] = payload
                 else:
                     func = history_service_impl.fetch_generations_for_conversation
                     new_generations = await func(
@@ -252,8 +247,7 @@ async def upload_to_notion_sequential(
                     if delete_conversation and not from_history:
                         try:
                             await chatgpt_client_impl.delete_conversation(
-                                chatgpt_session,
-                                conv_id
+                                chatgpt_session, conv_id
                             )
                             if is_verbose():
                                 pbar.write(f"✅ Conversation {conv_id} deleted")

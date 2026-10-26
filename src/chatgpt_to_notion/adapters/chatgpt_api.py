@@ -314,9 +314,7 @@ class ChatGPTClientImpl:
         session: aiohttp.ClientSession,
         item: dict[str, Any],
     ) -> dict[str, Any]:
-        return await delete_library_file(
-            session, item, headers=self.get_headers()
-        )
+        return await delete_library_file(session, item, headers=self.get_headers())
 
 
 async def remove_library_images(
@@ -335,7 +333,7 @@ async def remove_library_images(
     if remove_all:
         queries = None  # Not needed when remove_all=True
     else:
-        queries = getattr(options, 'delete_library_queries', None) if options else None
+        queries = getattr(options, "delete_library_queries", None) if options else None
         if not queries:
             # Try to resolve from config
             try:
@@ -364,6 +362,7 @@ async def remove_library_images(
                 await delete_library_images_by_query(
                     session, query=query, headers=headers
                 )
+
 
 __all__ = [
     "get_headers",
