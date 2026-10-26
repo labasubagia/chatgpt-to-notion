@@ -245,3 +245,45 @@ async def add_page_to_db(
     ) as response:
         await raise_for_status_with_detail(response)
         return await response.json()
+
+
+class NotionClientImpl:
+    """Concrete implementation of NotionClient protocol."""
+
+    def __init__(self, options: RuntimeOptions | None = None):
+        self._options = options
+
+    def get_headers(self) -> dict[str, str]:
+        return get_headers(self._options)
+
+    async def is_page_exists_in_db(
+        self,
+        session: aiohttp.ClientSession,
+        db_id: str,
+        query: str,
+    ) -> bool:
+        return await is_page_exists_in_db(session, db_id, query, options=self._options)
+
+    async def add_page_to_db(
+        self,
+        session: aiohttp.ClientSession,
+        db_id: str,
+        file_path: str,
+        prompt: str | None,
+    ) -> dict[str, Any]:
+        return await add_page_to_db(
+            session, db_id, file_path, prompt, options=self._options
+        )
+
+
+__all__ = [
+    "get_headers",
+    "get_db_data_sources",
+    "query_data_source",
+    "_query_data_source_for_page",
+    "is_page_exists_in_db",
+    "create_upload_img",
+    "send_upload_img",
+    "add_page_to_db",
+    "NotionClientImpl",
+]

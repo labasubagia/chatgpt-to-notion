@@ -244,3 +244,140 @@ async def delete_library_images_by_query(
         pbar.close()
 
     return total_deleted
+
+
+class ChatGPTClientImpl:
+    """Concrete implementation of ChatGPTClient protocol."""
+
+    def __init__(self, options: RuntimeOptions | None = None):
+        self._options = options
+
+    def get_headers(self) -> dict[str, str]:
+        return get_headers(self._options)
+
+    async def get_conversation_details(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+    ) -> dict[str, Any]:
+        return await get_conversation_details(
+            session, conversation_id, headers=self.get_headers()
+        )
+
+    async def delete_conversation(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+    ) -> dict[str, Any]:
+        return await delete_conversation(
+            session, conversation_id, headers=self.get_headers()
+        )
+
+    async def get_image_generations(
+        self,
+        session: aiohttp.ClientSession,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        return await get_image_generations(
+            session, headers=self.get_headers(), limit=limit
+        )
+
+    async def get_library_images(
+        self,
+        session: aiohttp.ClientSession,
+        query: str | None = None,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        return await get_library_images(
+            session, query=query, headers=self.get_headers(), cursor=cursor
+        )
+
+    async def get_prompt_from_image_node_in_conversation(
+        self,
+        session: aiohttp.ClientSession,
+        conversation_id: str,
+        message_id: str,
+        asset_pointer: str,
+    ) -> str:
+        # Get conversation details first
+        conv_data = await get_conversation_details(
+            session, conversation_id, headers=self.get_headers()
+        )
+        # Then extract prompt
+        prompt = get_prompt_from_image_node_in_conversation(
+            conv_data, message_id, asset_pointer
+        )
+        return prompt or ""
+
+    async def delete_library_file(
+        self,
+        session: aiohttp.ClientSession,
+        item: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await delete_library_file(
+            session, item, headers=self.get_headers()
+        )
+
+
+async def remove_library_images(
+    options: RuntimeOptions | None = None,
+    remove_all: bool = False,
+) -> None:
+    """Default implementation for remove_library_func protocol.
+
+    Deletes library images based on configured queries
+    or all images.
+    """
+    from ..shared.http import get_http_timeout
+    from .config_loader import get_provider_context, resolve_config
+
+    # Get queries from options or resolve from config
+    if remove_all:
+        queries = None  # Not needed when remove_all=True
+    else:
+        queries = getattr(options, 'delete_library_queries', None) if options else None
+        if not queries:
+            # Try to resolve from config
+            try:
+                resolved = resolve_config(options)
+                queries = resolved.delete_library_queries
+                remove_all = resolved.remove_all_library_images
+            except Exception:
+                return
+
+    if not remove_all and not queries:
+        return
+
+    # Get headers from provider context
+    provider_ctx = get_provider_context(options)
+    headers = provider_ctx.headers
+
+    async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
+        # Count total images first (for progress reporting)
+        await count_library_images(session, headers=headers)
+        if remove_all:
+            # Delete all images
+            await delete_library_images_by_query(session, query=None, headers=headers)
+        else:
+            # Delete images matching each query
+            for query in queries:
+                await delete_library_images_by_query(
+                    session, query=query, headers=headers
+                )
+
+
+__all__ = [
+    "get_headers",
+    "get_conversation_details",
+    "delete_conversation",
+    "get_image_generations",
+    "get_conversation_mapping_key_by_asset_pointer",
+    "get_prompt_from_image_node_in_conversation",
+    "_parse_sse_events",
+    "get_library_images",
+    "delete_library_file",
+    "remove_library_images",
+    "count_library_images",
+    "delete_library_images_by_query",
+    "ChatGPTClientImpl",
+]
