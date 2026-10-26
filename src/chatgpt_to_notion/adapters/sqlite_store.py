@@ -378,6 +378,3 @@ class SqliteStore:
             raise
 
         return target
-
-
-sqlite_store = SqliteStore()

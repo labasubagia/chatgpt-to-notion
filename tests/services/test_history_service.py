@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.services import history_service
-from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
+from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
+
+db = SqliteStore()
 
 pytestmark = pytest.mark.asyncio
 

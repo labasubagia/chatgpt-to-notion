@@ -10,9 +10,9 @@ import asyncio
 import aiohttp
 import pytest
 
-from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
-from chatgpt_to_notion.adapters.config import get_config
-from chatgpt_to_notion.adapters.filesystem import filesystem
+from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
+from chatgpt_to_notion.adapters.config import Config
+from chatgpt_to_notion.adapters.filesystem import Filesystem
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
 from chatgpt_to_notion.services.history_service import (
@@ -44,27 +44,27 @@ class TestGetOutputPath:
 
     def test_relative_path_allowed(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.output_path("images/test.png")
+        path = Filesystem(Config()).output_path("images/test.png")
         assert path.name == "test.png"
         assert "images" in str(path)
 
     def test_absolute_path_rejected(self):
         with pytest.raises(ValueError, match="Absolute paths are not allowed"):
-            filesystem.output_path("/etc/passwd")
+            Filesystem(Config()).output_path("/etc/passwd")
 
     def test_path_traversal_rejected(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         with pytest.raises(ValueError, match="attempts to escape"):
-            filesystem.output_path("../../etc/passwd")
+            Filesystem(Config()).output_path("../../etc/passwd")
 
     def test_creates_parent_directories(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.output_path("nested/deep/path/file.png")
+        path = Filesystem(Config()).output_path("nested/deep/path/file.png")
         assert path.parent.exists()
 
     def test_is_dir_flag(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.output_path("test_dir", is_dir=True)
+        path = Filesystem(Config()).output_path("test_dir", is_dir=True)
         assert path.is_dir()
 
 
@@ -73,26 +73,26 @@ class TestResolveImageFolder:
 
     def test_none_uses_default(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.resolve_image_folder(None)
+        path = Filesystem(Config()).resolve_image_folder(None)
         assert path == tmp_output_dir / "images"
 
     def test_none_creates_default_directory(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.resolve_image_folder(None)
+        path = Filesystem(Config()).resolve_image_folder(None)
         assert path.exists()
 
     def test_absolute_path_returned_as_is(self):
-        path = filesystem.resolve_image_folder("/custom/absolute/path")
+        path = Filesystem(Config()).resolve_image_folder("/custom/absolute/path")
         assert path == Path("/custom/absolute/path")
 
     def test_relative_path_wrapped_in_output(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.resolve_image_folder("my_images")
+        path = Filesystem(Config()).resolve_image_folder("my_images")
         assert path == tmp_output_dir / "my_images"
 
     def test_relative_path_creates_directory(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = filesystem.resolve_image_folder("new_folder/sub")
+        path = Filesystem(Config()).resolve_image_folder("new_folder/sub")
         assert path.parent.exists()
 
 
@@ -216,7 +216,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        resolved = get_config().resolve(RuntimeOptions(account="work@example.com"))
+        resolved = Config().accounts["work@example.com"]
 
         assert resolved.account_name == "work@example.com"
         assert resolved.account.authorization_token == "token_work"
@@ -239,10 +239,8 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = get_config().provider_context(
-            RuntimeOptions(account="personal@example.com")
-        )
-        notion = get_config().notion_context(RuntimeOptions(account="personal@example.com"))
+        provider = Config().accounts["personal@example.com"].provider_context()
+        notion = Config().accounts["personal@example.com"].notion_context()
 
         assert provider.headers["Authorization"] == "Bearer token_personal"
         assert notion.headers["Authorization"] == "Bearer notion_key"
@@ -262,9 +260,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = get_config().provider_context(
-            RuntimeOptions(account="personal@example.com")
-        )
+        provider = Config().accounts["personal@example.com"].provider_context()
 
         assert provider.headers["User-Agent"] == "SharedAgent/1.0"
 
@@ -286,7 +282,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        notion = get_config().notion_context(RuntimeOptions(account="personal@example.com"))
+        notion = Config().accounts["personal@example.com"].notion_context()
 
         assert notion.account_name == "personal@example.com"
 
@@ -310,15 +306,11 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         # 1. Test shared default resolution & decoding
-        provider_personal = get_config().provider_context(
-            RuntimeOptions(account="personal@example.com")
-        )
+        provider_personal = Config().accounts["personal@example.com"].provider_context()
         assert provider_personal.headers["Cookie"] == "cookie_shared"
 
         # 2. Test account-level override resolution & decoding
-        provider_override = get_config().provider_context(
-            RuntimeOptions(account="override@example.com")
-        )
+        provider_override = Config().accounts["override@example.com"].provider_context()
         assert provider_override.headers["Cookie"] == "cookie_override"
 
     def test_cookie_string_invalid_base64(self, tmp_path, monkeypatch):
@@ -335,9 +327,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="Invalid base64 in cookie_string_base64"):
-            get_config().provider_context(
-                RuntimeOptions(account="personal@example.com")
-            )
+            Config().accounts["personal@example.com"].provider_context()
 
     def test_get_account_names_from_toml(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
@@ -356,7 +346,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        assert get_config().account_names() == ["a@example.com", "b@example.com"]
+        assert Config().account_names() == ["a@example.com", "b@example.com"]
 
     def test_account_keys_must_be_valid_emails(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
@@ -371,7 +361,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="valid email"):
-            get_config().resolve(RuntimeOptions(account="not_an_email"))
+            Config()
 
 
 class TestAccountActivityStatus:
@@ -401,7 +391,7 @@ class TestAccountActivityStatus:
             )
             for h in range(1, 9)
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -423,7 +413,7 @@ class TestAccountActivityStatus:
             )
             for h in [13, 14, 15, 16, 17, 1, 2, 3]
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -445,7 +435,7 @@ class TestAccountActivityStatus:
             )
             for h in [13, 14, 15, 16, 17, 18, 19, 20]
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -466,7 +456,7 @@ class TestAccountActivityStatus:
             )
             for d in [2, 3]
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC")
 
@@ -487,7 +477,7 @@ class TestAccountActivityStatus:
                 prompt="Prompt 1",
             )
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -520,7 +510,7 @@ class TestAccountActivityStatus:
             )
             for m in [50, 55]
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -555,7 +545,7 @@ class TestAccountActivityStatus:
                 prompt="Old Prompt",
             ),
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(
             timezone_name="Asia/Jakarta", now=now_jakarta
@@ -606,7 +596,7 @@ class TestAccountActivityStatus:
                 prompt="Yesterday 2",
             ),
         ]
-        db.upsert_generations("default@example.com", generations)
+        SqliteStore().upsert_generations("default@example.com", generations)
 
         today_rows, yesterday_rows, _ = get_account_activity_statuses(timezone_name="UTC", now=now)
 
@@ -636,7 +626,7 @@ class TestUploadedGenerationHelpers:
             url="https://example.com/b.png",
             prompt="B",
         )
-        db.upsert_generations("default@example.com", [gen_a, gen_b])
+        SqliteStore().upsert_generations("default@example.com", [gen_a, gen_b])
 
         assert await get_uploaded_generation_ids("default@example.com") == set()
 
@@ -654,7 +644,7 @@ class TestCleanOutputPath:
         (tmp_output_dir / "test.txt").write_text("test")
         (tmp_output_dir / ".gitkeep").write_text("keep")
 
-        filesystem.clean_output_path()
+        Filesystem(Config()).clean_output_path()
 
         assert not (tmp_output_dir / "test.txt").exists()
         assert (tmp_output_dir / ".gitkeep").exists()
@@ -666,13 +656,13 @@ class TestCleanOutputPath:
         test_dir.mkdir()
         (test_dir / "file.txt").write_text("test")
 
-        filesystem.clean_output_path()
+        Filesystem(Config()).clean_output_path()
 
         assert not test_dir.exists()
 
     def test_nonexistent_path(self, tmp_path, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path / "nonexistent"))
-        filesystem.clean_output_path()
+        Filesystem(Config()).clean_output_path()
 
 
 class TestRetryHttp:

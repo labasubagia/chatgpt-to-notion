@@ -8,13 +8,16 @@ import tomllib
 
 import pytest
 
-from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
-from chatgpt_to_notion.adapters.chatgpt_api import get_headers
-from chatgpt_to_notion.domain.models import AppConfig
+from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
+from chatgpt_to_notion.adapters.chatgpt_api import ChatGPTClientImpl
+from chatgpt_to_notion.adapters.config import Config
+from chatgpt_to_notion.domain.models import AppConfig, RuntimeOptions
 from chatgpt_to_notion.services import upload_sequential as chatgpt_sequential
 from chatgpt_to_notion.shared.verbosity import SIMPLE, VERBOSE, set_verbosity
 from chatgpt_to_notion.services.history_service import load_image_generations
 from tests.conftest import make_mock_response
+
+db = SqliteStore()
 
 
 @pytest.fixture(autouse=True)
@@ -31,18 +34,24 @@ class TestChatGPTHeaders:
 
     def test_headers_contain_auth(self, mock_config_toml):
         """Headers should contain Authorization."""
-        headers = get_headers()
+        headers = ChatGPTClientImpl(
+            Config().accounts["default@example.com"].provider_context()
+        ).get_headers()
         assert "Authorization" in headers
         assert headers["Authorization"].startswith("Bearer ")
 
     def test_headers_contain_user_agent(self, mock_config_toml):
         """Headers should contain User-Agent."""
-        headers = get_headers()
+        headers = ChatGPTClientImpl(
+            Config().accounts["default@example.com"].provider_context()
+        ).get_headers()
         assert "User-Agent" in headers
 
     def test_headers_contain_content_type(self, mock_config_toml):
         """Headers should contain Content-Type."""
-        headers = get_headers()
+        headers = ChatGPTClientImpl(
+            Config().accounts["default@example.com"].provider_context()
+        ).get_headers()
         assert "Content-Type" in headers
         assert headers["Content-Type"] == "application/json"
 
@@ -63,7 +72,9 @@ authorization_token = "test_token_abc"
 """.strip()
         )
         monkeypatch.chdir(tmp_path)
-        headers = get_headers()
+        headers = ChatGPTClientImpl(
+            Config().accounts["default@example.com"].provider_context()
+        ).get_headers()
         assert isinstance(headers, dict)
         assert "Authorization" in headers
         assert "User-Agent" in headers
@@ -404,49 +415,10 @@ authorization_token = "test_token_abc"
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_conversation",
-            delete_conv_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "gen_1",
@@ -459,8 +431,9 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {
+        )
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -471,6 +444,33 @@ authorization_token = "test_token_abc"
                     }
                 }
             }
+        )
+        fake_chat.delete_conversation = delete_conv_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_prompt.return_value = "Test prompt"
 
             from chatgpt_to_notion.services import upload_sequential
@@ -480,6 +480,8 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_conversation=True,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -527,49 +529,10 @@ authorization_token = "test_token_abc"
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_conversation",
-            delete_conv_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "gen_1",
@@ -582,8 +545,9 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {
+        )
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -594,6 +558,33 @@ authorization_token = "test_token_abc"
                     }
                 }
             }
+        )
+        fake_chat.delete_conversation = delete_conv_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_prompt.return_value = "Test prompt"
 
             from chatgpt_to_notion.services import upload_sequential
@@ -603,6 +594,8 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_conversation=False,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -656,13 +649,17 @@ authorization_token = "test_token_abc"
         mock_gen.url = "https://example.com/img.png"
         mock_gen.prompt = "test"
 
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.delete_conversation = delete_conv_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
         with patch(
             "aiohttp.ClientSession",
             return_value=session_mock,
         ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
             "chatgpt_to_notion.services.history_service.load_image_generations",
             new_callable=AsyncMock,
         ) as mock_load_gen, patch(
@@ -670,18 +667,8 @@ authorization_token = "test_token_abc"
             new_callable=AsyncMock,
         ), patch(
             "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_conversation",
-            delete_conv_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
+        ):
             mock_load_gen.return_value = [mock_gen]
-            mock_notion.return_value = False
 
             from chatgpt_to_notion.services import upload_sequential
 
@@ -691,6 +678,8 @@ authorization_token = "test_token_abc"
                 delete_conversation=True,
                 from_history=True,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -745,52 +734,10 @@ authorization_token = "test_token_abc"
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query",
-            remove_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images",
-            count_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "gen_1",
@@ -803,8 +750,9 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {
+        )
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -815,6 +763,33 @@ authorization_token = "test_token_abc"
                     }
                 }
             }
+        )
+        fake_chat.remove_library_images = remove_lib_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_prompt.return_value = "Test prompt"
 
             from chatgpt_to_notion.services import upload_sequential
@@ -824,6 +799,8 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_library=True,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -874,52 +851,10 @@ authorization_token = "test_token_abc"
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query",
-            remove_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images",
-            count_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "gen_1",
@@ -932,8 +867,9 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {
+        )
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -944,6 +880,33 @@ authorization_token = "test_token_abc"
                     }
                 }
             }
+        )
+        fake_chat.remove_library_images = remove_lib_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_prompt.return_value = "Test prompt"
 
             from chatgpt_to_notion.services import upload_sequential
@@ -953,6 +916,8 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_library=False,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1002,52 +967,10 @@ authorization_token = "test_token_abc"
         session_mock.__aenter__ = AsyncMock(return_value=session_mock)
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query",
-            remove_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images",
-            count_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "gen_1",
@@ -1060,8 +983,9 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {
+        )
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -1072,6 +996,33 @@ authorization_token = "test_token_abc"
                     }
                 }
             }
+        )
+        fake_chat.remove_library_images = remove_lib_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_prompt.return_value = "Test prompt"
 
             from chatgpt_to_notion.services import upload_sequential
@@ -1081,6 +1032,8 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_library_all=True,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1137,13 +1090,17 @@ authorization_token = "test_token_abc"
         mock_gen.url = "https://example.com/img.png"
         mock_gen.prompt = "test"
 
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.remove_library_images = remove_lib_mock
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
         with patch(
             "aiohttp.ClientSession",
             return_value=session_mock,
         ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
             "chatgpt_to_notion.services.history_service.load_image_generations",
             new_callable=AsyncMock,
         ) as mock_load_gen, patch(
@@ -1151,21 +1108,8 @@ authorization_token = "test_token_abc"
             new_callable=AsyncMock,
         ), patch(
             "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query",
-            remove_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images",
-            count_lib_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
+        ):
             mock_load_gen.return_value = [mock_gen]
-            mock_notion.return_value = False
 
             from chatgpt_to_notion.services import upload_sequential
 
@@ -1175,6 +1119,8 @@ authorization_token = "test_token_abc"
                 delete_library=True,
                 from_history=True,
                 account="default@example.com",
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1188,7 +1134,7 @@ class TestUploadToAccountStatus:
         self, tmp_path, monkeypatch, isolated_db
     ):
         """Full flow: load from history -> upload -> mark uploaded -> account-status sees it."""
-        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
+        db = SqliteStore()
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
         from datetime import datetime, timezone
         from chatgpt_to_notion.services import history_service
@@ -1224,14 +1170,15 @@ class TestUploadToAccountStatus:
         assert uploaded_before == set()
 
         # Mock external calls (Notion, image download)
-        with patch("chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db", new_callable=AsyncMock) as mock_notion, \
-             patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock) as mock_download, \
-             patch("chatgpt_to_notion.services.image_service.add_prompt_to_image_single") as mock_add_prompt, \
-             patch("chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db", new_callable=AsyncMock) as mock_add_page, \
-             patch("chatgpt_to_notion.adapters.chatgpt_api.get_headers") as mock_headers:
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
 
-            mock_notion.return_value = False
-            mock_headers.return_value = {"Authorization": "Bearer test"}
+        with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock) as mock_download, \
+             patch("chatgpt_to_notion.services.image_service.add_prompt_to_image_single") as mock_add_prompt:
+
 
             await upload_sequential.upload_to_notion_sequential(
                 image_folder=None,
@@ -1239,6 +1186,8 @@ class TestUploadToAccountStatus:
                 delete_conversation=False,
                 from_history=True,
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1260,7 +1209,7 @@ class TestUploadToAccountStatus:
         self, tmp_path, monkeypatch, isolated_db
     ):
         """Full flow: fetch from API -> save to DB -> upload -> mark uploaded -> account-status sees it."""
-        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
+        db = SqliteStore()
         from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
         from chatgpt_to_notion.services import upload_sequential
 
@@ -1285,21 +1234,12 @@ authorization_token = "test_token_abc"
         account = "default@example.com"
 
         # Mock all external API calls
-        with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations", new_callable=AsyncMock) as mock_get_gen, \
-             patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details", new_callable=AsyncMock) as mock_get_conv, \
-             patch("chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db", new_callable=AsyncMock) as mock_notion, \
-             patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock) as mock_download, \
-             patch("chatgpt_to_notion.services.image_service.add_prompt_to_image_single") as mock_add_prompt, \
-             patch("chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db", new_callable=AsyncMock) as mock_add_page, \
-             patch("chatgpt_to_notion.adapters.chatgpt_api.get_headers") as mock_headers:
-
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_notion.return_value = False
-
-            # Mock API returning one conversation with one image
-            from datetime import datetime, timezone
-            recent_ts = int(datetime.now(timezone.utc).timestamp())
-            mock_get_gen.return_value = {
+        from datetime import datetime, timezone
+        recent_ts = int(datetime.now(timezone.utc).timestamp())
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "gen_api_1",
@@ -1312,7 +1252,9 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_get_conv.return_value = {
+        )
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -1323,6 +1265,14 @@ authorization_token = "test_token_abc"
                     }
                 }
             }
+        )
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch("chatgpt_to_notion.services.history_service.download_image", new_callable=AsyncMock) as mock_download, \
+             patch("chatgpt_to_notion.services.image_service.add_prompt_to_image_single") as mock_add_prompt:
+
 
             await upload_sequential.upload_to_notion_sequential(
                 image_folder=None,
@@ -1330,6 +1280,8 @@ authorization_token = "test_token_abc"
                 delete_conversation=False,
                 from_history=False,
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1349,7 +1301,7 @@ authorization_token = "test_token_abc"
         self, tmp_path, monkeypatch, isolated_db
     ):
         """verify_history flag loads all (including uploaded) and syncs with Notion."""
-        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
+        db = SqliteStore()
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
         from datetime import datetime, timezone
         from chatgpt_to_notion.services import history_service
@@ -1376,11 +1328,13 @@ authorization_token = "test_token_abc"
         assert "gen_verify_1" in uploaded_before
 
         # Mock Notion to say page exists
-        with patch("chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db", new_callable=AsyncMock) as mock_notion, \
-             patch("chatgpt_to_notion.services.history_service.load_image_generations") as mock_load_gen, \
-             patch("chatgpt_to_notion.adapters.chatgpt_api.get_headers") as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_notion.return_value = True  # Page exists in Notion
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=True)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch("chatgpt_to_notion.services.history_service.load_image_generations") as mock_load_gen:
 
             # Create mock generation for load_image_generations to return
             mock_gen = MagicMock()
@@ -1397,6 +1351,8 @@ authorization_token = "test_token_abc"
                 from_history=True,
                 check_notion_api=True,  # verify_history sets both
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1408,7 +1364,7 @@ authorization_token = "test_token_abc"
         self, tmp_path, monkeypatch, isolated_db
     ):
         """With check_notion_api=False (default), already-uploaded generations are skipped."""
-        from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
+        db = SqliteStore()
         from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
         from datetime import datetime, timezone
         from chatgpt_to_notion.services import history_service
@@ -1430,14 +1386,16 @@ authorization_token = "test_token_abc"
         db.upsert_generations(account, [gen])
         await history_service.mark_generations_uploaded(account, {"gen_skip_1"})
 
-        with patch("chatgpt_to_notion.services.history_service.load_image_generations") as mock_load_gen, \
-             patch("chatgpt_to_notion.adapters.chatgpt_api.get_headers") as mock_headers:
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
 
-            mock_headers.return_value = {"Authorization": "Bearer test"}
+        with patch("chatgpt_to_notion.services.history_service.load_image_generations") as mock_load_gen:
 
             # load_image_generations should NOT return already-uploaded when check_notion_api=False
             mock_load_gen.return_value = []  # Empty because gen_skip_1 is already uploaded
-            mock_headers.return_value = {"Authorization": "Bearer test"}
 
             # load_image_generations should NOT return already-uploaded when check_notion_api=False
             mock_load_gen.return_value = []  # Empty because gen_skip_1 is already uploaded
@@ -1449,6 +1407,8 @@ authorization_token = "test_token_abc"
                 from_history=True,
                 check_notion_api=False,  # default
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1542,51 +1502,11 @@ authorization_token = "test_token_abc"
         session_mock.__aexit__ = AsyncMock(return_value=False)
 
         mark_uploaded_mock = MagicMock()
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
-            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
-            mark_uploaded_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_conversation",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {"items": api_items}
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(return_value={"items": api_items})
+        fake_chat.get_conversation_details = AsyncMock(
+            return_value={
                 "mapping": {
                     "msg_1": {
                         "message": {
@@ -1611,6 +1531,33 @@ authorization_token = "test_token_abc"
                     },
                 }
             }
+        )
+        fake_chat.delete_conversation = AsyncMock()
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ), patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
+            return_value=set(),
+        ), patch(
+            "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
+            mark_uploaded_mock,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_prompt.side_effect = ["Prompt 1", "Prompt 2", "Prompt 3"]
 
             from chatgpt_to_notion.services import upload_sequential
@@ -1620,6 +1567,8 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_conversation=False,
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
@@ -1693,41 +1642,10 @@ authorization_token = "test_token_abc"
         # No isolated_db fixture - this tests that init_db is called before first DB access
         # The default DB path will be tmp_path/output/chatgpt.db
         # Do NOT mock get_uploaded_generation_ids or get_existing_ids - let them hit real DB
-        with patch(
-            "aiohttp.ClientSession",
-            return_value=session_mock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
-            "chatgpt_to_notion.services.history_service.download_image",
-            new_callable=AsyncMock,
-        ) as mock_download, patch(
-            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
-        ) as mock_add_page, patch(
-            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
-            return_value=True,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_conversation",
-            new_callable=AsyncMock,
-        ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
-            new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            # Return one item so code proceeds to DB operations
-            mock_get_gen.return_value = {
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(
+            return_value={
                 "items": [
                     {
                         "id": "test_img_1",
@@ -1739,10 +1657,29 @@ authorization_token = "test_token_abc"
                     }
                 ]
             }
-            mock_notion.return_value = False
+        )
+        fake_chat.get_conversation_details = AsyncMock(return_value={"mapping": {}})
+        fake_chat.delete_conversation = AsyncMock()
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock(return_value={"id": "notion_page_1"})
+
+        with patch(
+            "aiohttp.ClientSession",
+            return_value=session_mock,
+        ), patch(
+            "chatgpt_to_notion.services.history_service.download_image",
+            new_callable=AsyncMock,
+        ) as mock_download, patch(
+            "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
+        ), patch(
+            "chatgpt_to_notion.adapters.notion_api.os.path.exists",
+            return_value=True,
+        ), patch(
+            "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
+            new_callable=AsyncMock,
+        ) as mock_prompt:
             mock_download.return_value = b"fake_image_data"
-            mock_add_page.return_value = {"id": "notion_page_1"}
-            mock_conv_detail.return_value = {"mapping": {}}
             mock_prompt.return_value = "Test prompt"
 
             from chatgpt_to_notion.services import upload_sequential
@@ -1753,12 +1690,14 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_conversation=False,
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
             # Verify it completed without error
-            mock_get_gen.assert_called_once()
-            mock_add_page.assert_called_once()
+            fake_chat.get_image_generations.assert_called_once()
+            fake_notion.add_page_to_db.assert_called_once()
         """upload_to_notion_sequential should auto-initialize DB if not exists.
 
         Previously this failed with OperationalError: no such table: image_generations
@@ -1809,23 +1748,22 @@ authorization_token = "test_token_abc"
         # The default DB path will be tmp_path/output/chatgpt.db
         # The default DB path will be tmp_path/output/chatgpt.db
         # This tests that init_db is called before first DB access
+        fake_chat = MagicMock()
+        fake_chat.get_headers.return_value = {"Authorization": "Bearer test"}
+        fake_chat.get_image_generations = AsyncMock(return_value={"items": []})
+        fake_chat.get_conversation_details = AsyncMock(return_value={"mapping": {}})
+        fake_chat.delete_conversation = AsyncMock()
+        fake_notion = MagicMock()
+        fake_notion.is_page_exists_in_db = AsyncMock(return_value=False)
+        fake_notion.add_page_to_db = AsyncMock()
         with patch(
             "aiohttp.ClientSession",
             return_value=session_mock,
         ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_image_generations",
-            new_callable=AsyncMock,
-        ) as mock_get_gen, patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.is_page_exists_in_db",
-            new_callable=AsyncMock,
-        ) as mock_notion, patch(
             "chatgpt_to_notion.services.history_service.download_image",
             new_callable=AsyncMock,
         ), patch(
             "chatgpt_to_notion.services.image_service.add_prompt_to_image_single",
-        ), patch(
-            "chatgpt_to_notion.adapters.notion_api.NotionClientImpl.add_page_to_db",
-            new_callable=AsyncMock,
         ), patch(
             "chatgpt_to_notion.adapters.notion_api.os.path.exists",
             return_value=True,
@@ -1833,27 +1771,12 @@ authorization_token = "test_token_abc"
             "chatgpt_to_notion.services.history_service.get_uploaded_generation_ids",
             return_value=set(),
         ), patch(
-            "chatgpt_to_notion.adapters.sqlite_store.sqlite_store.get_existing_ids",
-            return_value=set(),
-        ), patch(
             "chatgpt_to_notion.services.history_service.mark_generations_uploaded",
             new_callable=MagicMock,
         ), patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.get_conversation_details",
-            new_callable=AsyncMock,
-        ) as mock_conv_detail, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_conversation",
-            new_callable=AsyncMock,
-        ), patch(
             "chatgpt_to_notion.adapters.chatgpt_api.get_prompt_from_image_node_in_conversation",
             new_callable=AsyncMock,
-        ) as mock_prompt, patch(
-            "chatgpt_to_notion.adapters.chatgpt_api.get_headers"
-        ) as mock_headers:
-            mock_headers.return_value = {"Authorization": "Bearer test"}
-            mock_get_gen.return_value = {"items": []}
-            mock_notion.return_value = False
-            mock_conv_detail.return_value = {"mapping": {}}
+        ) as mock_prompt:
             mock_prompt.return_value = ""
 
             from chatgpt_to_notion.services import upload_sequential
@@ -1864,9 +1787,11 @@ authorization_token = "test_token_abc"
                 db_id="test_db",
                 delete_conversation=False,
                 account=account,
+                chatgpt_client=fake_chat,
+                notion_client=fake_notion,
                 options=None,
             )
 
             # Verify it completed without error
-            mock_get_gen.assert_called_once()
+            fake_chat.get_image_generations.assert_called_once()
 

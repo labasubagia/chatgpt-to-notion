@@ -8,11 +8,9 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..adapters.config import get_config
+from ..adapters.config import Config
 from ..adapters.filesystem import Filesystem
-from ..adapters.filesystem import filesystem as default_fs
 from ..adapters.sqlite_store import SqliteStore
-from ..adapters.sqlite_store import sqlite_store as default_store
 from ..domain.models import (
     ChatGPTClient,
     ChatGPTImageGeneration,
@@ -59,6 +57,7 @@ async def upload_to_notion_sequential(
     image_service: ImageServiceProtocol | None = None,
     sqlite_store: SqliteStore | None = None,
     filesystem: Filesystem | None = None,
+    config: Config | None = None,
 ) -> None:
     """Process conversations sequentially (one at a time) to minimize 429 errors.
 
@@ -75,24 +74,26 @@ async def upload_to_notion_sequential(
     from ..services import image_service as img_svc
 
     # Use injected or default implementations
-    resolved = get_config().resolve(options)
-    provider_ctx = get_config().provider_context(resolved=resolved)
-    notion_ctx = get_config().notion_context(resolved=resolved)
+    if config is None:
+        config = Config()
+    if not account:
+        raise ValueError("account is required")
+    resolved = config.accounts[account]
+    provider_ctx = resolved.provider_context()
+    notion_ctx = resolved.notion_context()
+    store = sqlite_store if sqlite_store is not None else SqliteStore()
+    fs = filesystem if filesystem is not None else Filesystem(config)
     chatgpt_client_impl: ChatGPTClient = chatgpt_client or ChatGPTClientImpl(
         provider_ctx
     )
     notion_client_impl: NotionClient = cast(
-        NotionClient, notion_client or NotionClientImpl(notion_ctx)
+        NotionClient, notion_client or NotionClientImpl(notion_ctx, sqlite_store=store)
     )
     history_service_impl: HistoryServiceProtocol = history_service or hs
     image_service_impl: ImageServiceProtocol = image_service or img_svc
-    store = sqlite_store or default_store
-    fs = filesystem or default_fs
 
     if not db_id:
         raise ValueError("db_id must not be empty")
-    if not account:
-        raise ValueError("account is required")
 
     resolved_image_folder = fs.resolve_image_folder(image_folder, options)
 

@@ -5,7 +5,8 @@ from datetime import datetime
 import typer
 from rich.table import Table
 
-from ...adapters.sqlite_store import sqlite_store
+from ...adapters.config import Config
+from ...adapters.sqlite_store import SqliteStore
 from ...services.account_status_service import get_account_activity_statuses
 from ...shared.console import console
 from ...shared.time import resolve_timezone
@@ -41,7 +42,7 @@ def _print_activity_table(rows: list[dict[str, str]], title: str = "") -> None:
     console.print(table)
 
 
-def register(app: typer.Typer) -> None:
+def register(app: typer.Typer, config: Config, store: SqliteStore) -> None:
     @app.command()
     def account_status(
         timezone: str | None = typer.Option(
@@ -49,9 +50,11 @@ def register(app: typer.Typer) -> None:
         ),
     ) -> None:
         """Show which accounts are ready to generate new data."""
-        sqlite_store.init_db()
+        store.init_db()
         today_rows, yesterday_rows, total_accounts = get_account_activity_statuses(
             timezone_name=timezone,
+            config=config,
+            store=store,
         )
         user_tz = resolve_timezone(timezone_name=timezone)
         tz_label = getattr(user_tz, "key", str(user_tz))

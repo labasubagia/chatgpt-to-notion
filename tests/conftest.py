@@ -107,14 +107,6 @@ def sample_notion_response():
     }
 
 
-@pytest.fixture(autouse=True)
-def clear_config_cache():
-    """Reset the cached Config singleton before each test so it reloads."""
-    from chatgpt_to_notion.adapters import config
-    config._config = None
-    yield
-    config._config = None
-
 
 @pytest.fixture(autouse=True)
 def mock_config_toml(tmp_path, monkeypatch):
