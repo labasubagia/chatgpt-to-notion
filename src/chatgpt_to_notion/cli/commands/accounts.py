@@ -5,7 +5,7 @@ from datetime import datetime
 import typer
 from rich.table import Table
 
-from ...adapters import sqlite_store
+from ...adapters.sqlite_store import sqlite_store
 from ...services.account_status_service import get_account_activity_statuses
 from ...shared.console import console
 from ...shared.time import resolve_timezone

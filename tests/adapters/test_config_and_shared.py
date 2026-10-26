@@ -10,18 +10,9 @@ import asyncio
 import aiohttp
 import pytest
 
-from chatgpt_to_notion.adapters import sqlite_store as db
-from chatgpt_to_notion.adapters.config_loader import (
-    get_account_names,
-    get_notion_context,
-    get_provider_context,
-    resolve_config,
-)
-from chatgpt_to_notion.adapters.filesystem import (
-    clean_output_path,
-    get_output_path,
-    resolve_image_folder,
-)
+from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
+from chatgpt_to_notion.adapters.config_loader import config_loader
+from chatgpt_to_notion.adapters.filesystem import filesystem
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.services.account_status_service import get_account_activity_statuses
 from chatgpt_to_notion.services.history_service import (
@@ -30,10 +21,7 @@ from chatgpt_to_notion.services.history_service import (
     mark_generations_uploaded,
 )
 from chatgpt_to_notion.shared.constants import (
-    DOWNLOAD_TIMEOUT_SECONDS,
     HTTP_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_DOWNLOADS,
-    MAX_CONCURRENT_REQUESTS,
     MAX_RETRIES,
     OUTPUT_PATH,
 )
@@ -52,59 +40,59 @@ from chatgpt_to_notion.shared.time import resolve_timezone
 
 
 class TestGetOutputPath:
-    """Tests for get_output_path function."""
+    """Tests for Filesystem.output_path."""
 
     def test_relative_path_allowed(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = get_output_path("images/test.png")
+        path = filesystem.output_path("images/test.png")
         assert path.name == "test.png"
         assert "images" in str(path)
 
     def test_absolute_path_rejected(self):
         with pytest.raises(ValueError, match="Absolute paths are not allowed"):
-            get_output_path("/etc/passwd")
+            filesystem.output_path("/etc/passwd")
 
     def test_path_traversal_rejected(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         with pytest.raises(ValueError, match="attempts to escape"):
-            get_output_path("../../etc/passwd")
+            filesystem.output_path("../../etc/passwd")
 
     def test_creates_parent_directories(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = get_output_path("nested/deep/path/file.png")
+        path = filesystem.output_path("nested/deep/path/file.png")
         assert path.parent.exists()
 
     def test_is_dir_flag(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = get_output_path("test_dir", is_dir=True)
+        path = filesystem.output_path("test_dir", is_dir=True)
         assert path.is_dir()
 
 
 class TestResolveImageFolder:
-    """Tests for resolve_image_folder function."""
+    """Tests for Filesystem.resolve_image_folder."""
 
     def test_none_uses_default(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = resolve_image_folder(None)
+        path = filesystem.resolve_image_folder(None)
         assert path == tmp_output_dir / "images"
 
     def test_none_creates_default_directory(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = resolve_image_folder(None)
+        path = filesystem.resolve_image_folder(None)
         assert path.exists()
 
     def test_absolute_path_returned_as_is(self):
-        path = resolve_image_folder("/custom/absolute/path")
+        path = filesystem.resolve_image_folder("/custom/absolute/path")
         assert path == Path("/custom/absolute/path")
 
     def test_relative_path_wrapped_in_output(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = resolve_image_folder("my_images")
+        path = filesystem.resolve_image_folder("my_images")
         assert path == tmp_output_dir / "my_images"
 
     def test_relative_path_creates_directory(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
-        path = resolve_image_folder("new_folder/sub")
+        path = filesystem.resolve_image_folder("new_folder/sub")
         assert path.parent.exists()
 
 
@@ -228,7 +216,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        resolved = resolve_config(RuntimeOptions(account="work@example.com"))
+        resolved = config_loader.resolve(RuntimeOptions(account="work@example.com"))
 
         assert resolved.account_name == "work@example.com"
         assert resolved.account.authorization_token == "token_work"
@@ -251,10 +239,10 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = get_provider_context(
+        provider = config_loader.provider_context(
             RuntimeOptions(account="personal@example.com")
         )
-        notion = get_notion_context(RuntimeOptions(account="personal@example.com"))
+        notion = config_loader.notion_context(RuntimeOptions(account="personal@example.com"))
 
         assert provider.headers["Authorization"] == "Bearer token_personal"
         assert notion.headers["Authorization"] == "Bearer notion_key"
@@ -274,7 +262,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        provider = get_provider_context(
+        provider = config_loader.provider_context(
             RuntimeOptions(account="personal@example.com")
         )
 
@@ -298,7 +286,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        notion = get_notion_context(RuntimeOptions(account="personal@example.com"))
+        notion = config_loader.notion_context(RuntimeOptions(account="personal@example.com"))
 
         assert notion.account_name == "personal@example.com"
 
@@ -322,13 +310,13 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         # 1. Test shared default resolution & decoding
-        provider_personal = get_provider_context(
+        provider_personal = config_loader.provider_context(
             RuntimeOptions(account="personal@example.com")
         )
         assert provider_personal.headers["Cookie"] == "cookie_shared"
 
         # 2. Test account-level override resolution & decoding
-        provider_override = get_provider_context(
+        provider_override = config_loader.provider_context(
             RuntimeOptions(account="override@example.com")
         )
         assert provider_override.headers["Cookie"] == "cookie_override"
@@ -347,7 +335,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="Invalid base64 in cookie_string_base64"):
-            get_provider_context(
+            config_loader.provider_context(
                 RuntimeOptions(account="personal@example.com")
             )
 
@@ -368,7 +356,7 @@ class TestTomlConfig:
         )
         monkeypatch.chdir(tmp_path)
 
-        assert get_account_names() == ["a@example.com", "b@example.com"]
+        assert config_loader.account_names() == ["a@example.com", "b@example.com"]
 
     def test_account_keys_must_be_valid_emails(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.toml"
@@ -383,7 +371,7 @@ class TestTomlConfig:
         monkeypatch.chdir(tmp_path)
 
         with pytest.raises(ValueError, match="valid email"):
-            resolve_config(RuntimeOptions(account="not_an_email"))
+            config_loader.resolve(RuntimeOptions(account="not_an_email"))
 
 
 class TestAccountActivityStatus:
@@ -658,7 +646,7 @@ class TestUploadedGenerationHelpers:
 
 
 class TestCleanOutputPath:
-    """Tests for clean_output_path function."""
+    """Tests for Filesystem.clean_output_path."""
 
     def test_removes_files(self, tmp_output_dir, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
@@ -666,7 +654,7 @@ class TestCleanOutputPath:
         (tmp_output_dir / "test.txt").write_text("test")
         (tmp_output_dir / ".gitkeep").write_text("keep")
 
-        clean_output_path()
+        filesystem.clean_output_path()
 
         assert not (tmp_output_dir / "test.txt").exists()
         assert (tmp_output_dir / ".gitkeep").exists()
@@ -678,13 +666,13 @@ class TestCleanOutputPath:
         test_dir.mkdir()
         (test_dir / "file.txt").write_text("test")
 
-        clean_output_path()
+        filesystem.clean_output_path()
 
         assert not test_dir.exists()
 
     def test_nonexistent_path(self, tmp_path, monkeypatch):
         monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path / "nonexistent"))
-        clean_output_path()
+        filesystem.clean_output_path()
 
 
 class TestRetryHttp:
@@ -977,17 +965,6 @@ class TestConstants:
     def test_max_retries(self):
         assert MAX_RETRIES == 10
 
-    def test_max_concurrent_downloads(self):
-        assert MAX_CONCURRENT_DOWNLOADS == 5
-
-    def test_max_concurrent_requests(self):
-        assert MAX_CONCURRENT_REQUESTS == 1
-
-    def test_http_timeout_seconds(self):
-        assert HTTP_TIMEOUT_SECONDS == 120
-
-    def test_download_timeout_seconds(self):
-        assert DOWNLOAD_TIMEOUT_SECONDS == 300
 
     def test_output_path(self):
         assert OUTPUT_PATH == "./output"

@@ -103,10 +103,10 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
-    @patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config")
-    @patch("chatgpt_to_notion.cli.commands.upload.resolve_config")
+    @patch("chatgpt_to_notion.cli.commands.upload.config_loader.validate_runtime")
+    @patch("chatgpt_to_notion.cli.commands.upload.config_loader.resolve")
     @patch(
-        "chatgpt_to_notion.cli.commands.upload.get_account_names",
+        "chatgpt_to_notion.cli.commands.upload.config_loader.account_names",
         return_value=["acc1@example.com", "acc2@example.com"],
     )
     @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
@@ -379,7 +379,7 @@ class TestCLIConfigValidation:
 
     def test_missing_config_values_chatgpt(self):
         """Should fail if required TOML config values are missing."""
-        with patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config") as mock_validate:
+        with patch("chatgpt_to_notion.cli.commands.upload.config_loader.validate_runtime") as mock_validate:
             mock_validate.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
             result = runner.invoke(
                 app,

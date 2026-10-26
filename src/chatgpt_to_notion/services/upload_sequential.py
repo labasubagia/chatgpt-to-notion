@@ -8,8 +8,11 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..adapters import sqlite_store
-from ..adapters.filesystem import resolve_image_folder
+from ..adapters.config_loader import config_loader
+from ..adapters.filesystem import Filesystem
+from ..adapters.filesystem import filesystem as default_fs
+from ..adapters.sqlite_store import SqliteStore
+from ..adapters.sqlite_store import sqlite_store as default_store
 from ..domain.models import (
     ChatGPTClient,
     ChatGPTImageGeneration,
@@ -56,6 +59,8 @@ async def upload_to_notion_sequential(
     history_service: HistoryServiceProtocol | None = None,
     image_service: ImageServiceProtocol | None = None,
     remove_library_func: RemoveLibraryFunc | None = None,
+    sqlite_store: SqliteStore | None = None,
+    filesystem: Filesystem | None = None,
 ) -> None:
     """Process conversations sequentially (one at a time) to minimize 429 errors.
 
@@ -72,24 +77,31 @@ async def upload_to_notion_sequential(
     from ..services import image_service as img_svc
 
     # Use injected or default implementations
-    chatgpt_client_impl: ChatGPTClient = chatgpt_client or ChatGPTClientImpl(options)
+    resolved = config_loader.resolve(options)
+    provider_ctx = config_loader.provider_context(resolved=resolved)
+    notion_ctx = config_loader.notion_context(resolved=resolved)
+    chatgpt_client_impl: ChatGPTClient = chatgpt_client or ChatGPTClientImpl(
+        provider_ctx
+    )
     notion_client_impl: NotionClient = cast(
-        NotionClient, notion_client or NotionClientImpl(options)
+        NotionClient, notion_client or NotionClientImpl(notion_ctx)
     )
     history_service_impl: HistoryServiceProtocol = history_service or hs
     image_service_impl: ImageServiceProtocol = image_service or img_svc
     remove_library_func_impl: RemoveLibraryFunc = (
         remove_library_func or remove_library_images
     )
+    store = sqlite_store or default_store
+    fs = filesystem or default_fs
 
     if not db_id:
         raise ValueError("db_id must not be empty")
     if not account:
         raise ValueError("account is required")
 
-    resolved_image_folder = resolve_image_folder(image_folder, options)
+    resolved_image_folder = fs.resolve_image_folder(image_folder, options)
 
-    sqlite_store.init_db()
+    store.init_db()
 
     uploaded_ids = await history_service_impl.get_uploaded_generation_ids(account)
     counter = StageCounter("Processed")
@@ -109,7 +121,6 @@ async def upload_to_notion_sequential(
                     include_uploaded=check_notion_api,
                     keep_days=keep_days,
                     timezone_name=timezone_name,
-                    options=options,
                 )
                 conversation_map: dict[str, list[ChatGPTImageGeneration]] = defaultdict(
                     list
@@ -124,8 +135,13 @@ async def upload_to_notion_sequential(
                     limit=limit,
                 )
                 items = data.get("items", [])
-                api_ids = {str(item["id"]) for item in items}
-                existing_ids = sqlite_store.get_existing_ids(account, api_ids)
+                existing_ids = (
+                    set()
+                    if no_cache
+                    else store.get_existing_ids(
+                        account, {str(item["id"]) for item in items}
+                    )
+                )
                 conv_items_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
                 for item in items:
                     conv_items_map[str(item["conversation_id"])].append(item)
@@ -134,7 +150,7 @@ async def upload_to_notion_sequential(
                 print("No generations found.")
                 if delete_library or delete_library_all:
                     await remove_library_func_impl(
-                        options, remove_all=delete_library_all
+                        resolved, remove_all=delete_library_all
                     )
                 return
 
@@ -217,19 +233,17 @@ async def upload_to_notion_sequential(
                 else:
                     func = history_service_impl.fetch_generations_for_conversation
                     new_generations = await func(
+                        chatgpt_client_impl,
                         chatgpt_session,
                         conv_id,
                         payload,
-                        chatgpt_client_impl.get_headers(),
                         existing_ids,
                     )
                     if new_generations:
-                        await sqlite_store.async_upsert_generations(
-                            account, new_generations
-                        )
+                        await store.async_upsert_generations(account, new_generations)
                         existing_ids.update(g.id for g in new_generations)
                     conv_ids = {str(item["id"]) for item in payload}
-                    conv_generations = sqlite_store.get_generations(
+                    conv_generations = store.get_generations(
                         account,
                         include_uploaded=True,
                         ids_filter=conv_ids,
@@ -278,4 +292,4 @@ async def upload_to_notion_sequential(
     print()
 
     if delete_library or delete_library_all:
-        await remove_library_func_impl(options, remove_all=delete_library_all)
+        await remove_library_func_impl(resolved, remove_all=delete_library_all)

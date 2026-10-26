@@ -30,366 +30,354 @@ def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
-def init_db(db_path: Path | None = None) -> None:
-    with _lock:
-        conn = _get_connection(db_path)
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS image_generations (
-                id TEXT PRIMARY KEY,
-                created_at TEXT NOT NULL,
-                conversation_id TEXT NOT NULL,
-                message_id TEXT NOT NULL,
-                asset_pointer TEXT NOT NULL,
-                url TEXT NOT NULL,
-                prompt TEXT DEFAULT '',
-                uploaded_at TEXT DEFAULT '',
-                account TEXT DEFAULT ''
-            );
+class SqliteStore:
+    def __init__(self, db_path: Path | None = None):
+        self._db_path = db_path
 
-            CREATE INDEX IF NOT EXISTS idx_generations_account
-                ON image_generations(account);
-            CREATE INDEX IF NOT EXISTS idx_generations_created_at
-                ON image_generations(created_at);
-            CREATE INDEX IF NOT EXISTS idx_generations_uploaded_at
-                ON image_generations(uploaded_at);
+    def _conn(self) -> sqlite3.Connection:
+        return _get_connection(self._db_path)
 
-            CREATE TABLE IF NOT EXISTS cache_data_sources (
-                db_id TEXT PRIMARY KEY,
-                data_sources_json TEXT NOT NULL,
-                expires_at TEXT NOT NULL
-            );
-            """
-        )
-        conn.commit()
-        conn.close()
-
-
-def upsert_generations(
-    account: str,
-    generations: list[ChatGPTImageGeneration],
-    db_path: Path | None = None,
-) -> None:
-    if not generations:
-        return
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            conn.executemany(
+    def init_db(self) -> None:
+        with _lock:
+            conn = self._conn()
+            conn.executescript(
                 """
-                INSERT INTO image_generations (
-                    id, created_at, conversation_id, message_id,
-                    asset_pointer, url, prompt, account
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    created_at=excluded.created_at,
-                    conversation_id=excluded.conversation_id,
-                    message_id=excluded.message_id,
-                    asset_pointer=excluded.asset_pointer,
-                    url=excluded.url,
-                    prompt=excluded.prompt,
-                    account=excluded.account
-                """,
-                [
-                    (
-                        generation.id,
-                        generation.created_at,
-                        generation.conversation_id,
-                        generation.message_id,
-                        generation.asset_pointer,
-                        generation.url,
-                        generation.prompt,
-                        account,
-                    )
-                    for generation in generations
-                ],
+                CREATE TABLE IF NOT EXISTS image_generations (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    conversation_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    asset_pointer TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    prompt TEXT DEFAULT '',
+                    uploaded_at TEXT DEFAULT '',
+                    account TEXT DEFAULT ''
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_generations_account
+                    ON image_generations(account);
+                CREATE INDEX IF NOT EXISTS idx_generations_created_at
+                    ON image_generations(created_at);
+                CREATE INDEX IF NOT EXISTS idx_generations_uploaded_at
+                    ON image_generations(uploaded_at);
+
+                CREATE TABLE IF NOT EXISTS cache_data_sources (
+                    db_id TEXT PRIMARY KEY,
+                    data_sources_json TEXT NOT NULL,
+                    expires_at TEXT NOT NULL
+                );
+                """
             )
             conn.commit()
-        finally:
             conn.close()
 
-
-def get_generations(
-    account: str,
-    *,
-    include_uploaded: bool = False,
-    keep_days: int | None = None,
-    timezone_name: str | None = None,
-    ids_filter: set[str] | None = None,
-    db_path: Path | None = None,
-) -> list[ChatGPTImageGeneration]:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            query = "SELECT * FROM image_generations WHERE account = ?"
-            params: list[Any] = [account]
-
-            if ids_filter:
-                placeholders = ",".join("?" for _ in ids_filter)
-                query += f" AND id IN ({placeholders})"
-                params.extend(ids_filter)
-
-            if not include_uploaded:
-                query += " AND uploaded_at = ''"
-
-            if keep_days is not None:
-                from zoneinfo import ZoneInfo
-
-                tz = (
-                    ZoneInfo(timezone_name)
-                    if timezone_name
-                    else datetime.now().astimezone().tzinfo
-                )
-                cutoff = datetime.now(tz) - timedelta(days=keep_days)
-                query += " AND created_at >= ?"
-                params.append(cutoff.isoformat())
-
-            query += " ORDER BY created_at ASC"
-
-            rows = conn.execute(query, params).fetchall()
-            return [
-                ChatGPTImageGeneration(
-                    created_at=row["created_at"],
-                    id=row["id"],
-                    conversation_id=row["conversation_id"],
-                    message_id=row["message_id"],
-                    asset_pointer=row["asset_pointer"],
-                    url=row["url"],
-                    prompt=row["prompt"] or "",
-                )
-                for row in rows
-            ]
-        finally:
-            conn.close()
-
-
-def get_uploaded_ids(account: str, db_path: Path | None = None) -> set[str]:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            rows = conn.execute(
-                "SELECT id FROM image_generations "
-                "WHERE account = ? AND uploaded_at != ''",
-                (account,),
-            ).fetchall()
-            return {row["id"] for row in rows}
-        finally:
-            conn.close()
-
-
-def get_existing_ids(
-    account: str, ids: set[str], db_path: Path | None = None
-) -> set[str]:
-    if not ids:
-        return set()
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            placeholders = ",".join("?" for _ in ids)
-            rows = conn.execute(
-                "SELECT id FROM image_generations "
-                f"WHERE account = ? AND id IN ({placeholders})",
-                (account, *ids),
-            ).fetchall()
-            return {row["id"] for row in rows}
-        finally:
-            conn.close()
-
-
-def mark_uploaded(
-    account: str,
-    generation_ids: set[str],
-    db_path: Path | None = None,
-) -> None:
-    if not generation_ids:
-        return
-    uploaded_at = datetime.now(timezone.utc).isoformat()
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            placeholders = ",".join("?" for _ in generation_ids)
-            conn.execute(
-                "UPDATE image_generations SET uploaded_at = ? "
-                f"WHERE account = ? AND id IN ({placeholders})",
-                (uploaded_at, account, *generation_ids),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-
-def get_cached_data_sources(
-    db_id: str,
-    db_path: Path | None = None,
-) -> list[dict[str, Any]] | None:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            row = conn.execute(
-                "SELECT data_sources_json, expires_at "
-                "FROM cache_data_sources WHERE db_id = ?",
-                (db_id,),
-            ).fetchone()
-            if row is None:
-                return None
-            expires_at = datetime.fromisoformat(row["expires_at"])
-            if datetime.now(timezone.utc) > expires_at:
-                conn.execute("DELETE FROM cache_data_sources WHERE db_id = ?", (db_id,))
-                conn.commit()
-                return None
-            return json.loads(row["data_sources_json"])
-        finally:
-            conn.close()
-
-
-async def async_set_cached_data_sources(
-    db_id: str,
-    sources: list[dict[str, Any]],
-    ttl_days: int = 1,
-    db_path: Path | None = None,
-) -> None:
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            conn.execute(
-                """
-                INSERT INTO cache_data_sources (db_id, data_sources_json, expires_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(db_id) DO UPDATE SET
-                    data_sources_json=excluded.data_sources_json,
-                    expires_at=excluded.expires_at
-                """,
-                (db_id, json.dumps(sources), expires_at),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-
-def has_generations(account: str, db_path: Path | None = None) -> bool:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            row = conn.execute(
-                "SELECT 1 FROM image_generations WHERE account = ? LIMIT 1",
-                (account,),
-            ).fetchone()
-            return row is not None
-        finally:
-            conn.close()
-
-
-def get_activity_stats(
-    account: str,
-    date_start: str,
-    date_end: str,
-    cooldown_threshold: str,
-    db_path: Path | None = None,
-) -> dict[str, Any] | None:
-    with _lock:
-        conn = _get_connection(db_path)
-        try:
-            row = conn.execute(
-                """
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as active_count,
-                    MIN(CASE WHEN created_at > ? THEN created_at END) as first_active,
-                    MAX(CASE WHEN created_at > ? THEN created_at END) as last_active
-                FROM image_generations
-                WHERE account = ?
-                  AND created_at >= ?
-                  AND created_at < ?
-                """,
-                (
-                    cooldown_threshold,
-                    cooldown_threshold,
-                    cooldown_threshold,
-                    account,
-                    date_start,
-                    date_end,
-                ),
-            ).fetchone()
-            if row is None or row["total"] == 0:
-                return None
-            return {
-                "total": row["total"],
-                "active_count": row["active_count"] or 0,
-                "first_active": row["first_active"],
-                "last_active": row["last_active"],
-            }
-        finally:
-            conn.close()
-
-
-async def async_upsert_generations(
-    account: str,
-    generations: list[ChatGPTImageGeneration],
-    db_path: Path | None = None,
-) -> None:
-    upsert_generations(account, generations, db_path)
-
-
-def backup_db(backup_path: Path, db_path: Path | None = None) -> Path:
-    """Copy the database to *backup_path* using the SQLite backup API.
-
-    Uses sqlite3 ``connection.backup`` so the copy is consistent even
-    while other connections are writing (WAL mode must be active, which
-    it is via ``_get_connection``).
-    """
-    backup_path.parent.mkdir(parents=True, exist_ok=True)
-
-    src_conn = _get_connection(db_path)
-    try:
-        dst_conn = sqlite3.connect(str(backup_path))
-        try:
-            src_conn.backup(dst_conn)
-        finally:
-            dst_conn.close()
-    finally:
-        src_conn.close()
-
-    return backup_path
-
-
-def restore_db(backup_path: Path, db_path: Path | None = None) -> Path:
-    """Overwrite the database at *db_path* with *backup_path*.
-
-    Uses sqlite3 ``connection.backup`` for a consistent copy, then
-    replaces the target in-place.  If the target already exists it is
-    overwritten atomically via ``os.replace``.
-    """
-    if not backup_path.exists():
-        raise FileNotFoundError(f"Backup file not found: {backup_path}")
-
-    target = db_path or _get_db_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    # Remove WAL and SHM files to avoid stale data after replace
-    wal_file = target.with_suffix(target.suffix + "-wal")
-    shm_file = target.with_suffix(target.suffix + "-shm")
-    wal_file.unlink(missing_ok=True)
-    shm_file.unlink(missing_ok=True)
-
-    tmp = target.with_suffix(".tmp")
-    try:
-        backup_conn = sqlite3.connect(str(backup_path))
-        try:
-            tmp_conn = sqlite3.connect(str(tmp))
+    def upsert_generations(
+        self, account: str, generations: list[ChatGPTImageGeneration]
+    ) -> None:
+        if not generations:
+            return
+        with _lock:
+            conn = self._conn()
             try:
-                backup_conn.backup(tmp_conn)
+                conn.executemany(
+                    """
+                    INSERT INTO image_generations (
+                        id, created_at, conversation_id, message_id,
+                        asset_pointer, url, prompt, account
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        created_at=excluded.created_at,
+                        conversation_id=excluded.conversation_id,
+                        message_id=excluded.message_id,
+                        asset_pointer=excluded.asset_pointer,
+                        url=excluded.url,
+                        prompt=excluded.prompt,
+                        account=excluded.account
+                    """,
+                    [
+                        (
+                            generation.id,
+                            generation.created_at,
+                            generation.conversation_id,
+                            generation.message_id,
+                            generation.asset_pointer,
+                            generation.url,
+                            generation.prompt,
+                            account,
+                        )
+                        for generation in generations
+                    ],
+                )
+                conn.commit()
             finally:
-                tmp_conn.close()
-        finally:
-            backup_conn.close()
+                conn.close()
 
-        os.replace(str(tmp), str(target))
-    except BaseException:
+    def get_generations(
+        self,
+        account: str,
+        *,
+        include_uploaded: bool = False,
+        keep_days: int | None = None,
+        timezone_name: str | None = None,
+        ids_filter: set[str] | None = None,
+    ) -> list[ChatGPTImageGeneration]:
+        with _lock:
+            conn = self._conn()
+            try:
+                query = "SELECT * FROM image_generations WHERE account = ?"
+                params: list[Any] = [account]
+
+                if ids_filter:
+                    placeholders = ",".join("?" for _ in ids_filter)
+                    query += f" AND id IN ({placeholders})"
+                    params.extend(ids_filter)
+
+                if not include_uploaded:
+                    query += " AND uploaded_at = ''"
+
+                if keep_days is not None:
+                    from zoneinfo import ZoneInfo
+
+                    tz = (
+                        ZoneInfo(timezone_name)
+                        if timezone_name
+                        else datetime.now().astimezone().tzinfo
+                    )
+                    cutoff = datetime.now(tz) - timedelta(days=keep_days)
+                    query += " AND created_at >= ?"
+                    params.append(cutoff.isoformat())
+
+                query += " ORDER BY created_at ASC"
+
+                rows = conn.execute(query, params).fetchall()
+                return [
+                    ChatGPTImageGeneration(
+                        created_at=row["created_at"],
+                        id=row["id"],
+                        conversation_id=row["conversation_id"],
+                        message_id=row["message_id"],
+                        asset_pointer=row["asset_pointer"],
+                        url=row["url"],
+                        prompt=row["prompt"] or "",
+                    )
+                    for row in rows
+                ]
+            finally:
+                conn.close()
+
+    def get_uploaded_ids(self, account: str) -> set[str]:
+        with _lock:
+            conn = self._conn()
+            try:
+                rows = conn.execute(
+                    "SELECT id FROM image_generations "
+                    "WHERE account = ? AND uploaded_at != ''",
+                    (account,),
+                ).fetchall()
+                return {row["id"] for row in rows}
+            finally:
+                conn.close()
+
+    def get_existing_ids(self, account: str, ids: set[str]) -> set[str]:
+        if not ids:
+            return set()
+        with _lock:
+            conn = self._conn()
+            try:
+                placeholders = ",".join("?" for _ in ids)
+                rows = conn.execute(
+                    "SELECT id FROM image_generations "
+                    f"WHERE account = ? AND id IN ({placeholders})",
+                    (account, *ids),
+                ).fetchall()
+                return {row["id"] for row in rows}
+            finally:
+                conn.close()
+
+    def mark_uploaded(self, account: str, generation_ids: set[str]) -> None:
+        if not generation_ids:
+            return
+        uploaded_at = datetime.now(timezone.utc).isoformat()
+        with _lock:
+            conn = self._conn()
+            try:
+                placeholders = ",".join("?" for _ in generation_ids)
+                conn.execute(
+                    "UPDATE image_generations SET uploaded_at = ? "
+                    f"WHERE account = ? AND id IN ({placeholders})",
+                    (uploaded_at, account, *generation_ids),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def get_cached_data_sources(self, db_id: str) -> list[dict[str, Any]] | None:
+        with _lock:
+            conn = self._conn()
+            try:
+                row = conn.execute(
+                    "SELECT data_sources_json, expires_at "
+                    "FROM cache_data_sources WHERE db_id = ?",
+                    (db_id,),
+                ).fetchone()
+                if row is None:
+                    return None
+                expires_at = datetime.fromisoformat(row["expires_at"])
+                if datetime.now(timezone.utc) > expires_at:
+                    conn.execute(
+                        "DELETE FROM cache_data_sources WHERE db_id = ?", (db_id,)
+                    )
+                    conn.commit()
+                    return None
+                return json.loads(row["data_sources_json"])
+            finally:
+                conn.close()
+
+    async def async_set_cached_data_sources(
+        self, db_id: str, sources: list[dict[str, Any]], ttl_days: int = 1
+    ) -> None:
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
+        with _lock:
+            conn = self._conn()
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO cache_data_sources (
+                        db_id, data_sources_json, expires_at
+                    )
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(db_id) DO UPDATE SET
+                        data_sources_json=excluded.data_sources_json,
+                        expires_at=excluded.expires_at
+                    """,
+                    (db_id, json.dumps(sources), expires_at),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def has_generations(self, account: str) -> bool:
+        with _lock:
+            conn = self._conn()
+            try:
+                row = conn.execute(
+                    "SELECT 1 FROM image_generations WHERE account = ? LIMIT 1",
+                    (account,),
+                ).fetchone()
+                return row is not None
+            finally:
+                conn.close()
+
+    def get_activity_stats(
+        self,
+        account: str,
+        date_start: str,
+        date_end: str,
+        cooldown_threshold: str,
+    ) -> dict[str, Any] | None:
+        with _lock:
+            conn = self._conn()
+            try:
+                row = conn.execute(
+                    """
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) as active_count,
+                        MIN(
+                            CASE WHEN created_at > ? THEN created_at END
+                        ) as first_active,
+                        MAX(CASE WHEN created_at > ? THEN created_at END) as last_active
+                    FROM image_generations
+                    WHERE account = ?
+                      AND created_at >= ?
+                      AND created_at < ?
+                    """,
+                    (
+                        cooldown_threshold,
+                        cooldown_threshold,
+                        cooldown_threshold,
+                        account,
+                        date_start,
+                        date_end,
+                    ),
+                ).fetchone()
+                if row is None or row["total"] == 0:
+                    return None
+                return {
+                    "total": row["total"],
+                    "active_count": row["active_count"] or 0,
+                    "first_active": row["first_active"],
+                    "last_active": row["last_active"],
+                }
+            finally:
+                conn.close()
+
+    async def async_upsert_generations(
+        self, account: str, generations: list[ChatGPTImageGeneration]
+    ) -> None:
+        self.upsert_generations(account, generations)
+
+    def backup(self, backup_path: Path) -> Path:
+        """Copy the database to *backup_path* using the SQLite backup API.
+
+        Uses sqlite3 ``connection.backup`` so the copy is consistent even
+        while other connections are writing (WAL mode must be active, which
+        it is via ``_get_connection``).
+        """
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+
+        src_conn = self._conn()
         try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        raise
+            dst_conn = sqlite3.connect(str(backup_path))
+            try:
+                src_conn.backup(dst_conn)
+            finally:
+                dst_conn.close()
+        finally:
+            src_conn.close()
 
-    return target
+        return backup_path
+
+    def restore(self, backup_path: Path) -> Path:
+        """Overwrite the database at *db_path* with *backup_path*.
+
+        Uses sqlite3 ``connection.backup`` for a consistent copy, then
+        replaces the target in-place.  If the target already exists it is
+        overwritten atomically via ``os.replace``.
+        """
+        if not backup_path.exists():
+            raise FileNotFoundError(f"Backup file not found: {backup_path}")
+
+        target = self._db_path or _get_db_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        # Remove WAL and SHM files to avoid stale data after replace
+        wal_file = target.with_suffix(target.suffix + "-wal")
+        shm_file = target.with_suffix(target.suffix + "-shm")
+        wal_file.unlink(missing_ok=True)
+        shm_file.unlink(missing_ok=True)
+
+        tmp = target.with_suffix(".tmp")
+        try:
+            backup_conn = sqlite3.connect(str(backup_path))
+            try:
+                tmp_conn = sqlite3.connect(str(tmp))
+                try:
+                    backup_conn.backup(tmp_conn)
+                finally:
+                    tmp_conn.close()
+            finally:
+                backup_conn.close()
+
+            os.replace(str(tmp), str(target))
+        except BaseException:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+
+        return target
+
+
+sqlite_store = SqliteStore()

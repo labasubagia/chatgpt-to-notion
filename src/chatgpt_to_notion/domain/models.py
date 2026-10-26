@@ -79,6 +79,18 @@ class ChatGPTClient(Protocol):
 
     def get_headers(self) -> dict[str, str]: ...
 
+    async def count_library_images(
+        self,
+        session: aiohttp.ClientSession,
+    ) -> int: ...
+
+    async def delete_library_images_by_query(
+        self,
+        session: aiohttp.ClientSession,
+        query: str | None = None,
+        max_concurrent: int = 10,
+    ) -> int: ...
+
 
 class NotionClient(Protocol):
     """Protocol for Notion API operations."""
@@ -110,15 +122,14 @@ class HistoryServiceProtocol(Protocol):
         include_uploaded: bool = False,
         keep_days: int | None = None,
         timezone_name: str | None = None,
-        options: RuntimeOptions | None = None,
     ) -> list[ChatGPTImageGeneration]: ...
 
     async def fetch_generations_for_conversation(
         self,
+        client: ChatGPTClient,
         session: aiohttp.ClientSession,
         conv_id: str,
         image_items: Sequence[dict[str, Any]],
-        headers: dict[str, str],
         existing_ids: set[str],
     ) -> list[ChatGPTImageGeneration]: ...
 
@@ -172,8 +183,6 @@ class AccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
-    fetch_conversation_delay: float = 0.0
-    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -188,8 +197,6 @@ class SharedAccountConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
-    fetch_conversation_delay: float = 0.0
-    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -229,8 +236,6 @@ class ResolvedConfig(BaseModel):
     history_folder: str | None = None
     image_folder: str | None = None
     delete_library_queries: list[str] = []
-    fetch_conversation_delay: float = 0.0
-    fetch_batch_size: int = 0
     remove_all_library_images: bool = False
 
 
@@ -243,9 +248,6 @@ class RuntimeOptions(BaseModel):
     account: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None
-    # Legacy rate limit fields (for config.toml, not CLI options)
-    fetch_conversation_delay: float | None = None
-    fetch_batch_size: int | None = None
 
 
 class ProviderContext(BaseModel):
@@ -267,6 +269,3 @@ class NotionContext(BaseModel):
     headers: dict[str, str]
     database_id: str | None = None
     account_name: str = ""
-
-
-ConfigDictType = dict[str, Any]

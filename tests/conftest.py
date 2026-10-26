@@ -211,19 +211,18 @@ def sample_image_bytes():
 
 @pytest.fixture
 def isolated_db(tmp_path, monkeypatch):
-    """Provide an isolated SQLite DB for tests that use db module functions."""
-    from chatgpt_to_notion.adapters import sqlite_store
-
+    """Provide an isolated SQLite DB for tests that use the store."""
+    from chatgpt_to_notion.adapters.sqlite_store import (
+        _get_connection,
+        SqliteStore,
+    )
     db_path = tmp_path / "isolated_test.db"
-    sqlite_store.init_db(db_path)
-
-    original = sqlite_store._get_connection
+    SqliteStore(db_path=db_path).init_db()
+    original = _get_connection
     monkeypatch.setattr(
-        sqlite_store,
-        "_get_connection",
+        "chatgpt_to_notion.adapters.sqlite_store._get_connection",
         lambda p=None: original(db_path),
     )
-
     return db_path
 # Mock client fixtures for DI-based tests
 @pytest.fixture

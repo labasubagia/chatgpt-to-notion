@@ -8,8 +8,9 @@ from typing import Any
 
 import aiohttp
 
-from ..adapters import chatgpt_api, config_loader, sqlite_store
-from ..domain.models import ChatGPTImageGeneration, RuntimeOptions
+from ..adapters import chatgpt_api
+from ..adapters.sqlite_store import SqliteStore, sqlite_store
+from ..domain.models import ChatGPTClient, ChatGPTImageGeneration
 from ..shared.http import (
     raise_for_status_with_detail,
     retry_http,
@@ -18,33 +19,25 @@ from ..shared.logging import get_logger
 
 logger = get_logger("history")
 
-get_image_generations = chatgpt_api.get_image_generations
-get_conversation_details = chatgpt_api.get_conversation_details
-get_prompt_from_image_node_in_conversation = (
-    chatgpt_api.get_prompt_from_image_node_in_conversation
-)
-resolve_config = config_loader.resolve_config
-logger = get_logger("history")
-
-get_image_generations = chatgpt_api.get_image_generations
-get_conversation_details = chatgpt_api.get_conversation_details
 get_prompt_from_image_node_in_conversation = (
     chatgpt_api.get_prompt_from_image_node_in_conversation
 )
 
 
-async def get_uploaded_generation_ids(account: str | None) -> set[str]:
+async def get_uploaded_generation_ids(
+    account: str | None, store: SqliteStore | None = None
+) -> set[str]:
     if not account:
         return set()
-    return sqlite_store.get_uploaded_ids(account)
+    return (store or sqlite_store).get_uploaded_ids(account)
 
 
 async def mark_generations_uploaded(
-    account: str | None, generation_ids: set[str]
+    account: str | None, generation_ids: set[str], store: SqliteStore | None = None
 ) -> None:
     if not account or not generation_ids:
         return
-    sqlite_store.mark_uploaded(account, generation_ids)
+    (store or sqlite_store).mark_uploaded(account, generation_ids)
 
 
 @retry_http()
@@ -80,10 +73,10 @@ async def load_image_generations(
     include_uploaded: bool = False,
     keep_days: int | None = None,
     timezone_name: str | None = None,
-    options: RuntimeOptions | None = None,
+    store: SqliteStore | None = None,
 ) -> list[ChatGPTImageGeneration]:
-    del options
-    return sqlite_store.get_generations(
+    db = store or sqlite_store
+    return db.get_generations(
         account,
         include_uploaded=include_uploaded,
         keep_days=keep_days,
@@ -92,10 +85,10 @@ async def load_image_generations(
 
 
 async def fetch_generations_for_conversation(
+    client: ChatGPTClient,
     session: aiohttp.ClientSession,
     conv_id: str,
     image_items: Sequence[dict[str, Any]],
-    headers: dict[str, str],
     existing_ids: set[str],
 ) -> list[ChatGPTImageGeneration]:
     """Build generations for one conversation.
@@ -106,8 +99,7 @@ async def fetch_generations_for_conversation(
     new_items = [item for item in image_items if str(item["id"]) not in existing_ids]
     if not new_items:
         return []
-
-    detail = await chatgpt_api.get_conversation_details(session, conv_id, headers)
+    detail = await client.get_conversation_details(session, conv_id)
     generations: list[ChatGPTImageGeneration] = []
     for image_generation in new_items:
         prompt = get_prompt_from_image_node_in_conversation(
