@@ -1,4 +1,6 @@
-"""CLI tests for main.py using Typer's test utilities."""
+"""
+CLI tests for main.py using Typer's test utilities.
+"""
 import re
 from unittest.mock import AsyncMock, patch
 
@@ -12,8 +14,8 @@ runner = CliRunner()
 
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape codes from text."""
-    ansi_escape = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
-    return ansi_escape.sub("", text)
+    ansi_escape = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
+    return ansi_escape.sub('', text)
 
 
 class TestCLIHelp:
@@ -23,42 +25,17 @@ class TestCLIHelp:
         """Should show main help."""
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        clean_output = strip_ansi(result.stdout)
-        assert "upload" in clean_output
-        assert "account-status" in clean_output
-        assert "clean-output-path" in clean_output
-        # upload-to-notion is hidden
+        assert "upload-to-notion" in result.stdout
+        assert "account-status" in result.stdout
+        assert "clean-output-path" in result.stdout
 
-    def test_upload_history_help(self):
-        """Should show upload history help."""
-        result = runner.invoke(app, ["upload", "history", "--help"])
+    def test_upload_help(self):
+        """Should show upload-to-notion help."""
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
         clean_output = strip_ansi(result.stdout)
         assert "--image-folder" in clean_output
         assert "--limit" in clean_output
-        assert "--from-history" in clean_output
-        assert "--no-cache" in clean_output
-
-    def test_upload_verify_help(self):
-        """Should show upload verify help."""
-        result = runner.invoke(app, ["upload", "verify", "--help"])
-        assert result.exit_code == 0
-        clean_output = strip_ansi(result.stdout)
-        assert "--check-notion-api" in clean_output
-
-    def test_upload_library_help(self):
-        """Should show upload library help."""
-        result = runner.invoke(app, ["upload", "library", "--help"])
-        assert result.exit_code == 0
-        clean_output = strip_ansi(result.stdout)
-        assert "--delete" in clean_output
-        assert "--delete-all" in clean_output
-
-    def test_upload_to_notion_deprecated_help(self):
-        """upload-to-notion is deprecated but still available."""
-        result = runner.invoke(app, ["upload-to-notion", "--help"])
-        # hidden=True means it won't show in main help but can be invoked
-        assert result.exit_code == 0
 
 
 class TestCLIValidation:
@@ -66,8 +43,13 @@ class TestCLIValidation:
 
     def test_invalid_db_id_too_short(self):
         """Should reject database IDs that are too short."""
-        result = runner.invoke(app, ["upload", "history", "--db-id", "short"])
-        output = strip_ansi(result.stderr)
+        result = runner.invoke(
+            app,
+            ["upload-to-notion", "--db-id", "short"],
+        )
+        assert result.exit_code != 0
+        # Error message may be in stdout or stderr
+        output = result.stdout + str(result.stderr)
         assert (
             "Notion database ID must be a valid ID" in output
             or "Invalid value" in output
@@ -75,12 +57,11 @@ class TestCLIValidation:
 
     def test_invalid_db_id_empty(self):
         """Should reject empty database IDs."""
-        result = runner.invoke(app, ["upload", "history", "--db-id", ""])
-        output = strip_ansi(result.stderr)
-        assert (
-            "Notion database ID must be a valid ID" in output
-            or "Invalid value" in output
+        result = runner.invoke(
+            app,
+            ["upload-to-notion", "--db-id", ""],
         )
+        assert result.exit_code != 0
 
 
 class TestCLICommands:
@@ -89,89 +70,92 @@ class TestCLICommands:
     @pytest.fixture(autouse=True)
     def setup(self, mock_config_toml, tmp_output_dir, monkeypatch):
         """Setup test environment."""
-        monkeypatch.setattr(
-            "chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir)
-        )
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
         yield
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_history(self, mock_upload, mock_config_toml):
-        """Should call upload_to_notion_sequential with from_history=True."""
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion(self, mock_upload, mock_config_toml):
+        """Should call upload_to_notion_sequential (default mode)."""
         result = runner.invoke(
             app,
             [
-                "upload",
-                "history",
-                "--image-folder",
-                "test_images",
-                "--db-id",
-                "test_db_12345678901234567890",
-                "--limit",
-                "10",
+                "upload-to-notion",
+                "--image-folder", "test_images",
+                "--db-id", "test_db_12345678901234567890",
+                "--limit", "10",
+                "--no-delete-conversation",
             ],
         )
         mock_upload.assert_called_once()
-        kwargs = mock_upload.call_args.kwargs
-        assert kwargs["from_history"] is True
-        assert kwargs["upload_to_notion"] is True
-        assert kwargs["delete_conversation"] is False
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_history_all_flag(self, mock_upload, mock_config_toml):
-        """Should pass all flag (keep_days=None)."""
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "history",
-                "--db-id",
-                "test_db_12345678901234567890",
-                "--all",
-            ],
-        )
-        assert result.exit_code == 0
-        mock_upload.assert_called_once()
-        assert mock_upload.call_args.kwargs["keep_days"] is None
-
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_history_defaults_to_all_accounts(
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_defaults_to_all_accounts(
         self, mock_upload, mock_config_toml
     ):
         """Should run all configured accounts when --account is omitted."""
         result = runner.invoke(
             app,
             [
-                "upload",
-                "history",
-                "--db-id",
-                "test_db_12345678901234567890",
+                "upload-to-notion",
+                "--db-id", "test_db_12345678901234567890",
             ],
         )
         assert result.exit_code == 0
         mock_upload.assert_called_once()
 
+    @patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config")
+    @patch("chatgpt_to_notion.cli.commands.upload.resolve_config")
     @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
+        "chatgpt_to_notion.cli.commands.upload.get_account_names",
+        return_value=["acc1@example.com", "acc2@example.com"],
     )
-    def test_upload_history_uses_account(self, mock_upload, mock_config_toml):
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_multiple_accounts(
+        self,
+        mock_upload,
+        mock_accounts,
+        mock_resolve,
+        mock_validate,
+        mock_config_toml,
+    ):
+        """Should call upload_to_notion_sequential for every configured account."""
+        from chatgpt_to_notion.domain.models import AccountConfig, NotionConfig, ResolvedConfig
+
+        mock_validate.return_value = None
+        mock_resolve.side_effect = [
+            ResolvedConfig(
+                account_name="acc1@example.com",
+                account=AccountConfig(
+                    authorization_token="token1",
+                    user_agent="ua",
+                ),
+                notion=NotionConfig(api_key="key", database_id="db"),
+            ),
+            ResolvedConfig(
+                account_name="acc2@example.com",
+                account=AccountConfig(
+                    authorization_token="token2",
+                    user_agent="ua",
+                ),
+                notion=NotionConfig(api_key="key", database_id="db"),
+            ),
+        ]
+        result = runner.invoke(
+            app, ["upload-to-notion", "--db-id", "test_db_12345678901234567890"]
+        )
+        assert result.exit_code == 0
+        assert mock_upload.call_count == 2
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_uses_account(
+        self, mock_upload, mock_config_toml
+    ):
         """Should pass account name directly."""
         result = runner.invoke(
             app,
             [
-                "upload",
-                "history",
-                "--db-id",
-                "test_db_12345678901234567890",
+                "upload-to-notion",
+                "--db-id", "test_db_12345678901234567890",
             ],
         )
         assert result.exit_code == 0
@@ -179,39 +163,71 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["account"] == "default@example.com"
         assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_history_no_cache_flag(self, mock_upload, mock_config_toml):
-        """Should pass no_cache flag through."""
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_check_notion_api_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass check_notion_api flag through."""
         result = runner.invoke(
             app,
             [
-                "upload",
-                "history",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
-                "--no-cache",
+                "--check-notion-api",
             ],
         )
 
         assert result.exit_code == 0
-        assert mock_upload.call_args.kwargs["no_cache"] is True
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_history_delete_conversation_flag(
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_from_history_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass from_history flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--from-history",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["from_history"] is True
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_verify_history_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should make verify_history imply history source and Notion verification."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--verify-history",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["from_history"] is True
+        assert mock_upload.call_args.kwargs["check_notion_api"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_delete_conversation_flag(
         self, mock_upload, mock_config_toml
     ):
         """Should pass delete_conversation flag through."""
         result = runner.invoke(
             app,
             [
-                "upload",
-                "history",
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
                 "--delete-conversation",
@@ -221,197 +237,183 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert mock_upload.call_args.kwargs["delete_conversation"] is True
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_verify(self, mock_upload, mock_config_toml):
-        """Should call upload_to_notion_sequential with upload_to_notion=False."""
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_delete_library_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass delete_library flag through."""
         result = runner.invoke(
             app,
             [
-                "upload",
-                "verify",
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-library",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_library"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_delete_library_all_flag(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass delete_library_all flag through."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-library-all",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_library_all"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_all_delete_flags_combined(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should pass all delete flags when combined."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--delete-conversation",
+                "--delete-library",
+                "--delete-library-all",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_upload.call_args.kwargs["delete_conversation"] is True
+        assert mock_upload.call_args.kwargs["delete_library"] is True
+        assert mock_upload.call_args.kwargs["delete_library_all"] is True
+
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_no_delete_flags_default_false(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should default all delete flags to False when not specified."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
                 "--db-id",
                 "test_db_12345678901234567890",
             ],
         )
+
         assert result.exit_code == 0
-        mock_upload.assert_called_once()
-        kwargs = mock_upload.call_args.kwargs
-        assert kwargs["upload_to_notion"] is False
-        assert kwargs["check_notion_api"] is True
-        assert kwargs["from_history"] is True
+        assert mock_upload.call_args.kwargs["delete_conversation"] is False
+        assert mock_upload.call_args.kwargs["delete_library"] is False
+        assert mock_upload.call_args.kwargs["delete_library_all"] is False
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_verify_no_check(self, mock_upload, mock_config_toml):
-        """Should respect --no-check-notion-api."""
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "verify",
-                "--db-id",
-                "test_db_12345678901234567890",
-                "--no-check-notion-api",
-            ],
-        )
+    def test_clean_output_path(self, tmp_output_dir, monkeypatch):
+        """Should clean output path."""
+        monkeypatch.setattr("chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_output_dir))
+
+        # Create test files
+        (tmp_output_dir / "test.txt").write_text("test")
+        (tmp_output_dir / ".gitkeep").write_text("keep")
+
+        result = runner.invoke(app, ["clean-output-path"])
         assert result.exit_code == 0
-        mock_upload.assert_called_once()
-        assert mock_upload.call_args.kwargs["check_notion_api"] is False
+        assert "Cleaning output path" in result.stdout
+        assert "Output path cleaned" in result.stdout
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.count_library_images",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.delete_library_images_by_query",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.get_headers"
-    )
-    def test_upload_library_delete(
-        self, mock_get_headers, mock_delete, mock_count, mock_config_toml
-    ):
-        """Should call delete_library_images_by_query with query."""
-        mock_get_headers.return_value = {"Authorization": "Bearer test"}
-        mock_delete.return_value = 5
-        mock_count.return_value = 10
+        # Verify files cleaned
+        assert not (tmp_output_dir / "test.txt").exists()
+        assert (tmp_output_dir / ".gitkeep").exists()
 
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "library",
-                "--delete",
-                "test query",
-            ],
-        )
+    def test_account_status(self):
+        """Should show account readiness table."""
+        result = runner.invoke(app, ["account-status", "--timezone", "UTC"])
+
         assert result.exit_code == 0
-        assert "Deleted 5 images matching 'test query'" in result.stdout
-        assert "Total images remaining in library: 10" in result.stdout
+        assert "Today" in result.stdout
+        assert "Yesterday" in result.stdout
+        assert "Ready" in result.stdout
+        assert "0s" in result.stdout
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.count_library_images",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.delete_library_images_by_query",
-        new_callable=AsyncMock,
-    )
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.get_headers"
-    )
-    def test_upload_library_delete_all(
-        self, mock_get_headers, mock_delete, mock_count, mock_config_toml
-    ):
-        """Should call delete_library_images_by_query with query=None for --delete-all."""
-        mock_get_headers.return_value = {"Authorization": "Bearer test"}
-        mock_delete.return_value = 100
-        mock_count.return_value = 0
-
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "library",
-                "--delete-all",
-            ],
-        )
-        assert result.exit_code == 0
-        assert "Deleted 100 images (all)" in result.stdout
-        assert "Total images remaining in library: 0" in result.stdout
+    def test_account_status_multiple_accounts_no_flag(self):
+        """Should work without --account when multiple accounts exist."""
+        with patch(
+            "chatgpt_to_notion.cli.commands.accounts.get_account_activity_statuses",
+            return_value=(
+                [
+                    {
+                        "Account": "account_a",
+                        "Next Wait": "Ready",
+                        "Next Cooldown": "0s",
+                        "Fully Ready In": "0s",
+                        "Total Wait": "0s",
+                        "Ready Generate?": "✅",
+                    },
+                    {
+                        "Account": "account_b",
+                        "Next Wait": "Ready",
+                        "Next Cooldown": "0s",
+                        "Fully Ready In": "0s",
+                        "Total Wait": "0s",
+                        "Ready Generate?": "✅",
+                    },
+                ],
+                [],
+                2,
+            ),
+        ):
+            result = runner.invoke(app, ["account-status"])
+            assert result.exit_code == 0
+            assert "Today" in result.stdout
+            assert "Yesterday" in result.stdout
 
 
 class TestCLIConfigValidation:
     """Tests for TOML configuration validation."""
 
-    def test_missing_config_file(self, tmp_path, monkeypatch):
-        """Should fail gracefully when config file doesn't exist."""
-        monkeypatch.setattr(
-            "chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path)
-        )
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "history",
-                "--config",
-                str(tmp_path / "nonexistent.toml"),
-                "--db-id",
-                "test_db_12345678901234567890",
-            ],
-        )
-        assert result.exit_code != 0
-
-    def test_empty_accounts_config(self, tmp_path, monkeypatch):
-        """Should fail when config has no accounts."""
-        monkeypatch.setattr(
-            "chatgpt_to_notion.shared.constants.OUTPUT_PATH", str(tmp_path)
-        )
-        config = tmp_path / "config.toml"
-        config.write_text(
-            '[notion]\napi_key = "test"\ndatabase_id = "test_db_12345678901234567890"\n'
-        )
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "history",
-                "--config",
-                str(config),
-                "--db-id",
-                "test_db_12345678901234567890",
-            ],
-        )
-        assert result.exit_code != 0
+    def test_missing_config_values_chatgpt(self):
+        """Should fail if required TOML config values are missing."""
+        with patch("chatgpt_to_notion.cli.commands.upload.validate_runtime_config") as mock_validate:
+            mock_validate.side_effect = ValueError("Missing CHATGPT_USER_AGENT")
+            result = runner.invoke(
+                app,
+                [
+                    "upload-to-notion",
+                    "--db-id", "test_db_12345678901234567890",
+                ],
+            )
+            assert result.exit_code != 0
 
 
 class TestCLIDefaults:
     """Tests for CLI default values."""
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_chatgpt_default_image_folder(self, mock_upload, mock_config_toml):
-        """Should default image_folder to None (resolved by upload function)."""
-        result = runner.invoke(
-            app,
-            [
-                "upload",
-                "history",
-                "--db-id",
-                "test_db_12345678901234567890",
-            ],
-        )
+    def test_chatgpt_default_image_folder(self):
+        """Should use default image folder from output/images."""
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
-        mock_upload.assert_called_once()
-        called_image_folder = mock_upload.call_args.kwargs["image_folder"]
-        # image_folder is None when not specified; upload_sequential.resolve_image_folder handles default
-        assert called_image_folder is None
+        assert "output/images" in result.stdout
 
-    @patch(
-        "chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential",
-        new_callable=AsyncMock,
-    )
-    def test_upload_to_notion_deprecated_alias(self, mock_upload, mock_config_toml):
-        """Deprecated upload-to-notion still works."""
-        result = runner.invoke(
-            app,
-            [
-                "upload-to-notion",
-                "--image-folder",
-                "test_images",
-                "--db-id",
-                "test_db_12345678901234567890",
-                "--limit",
-                "10",
-            ],
-        )
+    def test_chatgpt_default_limit(self):
+        """Should use default limit."""
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
         assert result.exit_code == 0
-        mock_upload.assert_called_once()
+        assert "[default: 100]" in result.stdout
+
+    def test_upload_to_notion_timezone_option(self):
+        """Should accept --timezone option."""
+        result = runner.invoke(app, ["upload-to-notion", "--help"])
+        assert result.exit_code == 0
+        assert "--timezone" in strip_ansi(result.stdout)
+
+    def test_account_status_timezone_option(self):
+        """Should accept --timezone option."""
+        result = runner.invoke(app, ["account-status", "--timezone", "Asia/Jakarta"])
+        assert result.exit_code == 0
+
