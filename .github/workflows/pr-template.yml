@@ -14,7 +14,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           python3 - <<'EOF'
-          import os, re, sys
+          import os, sys
 
           body = os.environ.get("PR_BODY", "") or ""
           errors = []
@@ -25,18 +25,21 @@ jobs:
               if section not in body:
                   errors.append(f"missing section: {section}")
 
-          # Placeholder text not replaced
+          # Placeholder text not replaced (template fill-in lines)
           placeholders = [
               "Brief description of the changes.",
               "Change 1",
               "Change 2",
-              "Tested locally",
               "Any additional information (optional)",
           ]
           for p in placeholders:
-              # skip "- [ ] Tested locally" label if under Testing? too strict; flag any occurrence
               if p.lower() in body.lower():
                   errors.append(f"placeholder text remains: '{p}'")
+
+          # At least one testing checkbox must be checked
+          testing = body.split("### Testing", 1)[1] if "### Testing" in body else ""
+          if "- [x]" not in testing.lower():
+              errors.append("no testing checkbox checked (mark at least one '- [x]')")
 
           if errors:
               print("PR description does not comply with .github/PULL_REQUEST_TEMPLATE.md:")
