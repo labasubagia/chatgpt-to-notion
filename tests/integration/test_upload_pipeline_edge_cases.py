@@ -696,7 +696,14 @@ authorization_token = "test_token"
         mock_history_service.fetch_generations_for_conversation.return_value = [gen1]
         mock_notion_client.is_page_exists_in_db.return_value = False
         mock_notion_client.add_page_to_db.return_value = {"id": "page_1"}
-        from chatgpt_to_notion.services.history_service import mark_generations_uploaded as real_mark
+        from unittest.mock import AsyncMock, MagicMock
+        store = MagicMock()
+        store.get_existing_ids.return_value = {"gen1"}
+        store.get_generations.return_value = [gen1]
+        store.async_upsert_generations = AsyncMock()
+        from chatgpt_to_notion.services.history_service import (
+            mark_generations_uploaded as real_mark,
+        )
         mock_history_service.mark_generations_uploaded.side_effect = real_mark
 
         await upload_sequential.upload_to_notion_sequential(
@@ -710,11 +717,13 @@ authorization_token = "test_token"
             history_service=mock_history_service,
             image_service=mock_image_service,
             remove_library_func=mock_remove_library_func,
+            sqlite_store=store,
         )
 
-        # With no_cache=True, existing_ids should be empty set (not fetched from DB)
-        # This is tested implicitly by the fact that the generation is processed
+        # no_cache=True must skip reading existing ids from sqlite_store
+        store.get_existing_ids.assert_not_called()
         mock_chatgpt_client.get_image_generations.assert_called_once()
+
 
 
 @pytest.mark.integration

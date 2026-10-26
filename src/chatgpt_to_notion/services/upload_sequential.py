@@ -135,8 +135,13 @@ async def upload_to_notion_sequential(
                     limit=limit,
                 )
                 items = data.get("items", [])
-                api_ids = {str(item["id"]) for item in items}
-                existing_ids = store.get_existing_ids(account, api_ids)
+                existing_ids = (
+                    set()
+                    if no_cache
+                    else store.get_existing_ids(
+                        account, {str(item["id"]) for item in items}
+                    )
+                )
                 conv_items_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
                 for item in items:
                     conv_items_map[str(item["conversation_id"])].append(item)

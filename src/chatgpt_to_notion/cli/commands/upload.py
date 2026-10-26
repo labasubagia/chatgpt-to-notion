@@ -150,8 +150,6 @@ def register(app: typer.Typer) -> None:
             effective_check_notion_api = check_notion_api or verify_history
             if effective_from_history and not all:
                 effective_keep_days = 3
-            elif all:
-                effective_keep_days = None
             else:
                 effective_keep_days = None
 

@@ -183,9 +183,3 @@ def retry_http():
 
 def get_http_timeout() -> aiohttp.ClientTimeout:
     return aiohttp.ClientTimeout(total=HTTP_TIMEOUT_SECONDS)
-
-
-def get_download_timeout() -> aiohttp.ClientTimeout:
-    from .constants import DOWNLOAD_TIMEOUT_SECONDS
-
-    return aiohttp.ClientTimeout(total=DOWNLOAD_TIMEOUT_SECONDS)

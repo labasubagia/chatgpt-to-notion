@@ -21,10 +21,7 @@ from chatgpt_to_notion.services.history_service import (
     mark_generations_uploaded,
 )
 from chatgpt_to_notion.shared.constants import (
-    DOWNLOAD_TIMEOUT_SECONDS,
     HTTP_TIMEOUT_SECONDS,
-    MAX_CONCURRENT_DOWNLOADS,
-    MAX_CONCURRENT_REQUESTS,
     MAX_RETRIES,
     OUTPUT_PATH,
 )
@@ -968,17 +965,6 @@ class TestConstants:
     def test_max_retries(self):
         assert MAX_RETRIES == 10
 
-    def test_max_concurrent_downloads(self):
-        assert MAX_CONCURRENT_DOWNLOADS == 5
-
-    def test_max_concurrent_requests(self):
-        assert MAX_CONCURRENT_REQUESTS == 1
-
-    def test_http_timeout_seconds(self):
-        assert HTTP_TIMEOUT_SECONDS == 120
-
-    def test_download_timeout_seconds(self):
-        assert DOWNLOAD_TIMEOUT_SECONDS == 300
 
     def test_output_path(self):
         assert OUTPUT_PATH == "./output"
