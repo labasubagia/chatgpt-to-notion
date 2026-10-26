@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.services import history_service
-from chatgpt_to_notion.adapters.sqlite_store import _get_connection, sqlite_store as db
+from chatgpt_to_notion.adapters.sqlite_store import sqlite_store as db
 
 pytestmark = pytest.mark.asyncio
 
@@ -86,13 +86,7 @@ class TestMarkGenerationsUploaded:
         )
         db.upsert_generations("test_account", [gen])
         await history_service.mark_generations_uploaded("test_account", ["gen_1"])
-        conn = _get_connection(isolated_db)
-        row = conn.execute(
-            "SELECT uploaded_at FROM image_generations WHERE id = ?",
-            ("gen_1",),
-        ).fetchone()
-        conn.close()
-        assert row["uploaded_at"] != ""
+        assert db.get_uploaded_ids("test_account") == {"gen_1"}
 
     async def test_mark_multiple_ids(self, isolated_db):
         """Marking multiple IDs should update all."""
@@ -108,13 +102,7 @@ class TestMarkGenerationsUploaded:
         gen2 = gen1.model_copy(update={"id": "gen_2"})
         db.upsert_generations("test_account", [gen1, gen2])
         await history_service.mark_generations_uploaded("test_account", ["gen_1", "gen_2"])
-        conn = _get_connection(isolated_db)
-        rows = conn.execute(
-            "SELECT id, uploaded_at FROM image_generations WHERE id IN (?, ?)",
-            ("gen_1", "gen_2"),
-        ).fetchall()
-        conn.close()
-        assert all(row["uploaded_at"] != "" for row in rows)
+        assert db.get_uploaded_ids("test_account") == {"gen_1", "gen_2"}
 
 
 class TestLoadImageGenerations:

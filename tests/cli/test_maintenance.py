@@ -78,37 +78,37 @@ class TestRestoreDb:
     def test_restore_db(self, tmp_path, monkeypatch):
         from chatgpt_to_notion.adapters import sqlite_store
         from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
-        import sqlite3
+        from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
         isolated_db = tmp_path / "isolated_test.db"
-        SqliteStore(db_path=isolated_db).init_db()
-
+        store = SqliteStore(db_path=isolated_db)
+        store.init_db()
         monkeypatch.setattr(sqlite_store, "_get_db_path", lambda: isolated_db)
 
-        with sqlite_store._get_connection(isolated_db) as conn:
-            conn.execute(
-                "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, account) VALUES ('gen1', '2024-01-01T00:00:00Z', 'conv1', 'msg1', 'asset1', 'http://example.com', 'prompt1', 'test@example.com')"
-            )
-            conn.commit()
+        gen1 = ChatGPTImageGeneration(
+            created_at="2024-01-01T00:00:00Z",
+            id="gen1",
+            conversation_id="conv1",
+            message_id="msg1",
+            asset_pointer="asset1",
+            url="http://example.com",
+            prompt="prompt1",
+        )
+        store.upsert_generations("test@example.com", [gen1])
 
         backup_path = tmp_path / "backup.db"
-        # Create backup DB directly to avoid monkeypatch interference
-        with sqlite3.connect(str(backup_path)) as conn:
-            conn.executescript("""
-                CREATE TABLE image_generations (
-                    id TEXT PRIMARY KEY,
-                    created_at TEXT NOT NULL,
-                    conversation_id TEXT NOT NULL,
-                    message_id TEXT NOT NULL,
-                    asset_pointer TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    prompt TEXT DEFAULT '',
-                    uploaded_at TEXT DEFAULT '',
-                    account TEXT DEFAULT ''
-                );
-                INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, account) VALUES ('gen2', '2024-01-01T00:00:00Z', 'conv2', 'msg2', 'asset2', 'http://example.com', 'prompt2', 'test@example.com');
-            """)
-            conn.commit()
+        backup_store = SqliteStore(db_path=backup_path)
+        backup_store.init_db()
+        gen2 = gen1.model_copy(
+            update={
+                "id": "gen2",
+                "conversation_id": "conv2",
+                "message_id": "msg2",
+                "asset_pointer": "asset2",
+                "prompt": "prompt2",
+            }
+        )
+        backup_store.upsert_generations("test@example.com", [gen2])
 
         runner = CliRunner()
         result = runner.invoke(app, ["restore-db", str(backup_path)])
@@ -117,10 +117,11 @@ class TestRestoreDb:
         assert "Restoring database" in result.output
         assert "Database restored" in result.output
 
-        with sqlite_store._get_connection(isolated_db) as conn:
-            row = conn.execute("SELECT prompt FROM image_generations WHERE id = 'gen2'").fetchone()
-            assert row[0] == "prompt2"
-
+        restored = SqliteStore(db_path=isolated_db)
+        rows = restored.get_generations(
+            "test@example.com", include_uploaded=True, ids_filter={"gen2"}
+        )
+        assert [g.prompt for g in rows] == ["prompt2"]
     def test_restore_db_missing_backup_raises(self, tmp_path, monkeypatch):
         from chatgpt_to_notion.adapters import sqlite_store
         from chatgpt_to_notion.adapters.sqlite_store import SqliteStore

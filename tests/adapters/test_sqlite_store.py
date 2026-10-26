@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from chatgpt_to_notion.adapters.sqlite_store import SqliteStore, _get_connection
+from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration
 
 @pytest.fixture
@@ -146,14 +146,9 @@ class TestMarkUploaded:
         store.init_db()
         store.upsert_generations("test_account", [sample_generation])
         store.mark_uploaded("test_account", {sample_generation.id})
-
-        conn = _get_connection(tmp_db_path)
-        row = conn.execute(
-            "SELECT uploaded_at FROM image_generations WHERE id = ?",
-            (sample_generation.id,),
-        ).fetchone()
-        conn.close()
-        assert row["uploaded_at"] != ""
+        # Persisted on disk: a fresh store on the same file sees the upload.
+        fresh = SqliteStore(db_path=tmp_db_path)
+        assert fresh.get_uploaded_ids("test_account") == {sample_generation.id}
 
     def test_empty_ids_does_nothing(self, store, sample_generation):
         store.init_db()
@@ -322,17 +317,17 @@ class TestBackupDb:
         backup = tmp_db_path.with_name("backup.db")
         store.backup(backup)
         assert backup.exists()
-        conn = sqlite3.connect(str(backup))
-        row = conn.execute("SELECT id FROM image_generations").fetchone()
-        assert row[0] == "gen_test123"
+        backup_store = SqliteStore(db_path=backup)
+        ids = [g.id for g in backup_store.get_generations("test_account", include_uploaded=True)]
+        assert ids == [sample_generation.id]
         store.init_db()
         store.upsert_generations("test_account", [sample_generation])
         backup = Path("backup.db")
         store.backup(backup)
         assert backup.exists()
-        conn = sqlite3.connect(str(backup))
-        row = conn.execute("SELECT id FROM image_generations").fetchone()
-        assert row[0] == "gen_test123"
+        backup_store = SqliteStore(db_path=backup)
+        ids = [g.id for g in backup_store.get_generations("test_account", include_uploaded=True)]
+        assert ids == [sample_generation.id]
 
     def test_backup_creates_parent_dirs(self, tmp_path):
         db = tmp_path / "db" / "test.db"
