@@ -23,6 +23,7 @@ def _load_toml_config(config_path: str | None = None) -> AppConfig | None:
     with path.open("rb") as file_obj:
         return AppConfig.model_validate(tomllib.load(file_obj))
 
+
 class ConfigLoader:
     def __init__(self) -> None:
         pass

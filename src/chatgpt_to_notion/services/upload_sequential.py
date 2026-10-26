@@ -234,9 +234,7 @@ async def upload_to_notion_sequential(
                         existing_ids,
                     )
                     if new_generations:
-                        await store.async_upsert_generations(
-                            account, new_generations
-                        )
+                        await store.async_upsert_generations(account, new_generations)
                         existing_ids.update(g.id for g in new_generations)
                     conv_ids = {str(item["id"]) for item in payload}
                     conv_generations = store.get_generations(

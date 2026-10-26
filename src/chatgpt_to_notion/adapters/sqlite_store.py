@@ -29,6 +29,7 @@ def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
+
 class SqliteStore:
     def __init__(self, db_path: Path | None = None):
         self._db_path = db_path
@@ -235,9 +236,7 @@ class SqliteStore:
     async def async_set_cached_data_sources(
         self, db_id: str, sources: list[dict[str, Any]], ttl_days: int = 1
     ) -> None:
-        expires_at = (
-            datetime.now(timezone.utc) + timedelta(days=ttl_days)
-        ).isoformat()
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=ttl_days)).isoformat()
         with _lock:
             conn = self._conn()
             try:

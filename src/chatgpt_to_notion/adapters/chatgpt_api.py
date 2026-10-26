@@ -251,9 +251,7 @@ class ChatGPTClientImpl:
                     break
 
                 semaphore = asyncio.Semaphore(max_concurrent)
-                await asyncio.gather(
-                    *[_delete_one(item, semaphore) for item in items]
-                )
+                await asyncio.gather(*[_delete_one(item, semaphore) for item in items])
                 total_deleted += len(items)
                 cursor = data.get("cursor")
                 if not cursor:
