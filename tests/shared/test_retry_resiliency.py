@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from chatgpt_to_notion.adapters.config_loader import config_loader
 from chatgpt_to_notion.shared.http import (
     DetailedHTTPError,
     http_retryable,
