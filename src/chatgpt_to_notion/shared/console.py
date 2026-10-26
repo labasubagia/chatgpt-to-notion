@@ -19,6 +19,9 @@ def safe_async_run(coro) -> bool:
     except DetailedHTTPError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         return False
+    except Exception as exc:  # noqa: BLE001 - surface any failure cleanly
+        console.print(f"[red]Unexpected error:[/red] {exc}")
+        return False
 
 
 def print_account_log_header(

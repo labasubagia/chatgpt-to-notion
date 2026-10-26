@@ -113,10 +113,18 @@ def register(app: typer.Typer) -> None:
         """Upload image generations to Notion."""
         if verbose and quiet:
             raise typer.BadParameter("Cannot use --verbose and --quiet together")
+        if delete_library and delete_library_all:
+            raise typer.BadParameter(
+                "Use either --delete-library or --delete-library-all, not both"
+            )
         if verbose:
             set_verbosity(VERBOSE)
         elif quiet:
             set_verbosity(QUIET)
+        if all and not (from_history or verify_history):
+            raise typer.BadParameter(
+                "--all only applies with --from-history or --verify-history"
+            )
 
         target_accounts = _resolve_target_accounts(account, config)
         total_accounts = len(target_accounts)

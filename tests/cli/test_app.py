@@ -274,10 +274,10 @@ class TestCLICommands:
         assert mock_upload.call_args.kwargs["delete_library_all"] is True
 
     @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
-    def test_upload_to_notion_all_delete_flags_combined(
+    def test_upload_to_notion_all_delete_flags_combined_rejected(
         self, mock_upload, mock_config_toml
     ):
-        """Should pass all delete flags when combined."""
+        """Should reject combining --delete-library and --delete-library-all."""
         result = runner.invoke(
             app,
             [
@@ -290,11 +290,26 @@ class TestCLICommands:
             ],
         )
 
-        assert result.exit_code == 0
-        assert mock_upload.call_args.kwargs["delete_conversation"] is True
-        assert mock_upload.call_args.kwargs["delete_library"] is True
-        assert mock_upload.call_args.kwargs["delete_library_all"] is True
+        assert result.exit_code != 0
+        mock_upload.assert_not_awaited()
 
+    @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
+    def test_upload_to_notion_all_without_history_rejected(
+        self, mock_upload, mock_config_toml
+    ):
+        """Should reject --all without --from-history/--verify-history."""
+        result = runner.invoke(
+            app,
+            [
+                "upload-to-notion",
+                "--db-id",
+                "test_db_12345678901234567890",
+                "--all",
+            ],
+        )
+
+        assert result.exit_code != 0
+        mock_upload.assert_not_awaited()
     @patch("chatgpt_to_notion.cli.commands.upload.upload_sequential.upload_to_notion_sequential", new_callable=AsyncMock)
     def test_upload_to_notion_no_delete_flags_default_false(
         self, mock_upload, mock_config_toml

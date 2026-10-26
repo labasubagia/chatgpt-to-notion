@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 from chatgpt_to_notion.services import upload_sequential
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
-import sqlite3
+from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
 from chatgpt_to_notion.domain.models import AppConfig
 from chatgpt_to_notion.adapters.config_loader import _load_toml_config
 import tomllib
@@ -61,19 +61,12 @@ authorization_token = "test_token"
         )
 
         # Set up database with one uploaded and one unuploaded generation
-        now = "2024-01-01T00:00:00Z"
-        uploaded_now = "2024-01-01T01:00:00Z"
-        conn = sqlite3.connect(isolated_db)
-        conn.execute(
-            "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("gen1", now, "conv1", "msg1", "asset1", "http://example.com/gen1.png", "prompt1", uploaded_now, account)
-        )
-        conn.execute(
-            "INSERT INTO image_generations (id, created_at, conversation_id, message_id, asset_pointer, url, prompt, uploaded_at, account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("gen2", now, "conv2", "msg2", "asset2", "http://example.com/gen2.png", "prompt2", "", account)
-        )
-        conn.commit()
-        conn.close()
+        store = SqliteStore(db_path=isolated_db)
+        store.init_db()
+        gen_uploaded = make_gen("gen1", "conv1", "prompt1")
+        gen_unuploaded = make_gen("gen2", "conv2", "prompt2")
+        store.upsert_generations(account, [gen_uploaded, gen_unuploaded])
+        store.mark_uploaded(account, {"gen1"})
 
         # Create image file for gen2
         (tmp_path / "images").mkdir(exist_ok=True)

@@ -218,3 +218,13 @@ To maintain a durable local-first pipeline, the program enforces the following o
 ### 5.3 Memory and Disk Footprint Control
 - When performing bulk multi-part uploads to Notion, streams are consumed incrementally rather than reading complete files into memory, keeping the footprint light and stable.
 - Every disk operation on image files checks current headers first, minimizing SSD read/write degradation cycles.
+
+### 5.4 Testing Strategy (Black-Box)
+
+Tests target public surfaces rather than private implementation details:
+- No test may call or monkeypatch private (`_`-prefixed) methods, fields, or module functions; behavior is exercised through the public API.
+- Database state is asserted via public store accessors and fresh `SqliteStore` instances on the same file — never `_get_connection` or inline SQL.
+- External adapters are faked at their constructor/protocol boundary (e.g. injected stub store), not by patching internals.
+- HTTP flows use the `mock_aiohttp_session` fixture with staged responses; assertions describe outcomes, not call wiring.
+- Exemption: harness-level data isolation and config injection (`isolated_db`, `clear_config_cache`, CLI `_get_db_path` redirects, `_load_toml_config` stubbing) may touch private plumbing only to set up isolated fixtures or injected inputs; it never asserts private behavior.
+- The suite must remain deterministic and green under `uv run pytest`.

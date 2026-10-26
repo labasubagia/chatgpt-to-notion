@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from chatgpt_to_notion.adapters.config_loader import config_loader
 from chatgpt_to_notion.shared.http import (
     DetailedHTTPError,
     http_retryable,
@@ -333,63 +332,63 @@ class TestUploadRetry:
     async def test_create_upload_img_retries_on_429(self, mock_aiohttp_session, tmp_path):
         from chatgpt_to_notion.adapters.notion_api import NotionClientImpl
 
-        call_count = 0
-
-        def tracking_post(url, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                resp = make_mock_response({"id": "upload-1"}, status=429)
-                resp.headers = {"Retry-After": "0"}
-            else:
-                resp = make_mock_response({"id": "upload-1"}, status=200)
-
-            class ContextManager:
-                async def __aenter__(ctx_self):
-                    return resp
-                async def __aexit__(ctx_self, *args):
-                    pass
-            return ContextManager()
-
-        mock_aiohttp_session.post = tracking_post
-
         test_file = tmp_path / "test.png"
         test_file.write_bytes(PNG_BYTES)
 
-        with patch("chatgpt_to_notion.adapters.notion_api.get_headers", return_value={"Authorization": "Bearer test"}):
-            client = NotionClientImpl(config_loader.notion_context())
-            result = await client._create_upload_img(mock_aiohttp_session, str(test_file))
+        def _resp(data, status=200, headers=None):
+            resp = make_mock_response(data, status=status)
+            resp.headers = headers or {}
+            return resp
 
-        assert result["id"] == "upload-1"
-        assert call_count == 3
+        mock_aiohttp_session._responses = [
+            _resp({"id": "upload-1"}, status=429, headers={"Retry-After": "0"}),
+            _resp({"id": "upload-1"}, status=429, headers={"Retry-After": "0"}),
+            _resp({"id": "upload-1"}),
+            _resp({"id": "file1", "status": "complete"}),
+            _resp({"id": "page1"}),
+        ]
+
+        ctx = MagicMock()
+        ctx.headers = {"Authorization": "Bearer x", "Notion-Version": "2022-06-28"}
+        ctx.account_name = "test@example.com"
+        client = NotionClientImpl(ctx)
+
+        result = await client.add_page_to_db(mock_aiohttp_session, "db1", str(test_file))
+
+        assert result["id"] == "page1"
+        create_calls = [
+            r for r in mock_aiohttp_session.requests
+            if "/v1/file_uploads" in r["url"] and "/send" not in r["url"]
+        ]
+        assert len(create_calls) == 3
 
     @pytest.mark.asyncio
     async def test_send_upload_img_streaming(self, mock_aiohttp_session, tmp_path):
         from chatgpt_to_notion.adapters.notion_api import NotionClientImpl
 
-        mock_response = make_mock_response({"id": "upload-1", "status": "complete"}, status=200)
-
-        class ContextManager:
-            async def __aenter__(ctx_self):
-                return mock_response
-            async def __aexit__(ctx_self, *args):
-                pass
-
-        cm_instance = ContextManager()
-        mock_post = MagicMock(return_value=cm_instance)
-        mock_aiohttp_session.post = mock_post
-
         test_file = tmp_path / "test.png"
         test_file.write_bytes(PNG_BYTES)
 
-        with patch("chatgpt_to_notion.adapters.notion_api.get_headers", return_value={"Authorization": "Bearer test", "Notion-Version": "2025-09-03"}):
-            client = NotionClientImpl(config_loader.notion_context())
-            result = await client._send_upload_img(mock_aiohttp_session, "upload-1", str(test_file))
-        assert result["id"] == "upload-1"
-        call_args = mock_post.call_args
-        assert "data" in call_args.kwargs
+        mock_aiohttp_session._responses = [
+            make_mock_response({"id": "upload-1"}),
+            make_mock_response({"id": "upload-1", "status": "complete"}),
+            make_mock_response({"id": "page1"}),
+        ]
+
+        ctx = MagicMock()
+        ctx.headers = {"Authorization": "Bearer x", "Notion-Version": "2022-06-28"}
+        ctx.account_name = "test@example.com"
+        client = NotionClientImpl(ctx)
+
+        result = await client.add_page_to_db(mock_aiohttp_session, "db1", str(test_file))
+        assert result["id"] == "page1"
+
+        send_req = next(
+            r for r in mock_aiohttp_session.requests if r["url"].endswith("/send")
+        )
+        assert "data" in send_req
         import aiohttp
-        assert isinstance(call_args.kwargs["data"], aiohttp.FormData)
+        assert isinstance(send_req["data"], aiohttp.FormData)
 
 
 class TestExponentialBackoffCalculation:

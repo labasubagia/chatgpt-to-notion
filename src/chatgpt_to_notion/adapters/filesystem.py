@@ -69,7 +69,13 @@ class Filesystem:
         base_dir = Path(constants.OUTPUT_PATH).resolve()
         if not base_dir.exists():
             return
+        # Preserve the SQLite database, which lives inside the output dir
+        # (see sqlite_store._get_db_path). Cleaning it would destroy all
+        # upload history and the API cache.
+        db_path = base_dir / "chatgpt.db"
         for item in base_dir.iterdir():
+            if item == db_path:
+                continue
             if item.is_file() and item.name == ".gitkeep":
                 continue
             if item.is_dir():

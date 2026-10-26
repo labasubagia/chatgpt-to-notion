@@ -108,7 +108,11 @@ async def fetch_generations_for_conversation(
             str(image_generation["asset_pointer"]),
         )
         created_at_value = image_generation["created_at"]
-        assert isinstance(created_at_value, int | float)
+        if not isinstance(created_at_value, int | float):
+            raise ValueError(
+                f"Unexpected created_at type {type(created_at_value).__name__} "
+                f"for image {image_generation['id']}"
+            )
         created_at = datetime.fromtimestamp(
             created_at_value,
             tz=timezone.utc,
