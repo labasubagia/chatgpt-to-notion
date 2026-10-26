@@ -34,6 +34,15 @@ Use Python 3.13, 4-space indentation, and type hints on public functions. Follow
 
 Pytest is the test runner, with `pytest-asyncio` for async code and `pytest-mock` for mocking. Add or update tests in the matching `tests/test_*.py` file for every behavioral change. Prefer focused unit/integration tests that explain intent, not just output. Keep test names descriptive, e.g. `test_upload_to_notion_from_history_flag`. Use the `isolated_db` fixture for tests that need database access. Run `uv run pytest` before opening a PR.
 
+### Black-Box Testing
+
+Tests MUST exercise public surfaces and stay decoupled from private implementation details:
+- Never call or patch private members (`_`-prefixed methods, fields, or module functions). Drive behavior through the public API (e.g. `add_page_to_db`, `is_page_exists_in_db`, `get_account_activity_statuses`).
+- Verify database persistence through public store accessors (`get_generations`, `get_uploaded_ids`, `mark_uploaded`, …) and fresh `SqliteStore(db_path=…)` instances on the same file — never `sqlite_store._get_connection` or inline SQL in tests.
+- Inject stubs/fakes at constructor or protocol boundaries (e.g. `NotionClientImpl(…, sqlite_store=StubStore())`) instead of monkeypatching internals.
+- HTTP interactions use the `mock_aiohttp_session` fixture with staged responses; assert outcomes, not call wiring.
+- Delete redundant white-box tests when a black-box equivalent already covers the behavior.
+
 ## Agent Workflow
 
 When using coding agents in this repository, prefer small, verifiable changes. State assumptions when behavior is ambiguous, avoid speculative abstractions, and keep edits limited to the files required by the task. Read the relevant module and immediate callers before changing shared helpers such as `util.py` or `main.py`. For bug fixes and refactors, define success in terms of checks you can run here, usually `uv run pytest` or a focused test file. If a change creates unused imports, variables, or tests, remove only the orphans introduced by that change.
