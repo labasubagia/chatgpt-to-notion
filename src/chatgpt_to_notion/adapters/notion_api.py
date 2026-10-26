@@ -14,7 +14,7 @@ from ..shared.http import (
     retry_http,
 )
 from ..shared.logging import get_logger
-from .config_loader import config_loader as default_config_loader
+from .config import get_config
 from .sqlite_store import SqliteStore
 from .sqlite_store import sqlite_store as default_store
 
@@ -24,7 +24,7 @@ BASE_URL = "https://api.notion.com"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return default_config_loader.notion_context(options).headers
+    return get_config().notion_context(options).headers
 
 
 def _content_type_for_ext(ext: str) -> str:

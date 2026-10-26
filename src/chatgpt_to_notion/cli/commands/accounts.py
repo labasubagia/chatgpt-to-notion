@@ -44,7 +44,6 @@ def _print_activity_table(rows: list[dict[str, str]], title: str = "") -> None:
 def register(app: typer.Typer) -> None:
     @app.command()
     def account_status(
-        config: str | None = typer.Option(None, help="Path to TOML config file"),
         timezone: str | None = typer.Option(
             None, help="IANA timezone name, e.g. Asia/Singapore"
         ),
@@ -52,7 +51,6 @@ def register(app: typer.Typer) -> None:
         """Show which accounts are ready to generate new data."""
         sqlite_store.init_db()
         today_rows, yesterday_rows, total_accounts = get_account_activity_statuses(
-            config_path=config,
             timezone_name=timezone,
         )
         user_tz = resolve_timezone(timezone_name=timezone)

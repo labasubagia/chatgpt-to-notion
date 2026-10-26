@@ -6,7 +6,7 @@ import aiohttp
 import typer
 
 from ...adapters.chatgpt_api import ChatGPTClientImpl
-from ...adapters.config_loader import config_loader
+from ...adapters.config import get_config
 from ...adapters.filesystem import filesystem
 from ...adapters.sqlite_store import sqlite_store
 from ...domain.models import RuntimeOptions
@@ -51,9 +51,6 @@ def register(app: typer.Typer) -> None:
         max_concurrent: int = typer.Option(
             10, "--max-concurrent", help="Max concurrent delete requests"
         ),
-        config: str | None = typer.Option(
-            None, "--config", help="Path to TOML config file"
-        ),
         account: str | None = typer.Option(
             None, "--account", help="Named account from TOML config"
         ),
@@ -61,12 +58,10 @@ def register(app: typer.Typer) -> None:
         """Remove images from ChatGPT library, optionally filtered by query."""
 
         async def run() -> None:
-            target_accounts = (
-                [account] if account else config_loader.account_names(config)
-            )
+            target_accounts = [account] if account else get_config().account_names()
             for target_account in target_accounts:
-                options = RuntimeOptions(config_path=config, account=target_account)
-                client = ChatGPTClientImpl(config_loader.provider_context(options))
+                options = RuntimeOptions(account=target_account)
+                client = ChatGPTClientImpl(get_config().provider_context(options))
                 async with aiohttp.ClientSession() as session:
                     total = await client.delete_library_images_by_query(
                         session,

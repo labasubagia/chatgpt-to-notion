@@ -154,7 +154,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["test@example.com"]), patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.provider_context", return_value=MagicMock()):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.get_config", return_value=MagicMock(account_names=MagicMock(return_value=["test@example.com"]), provider_context=MagicMock(return_value=MagicMock()))):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
                         result = runner.invoke(app, ["delete-library", "test query", "--max-concurrent", "5"])
 
@@ -185,7 +185,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["test@example.com"]), patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.provider_context", return_value=MagicMock()):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.get_config", return_value=MagicMock(account_names=MagicMock(return_value=["test@example.com"]), provider_context=MagicMock(return_value=MagicMock()))):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
                         result = runner.invoke(app, ["delete-library", "--max-concurrent", "5"])
 
@@ -216,7 +216,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["a@test.com", "b@test.com"]), patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.provider_context", return_value=MagicMock()):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.get_config", return_value=MagicMock(account_names=MagicMock(return_value=["a@test.com", "b@test.com"]), provider_context=MagicMock(return_value=MagicMock()))):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
                         result = runner.invoke(app, ["delete-library", "query"])
 
@@ -225,6 +225,43 @@ class TestDeleteLibrary:
         assert "b@test.com" in result.output
         assert call_count["delete"] == 2
         assert call_count["count"] == 2
+    def test_delete_library_with_account_flag(self, mock_aiohttp_session):
+        """--account selects a single account without consulting config accounts."""
+        runner = CliRunner()
+        call_count = {"delete": 0, "count": 0}
+
+        async def mock_delete(*args, **kwargs):
+            call_count["delete"] += 1
+            return 3
+
+        async def mock_count(*args, **kwargs):
+            call_count["count"] += 1
+            return 7
+
+        class MockSessionContext:
+            async def __aenter__(self):
+                return mock_aiohttp_session
+            async def __aexit__(self, *args):
+                pass
+
+        mock_cfg = MagicMock(
+            account_names=MagicMock(),
+            provider_context=MagicMock(return_value=MagicMock()),
+        )
+
+        with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", mock_delete):
+            with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.get_config", return_value=mock_cfg):
+                    with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=MockSessionContext()):
+                        result = runner.invoke(
+                            app,
+                            ["delete-library", "--account", "user@example.com", "query"],
+                        )
+
+        assert result.exit_code == 0
+        assert "user@example.com" in result.output
+        assert call_count["delete"] == 1
+        assert mock_cfg.account_names.call_count == 0
     def test_delete_library_session_still_open_for_count(self, mock_aiohttp_session):
         """Verify count_library_images is called while session context is still active."""
         runner = CliRunner()
@@ -246,7 +283,7 @@ class TestDeleteLibrary:
 
         with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.delete_library_images_by_query", return_value=3):
             with patch("chatgpt_to_notion.adapters.chatgpt_api.ChatGPTClientImpl.count_library_images", mock_count):
-                with patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.account_names", return_value=["test@example.com"]), patch("chatgpt_to_notion.cli.commands.maintenance.config_loader.provider_context", return_value=MagicMock()):
+                with patch("chatgpt_to_notion.cli.commands.maintenance.get_config", return_value=MagicMock(account_names=MagicMock(return_value=["test@example.com"]), provider_context=MagicMock(return_value=MagicMock()))):
                     with patch("chatgpt_to_notion.cli.commands.maintenance.aiohttp.ClientSession", return_value=TrackingSessionContext()):
                         result = runner.invoke(app, ["delete-library"])
 

@@ -246,7 +246,6 @@ class RuntimeOptions(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    config_path: str | None = None
     account: str | None = None
     history_folder: str | None = None
     image_folder: str | None = None

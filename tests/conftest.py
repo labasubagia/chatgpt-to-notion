@@ -83,11 +83,11 @@ def sample_notion_response():
 
 @pytest.fixture(autouse=True)
 def clear_config_cache():
-    """Clear the config cache before each test to avoid stale results."""
-    from chatgpt_to_notion.adapters.config_loader import _load_toml_config
-    _load_toml_config.cache_clear()
+    """Reset the cached Config singleton before each test so it reloads."""
+    from chatgpt_to_notion.adapters import config
+    config._config = None
     yield
-    _load_toml_config.cache_clear()
+    config._config = None
 
 
 @pytest.fixture(autouse=True)

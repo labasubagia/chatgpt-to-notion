@@ -9,13 +9,13 @@ from tqdm.asyncio import tqdm
 
 from ..domain.models import ProviderContext, ResolvedConfig, RuntimeOptions
 from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
-from .config_loader import config_loader as default_config_loader
+from .config import get_config
 
 BASE_URL = "https://chatgpt.com/backend-api"
 
 
 def get_headers(options: RuntimeOptions | None = None) -> dict[str, str]:
-    return default_config_loader.provider_context(options).headers
+    return get_config().provider_context(options).headers
 
 
 def get_conversation_mapping_key_by_asset_pointer(

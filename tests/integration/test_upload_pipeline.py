@@ -84,7 +84,7 @@ class TestRemoveLibraryImages:
         """Should call remove_library_func with configured queries when delete_library=True."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
-        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+        from chatgpt_to_notion.adapters.config import _load_config
 
         account = "default@example.com"
         config_file = tmp_path / "config.toml"
@@ -105,7 +105,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -144,7 +144,7 @@ authorization_token = "test_token_abc"
         import tomllib
         from unittest.mock import AsyncMock
         from chatgpt_to_notion.domain.models import AppConfig
-        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+        from chatgpt_to_notion.adapters.config import _load_config
 
         account = "default@example.com"
         config_file = tmp_path / "config.toml"
@@ -164,7 +164,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -200,7 +200,7 @@ authorization_token = "test_token_abc"
         """Should call remove_library_func with remove_all=True when flag is set."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
-        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+        from chatgpt_to_notion.adapters.config import _load_config
 
         account = "default@example.com"
         config_file = tmp_path / "config.toml"
@@ -221,7 +221,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -257,7 +257,7 @@ authorization_token = "test_token_abc"
         """Should call remove_library_func with remove_all=True when delete_library_all=True."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
-        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+        from chatgpt_to_notion.adapters.config import _load_config
 
         account = "default@example.com"
         config_file = tmp_path / "config.toml"
@@ -277,7 +277,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -314,7 +314,7 @@ authorization_token = "test_token_abc"
         """Should not call client.remove_library_images when nothing is configured."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
-        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+        from chatgpt_to_notion.adapters.config import _load_config
 
         account = "default@example.com"
         config_file = tmp_path / "config.toml"
@@ -334,7 +334,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -385,7 +385,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -508,7 +508,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -631,7 +631,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -725,7 +725,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -854,7 +854,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -982,7 +982,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -1111,7 +1111,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -1249,7 +1249,7 @@ class TestUploadToAccountStatus:
 
         # Verify account-status can see today's activity (based on created_at)
         # Since both generations created at "now", they are active (within 24h)
-        today_rows, yesterday_rows, total = get_account_activity_statuses(config_path=None, timezone_name=None)
+        today_rows, yesterday_rows, total = get_account_activity_statuses(timezone_name=None)
         assert len(today_rows) == 1
         assert today_rows[0]["Account"] == account
         assert today_rows[0]["Service"] == "chatgpt"
@@ -1339,7 +1339,7 @@ authorization_token = "test_token_abc"
 
         # Verify account-status can see today's activity
         # Generation created_at is recent (within 24h), so it's active
-        today_rows, yesterday_rows, total = get_account_activity_statuses(config_path=None, timezone_name=None)
+        today_rows, yesterday_rows, total = get_account_activity_statuses(timezone_name=None)
         assert len(today_rows) == 1
         assert today_rows[0]["Account"] == account
         assert today_rows[0]["Service"] == "chatgpt"
@@ -1491,7 +1491,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -1670,7 +1670,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -1787,7 +1787,7 @@ authorization_token = "test_token_abc"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),

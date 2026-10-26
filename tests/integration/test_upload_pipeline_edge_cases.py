@@ -5,7 +5,7 @@ from chatgpt_to_notion.services import upload_sequential
 from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptions
 from chatgpt_to_notion.adapters.sqlite_store import SqliteStore
 from chatgpt_to_notion.domain.models import AppConfig
-from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+from chatgpt_to_notion.adapters.config import _load_config
 import tomllib
 
 
@@ -54,7 +54,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -139,7 +139,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -214,7 +214,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -282,7 +282,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -353,7 +353,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -421,7 +421,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -487,7 +487,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -539,7 +539,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -596,7 +596,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -659,7 +659,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),
@@ -741,7 +741,7 @@ authorization_token = "test_token"
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            "chatgpt_to_notion.adapters.config._load_config",
             lambda _path: AppConfig.model_validate(
                 tomllib.loads(config_file.read_text())
             ),

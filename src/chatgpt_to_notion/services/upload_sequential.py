@@ -8,7 +8,7 @@ from typing import Any
 import aiohttp
 from tqdm.asyncio import tqdm
 
-from ..adapters.config_loader import config_loader
+from ..adapters.config import get_config
 from ..adapters.filesystem import Filesystem
 from ..adapters.filesystem import filesystem as default_fs
 from ..adapters.sqlite_store import SqliteStore
@@ -75,9 +75,9 @@ async def upload_to_notion_sequential(
     from ..services import image_service as img_svc
 
     # Use injected or default implementations
-    resolved = config_loader.resolve(options)
-    provider_ctx = config_loader.provider_context(resolved=resolved)
-    notion_ctx = config_loader.notion_context(resolved=resolved)
+    resolved = get_config().resolve(options)
+    provider_ctx = get_config().provider_context(resolved=resolved)
+    notion_ctx = get_config().notion_context(resolved=resolved)
     chatgpt_client_impl: ChatGPTClient = chatgpt_client or ChatGPTClientImpl(
         provider_ctx
     )

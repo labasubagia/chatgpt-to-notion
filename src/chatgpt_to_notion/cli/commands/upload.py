@@ -5,7 +5,7 @@ from typing import Any
 
 import typer
 
-from ...adapters.config_loader import config_loader
+from ...adapters.config import get_config
 from ...domain.models import RuntimeOptions
 from ...services import upload_sequential
 from ...shared.console import (
@@ -24,10 +24,10 @@ def validate_db_id(db_id: str | None) -> str | None:
     return db_id
 
 
-def _resolve_target_accounts(account: str | None, config: str | None) -> list[str]:
+def _resolve_target_accounts(account: str | None) -> list[str]:
     if account:
         return [account]
-    accounts = config_loader.account_names(config)
+    accounts = get_config().account_names()
     if not accounts:
         raise typer.BadParameter("No accounts found in config.")
     return accounts
@@ -94,7 +94,6 @@ def register(app: typer.Typer) -> None:
         timezone: str | None = typer.Option(
             None, help="IANA timezone name, e.g. Asia/Jakarta"
         ),
-        config: str | None = typer.Option(None, help="Path to TOML config file"),
         account: str | None = typer.Option(None, help="Named account from TOML config"),
         conversation_delay: float = typer.Option(
             2.0,
@@ -126,11 +125,10 @@ def register(app: typer.Typer) -> None:
                 "--all only applies with --from-history or --verify-history"
             )
 
-        target_accounts = _resolve_target_accounts(account, config)
+        target_accounts = _resolve_target_accounts(account)
         total_accounts = len(target_accounts)
         for index, target_account in enumerate(target_accounts, start=1):
             options = RuntimeOptions(
-                config_path=config,
                 account=target_account,
                 history_folder=history_folder,
                 image_folder=image_folder,
@@ -143,8 +141,8 @@ def register(app: typer.Typer) -> None:
             ]
             if db_id is None:
                 required_vars.append("NOTION_DATABASE_ID")
-            config_loader.validate_runtime(required_vars, options=options)
-            resolved = config_loader.resolve(options)
+            get_config().validate_runtime(required_vars, options=options)
+            resolved = get_config().resolve(options)
             print_account_log_header(
                 action="Upload To Notion",
                 account_name=resolved.account_name,
