@@ -19,7 +19,6 @@ from ..domain.models import (
     HistoryServiceProtocol,
     ImageServiceProtocol,
     NotionClient,
-    RemoveLibraryFunc,
     RuntimeOptions,
 )
 from ..shared.constants import image_ext_from_url
@@ -58,7 +57,6 @@ async def upload_to_notion_sequential(
     notion_client: NotionClient | None = None,
     history_service: HistoryServiceProtocol | None = None,
     image_service: ImageServiceProtocol | None = None,
-    remove_library_func: RemoveLibraryFunc | None = None,
     sqlite_store: SqliteStore | None = None,
     filesystem: Filesystem | None = None,
 ) -> None:
@@ -71,7 +69,7 @@ async def upload_to_notion_sequential(
     # Import concrete implementations for defaults
     from typing import cast
 
-    from ..adapters.chatgpt_api import ChatGPTClientImpl, remove_library_images
+    from ..adapters.chatgpt_api import ChatGPTClientImpl
     from ..adapters.notion_api import NotionClientImpl
     from ..services import history_service as hs
     from ..services import image_service as img_svc
@@ -88,9 +86,6 @@ async def upload_to_notion_sequential(
     )
     history_service_impl: HistoryServiceProtocol = history_service or hs
     image_service_impl: ImageServiceProtocol = image_service or img_svc
-    remove_library_func_impl: RemoveLibraryFunc = (
-        remove_library_func or remove_library_images
-    )
     store = sqlite_store or default_store
     fs = filesystem or default_fs
 
@@ -149,7 +144,7 @@ async def upload_to_notion_sequential(
             if not conv_payloads:
                 print("No generations found.")
                 if delete_library or delete_library_all:
-                    await remove_library_func_impl(
+                    await chatgpt_client_impl.remove_library_images(
                         resolved, remove_all=delete_library_all
                     )
                 return
@@ -292,4 +287,6 @@ async def upload_to_notion_sequential(
     print()
 
     if delete_library or delete_library_all:
-        await remove_library_func_impl(resolved, remove_all=delete_library_all)
+        await chatgpt_client_impl.remove_library_images(
+            resolved, remove_all=delete_library_all
+        )
