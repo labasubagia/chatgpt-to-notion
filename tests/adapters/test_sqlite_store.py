@@ -1,6 +1,5 @@
 """Tests for sqlite_store.py - SQLite persistence layer."""
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -50,15 +49,13 @@ def sample_generations(sample_generation):
     return [older, sample_generation, newer]
 
 class TestInitDb:
-    def test_creates_tables(self, store, tmp_db_path):
+    @pytest.mark.asyncio
+    async def test_creates_tables(self, store, sample_generation):
         store.init_db()
-        conn = sqlite3.connect(str(tmp_db_path))
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
-        names = {t[0] for t in tables}
-        assert "image_generations" in names
-        assert "cache_data_sources" in names
+        store.upsert_generations("test_account", [sample_generation])
+        assert len(store.get_generations("test_account")) == 1
+        await store.async_set_cached_data_sources("db1", [{"id": "ds1"}])
+        assert store.get_cached_data_sources("db1") == [{"id": "ds1"}]
 
 class TestUpsertGenerations:
     def test_inserts_new(self, store, sample_generation):

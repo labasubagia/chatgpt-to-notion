@@ -44,11 +44,7 @@ class TestCleanOutputPath:
 class TestBackupDb:
     """Tests for backup-db command."""
 
-    def test_backup_db(self, isolated_db, tmp_path, monkeypatch):
-        from chatgpt_to_notion.adapters import sqlite_store
-
-        monkeypatch.setattr(sqlite_store, "_get_db_path", lambda: isolated_db)
-
+    def test_backup_db(self, isolated_db, tmp_path):
         backup_target = tmp_path / "backup.db"
 
         runner = CliRunner()
@@ -59,11 +55,7 @@ class TestBackupDb:
         assert "Backup saved to" in result.output
         assert backup_target.exists()
 
-    def test_backup_db_creates_parent_dirs(self, isolated_db, tmp_path, monkeypatch):
-        from chatgpt_to_notion.adapters import sqlite_store
-
-        monkeypatch.setattr(sqlite_store, "_get_db_path", lambda: isolated_db)
-
+    def test_backup_db_creates_parent_dirs(self, isolated_db, tmp_path):
         backup_target = tmp_path / "subdir" / "backup.db"
 
         runner = CliRunner()

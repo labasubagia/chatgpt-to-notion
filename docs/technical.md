@@ -226,4 +226,5 @@ Tests target public surfaces rather than private implementation details:
 - Database state is asserted via public store accessors and fresh `SqliteStore` instances on the same file — never `_get_connection` or inline SQL.
 - External adapters are faked at their constructor/protocol boundary (e.g. injected stub store), not by patching internals.
 - HTTP flows use the `mock_aiohttp_session` fixture with staged responses; assertions describe outcomes, not call wiring.
+- Exemption: harness-level data isolation and config injection (`isolated_db`, `clear_config_cache`, CLI `_get_db_path` redirects, `_load_toml_config` stubbing) may touch private plumbing only to set up isolated fixtures or injected inputs; it never asserts private behavior.
 - The suite must remain deterministic and green under `uv run pytest`.

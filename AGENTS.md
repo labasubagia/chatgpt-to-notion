@@ -42,6 +42,7 @@ Tests MUST exercise public surfaces and stay decoupled from private implementati
 - Inject stubs/fakes at constructor or protocol boundaries (e.g. `NotionClientImpl(…, sqlite_store=StubStore())`) instead of monkeypatching internals.
 - HTTP interactions use the `mock_aiohttp_session` fixture with staged responses; assert outcomes, not call wiring.
 - Delete redundant white-box tests when a black-box equivalent already covers the behavior.
+- Harness-level data isolation and config injection are the sole permitted exceptions: conftest fixtures (`isolated_db`, `clear_config_cache`) may redirect the store's DB path and clear the config-loader LRU cache; CLI tests may point the global `sqlite_store` singleton at a temp DB via `_get_db_path`; config-driven tests may stub `_load_toml_config`. These only set up fixtures / injected inputs — they never assert private behavior.
 
 ## Agent Workflow
 
