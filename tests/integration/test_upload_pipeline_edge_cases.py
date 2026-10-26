@@ -30,7 +30,7 @@ class TestUploadFromHistoryMode:
     async def test_from_history_loads_only_unuploaded(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """from_history should only load generations without uploaded_at."""
         import tomllib
@@ -94,7 +94,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         # Should only load unuploaded generations
@@ -116,7 +115,7 @@ class TestUploadSequentialMode:
     async def test_sequential_processes_conversations_one_at_a_time(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """Sequential mode should process conversations one at time."""
         import tomllib
@@ -177,7 +176,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         # Should call fetch_generations_for_conversation for each conversation
@@ -192,7 +190,7 @@ class TestUploadFlagCombinations:
     async def test_upload_to_notion_false_skips_notion_calls(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """upload_to_notion=False should skip Notion API calls but still download."""
         import tomllib
@@ -249,7 +247,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         # Should not call add_page_to_db
@@ -261,7 +258,7 @@ authorization_token = "test_token"
     async def test_add_prompt_to_image_false_skips_prompt_addition(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """add_prompt_to_image=False should skip prompt addition."""
         import tomllib
@@ -319,7 +316,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         mock_image_service.add_prompt_to_image_single.assert_not_called()
@@ -333,7 +329,7 @@ class TestUploadDeleteFlags:
     async def test_delete_conversation_called_when_upload_succeeds(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """delete_conversation=True should delete conversation after successful upload."""
         import tomllib
@@ -391,7 +387,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         mock_chatgpt_client.delete_conversation.assert_called_once()
@@ -402,7 +397,7 @@ authorization_token = "test_token"
     async def test_delete_conversation_not_called_when_upload_fails(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """delete_conversation should not be called if upload fails."""
         import tomllib
@@ -460,7 +455,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         mock_chatgpt_client.delete_conversation.assert_not_called()
@@ -469,9 +463,9 @@ authorization_token = "test_token"
     async def test_delete_library_called_when_flag_true(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
-        """delete_library=True should call remove_library_func."""
+        """delete_library=True should call client.remove_library_images."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
 
@@ -511,20 +505,19 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
-        mock_remove_library_func.assert_called_once()
-        call_args = mock_remove_library_func.call_args
-        assert call_args.kwargs.get("remove_all") is False
+        mock_chatgpt_client.remove_library_images.assert_awaited_once()
+        _, kwargs = mock_chatgpt_client.remove_library_images.call_args
+        assert kwargs.get("remove_all") is False
 
     @pytest.mark.asyncio
     async def test_delete_library_all_called_when_flag_true(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
-        """delete_library_all=True should call remove_library_func with remove_all=True."""
+        """delete_library_all=True should call client.remove_library_images with remove_all=True."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
 
@@ -564,12 +557,11 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
-        mock_remove_library_func.assert_called_once()
-        call_args = mock_remove_library_func.call_args
-        assert call_args.kwargs.get("remove_all") is True
+        mock_chatgpt_client.remove_library_images.assert_awaited_once()
+        _, kwargs = mock_chatgpt_client.remove_library_images.call_args
+        assert kwargs.get("remove_all") is True
 
 
 @pytest.mark.integration
@@ -580,7 +572,7 @@ class TestUploadTimezoneHandling:
     async def test_timezone_used_in_from_history(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """Timezone should be passed to history service."""
         import tomllib
@@ -628,7 +620,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         # Check timezone was passed to load_image_generations
@@ -644,7 +635,7 @@ class TestUploadNoCacheFlag:
     async def test_no_cache_bypasses_existing_ids_check(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """no_cache=True should bypass existing_ids from sqlite_store."""
         import tomllib
@@ -709,7 +700,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
             sqlite_store=store,
         )
 
@@ -727,7 +717,7 @@ class TestUploadLimitFlag:
     async def test_limit_restricts_generations_processed(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service,
     ):
         """limit should restrict number of generations processed."""
         import tomllib
@@ -795,7 +785,6 @@ authorization_token = "test_token"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
         # Should only process 2 generations (limit=2)

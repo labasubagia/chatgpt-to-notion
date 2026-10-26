@@ -73,13 +73,13 @@ authorization_token = "test_token_abc"
 
 @pytest.mark.integration
 class TestRemoveLibraryImages:
-    """Tests for remove_library functionality via remove_library_func callback."""
+    """Tests for library-image removal routed through the chatgpt client."""
 
     @pytest.mark.asyncio
     async def test_remove_library_images_uses_configured_queries(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service
     ):
         """Should call remove_library_func with configured queries when delete_library=True."""
         import tomllib
@@ -126,20 +126,76 @@ authorization_token = "test_token_abc"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
-        # remove_library_func should be called once (with remove_all=False)
+        # Client method should be called once (with remove_all=False)
         # The queries are in options
-        mock_remove_library_func.assert_called_once()
-        call_args = mock_remove_library_func.call_args
-        assert call_args.kwargs.get("remove_all") is False
+        mock_chatgpt_client.remove_library_images.assert_awaited_once()
+        _, kwargs = mock_chatgpt_client.remove_library_images.call_args
+        assert kwargs.get("remove_all") is False
+
+    @pytest.mark.asyncio
+    async def test_remove_library_images_default_uses_client_method(
+        self, tmp_path, monkeypatch, isolated_db,
+        mock_chatgpt_client, mock_notion_client, mock_history_service,
+        mock_image_service
+    ):
+        """Default removal should route through the chatgpt client's method."""
+        import tomllib
+        from unittest.mock import AsyncMock
+        from chatgpt_to_notion.domain.models import AppConfig
+        from chatgpt_to_notion.adapters.config_loader import _load_toml_config
+
+        account = "default@example.com"
+        config_file = tmp_path / "config.toml"
+        config_file.write_text(
+            f"""
+[shared]
+user_agent = "TestAgent/1.0"
+cookie_string_base64 = "Y29va2llX2RhdGE="
+
+[notion]
+api_key = "secret_test_notion_key"
+database_id = "test_database_123"
+
+[accounts."{account}"]
+authorization_token = "test_token_abc"
+""".strip()
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            "chatgpt_to_notion.adapters.config_loader._load_toml_config",
+            lambda _path: AppConfig.model_validate(
+                tomllib.loads(config_file.read_text())
+            ),
+        )
+
+        mock_chatgpt_client.get_image_generations.return_value = {"items": []}
+        mock_chatgpt_client.remove_library_images = AsyncMock(return_value=None)
+
+        from chatgpt_to_notion.services import upload_sequential
+
+        await upload_sequential.upload_to_notion_sequential(
+            image_folder=None,
+            db_id="test_db",
+            delete_library=True,
+            account=account,
+            options=None,
+            chatgpt_client=mock_chatgpt_client,
+            notion_client=mock_notion_client,
+            history_service=mock_history_service,
+            image_service=mock_image_service,
+        )
+
+        mock_chatgpt_client.remove_library_images.assert_called_once()
+        _, kwargs = mock_chatgpt_client.remove_library_images.call_args
+        assert kwargs.get("remove_all") is False
 
     @pytest.mark.asyncio
     async def test_remove_library_images_remove_all_flag(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service
     ):
         """Should call remove_library_func with remove_all=True when flag is set."""
         import tomllib
@@ -185,19 +241,18 @@ authorization_token = "test_token_abc"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
-        # remove_library_func should be called once with remove_all=True
-        mock_remove_library_func.assert_called_once()
-        call_args = mock_remove_library_func.call_args
-        assert call_args.kwargs.get("remove_all") is True
+        # Client method should be called once with remove_all=True
+        mock_chatgpt_client.remove_library_images.assert_awaited_once()
+        _, kwargs = mock_chatgpt_client.remove_library_images.call_args
+        assert kwargs.get("remove_all") is True
 
     @pytest.mark.asyncio
     async def test_remove_library_images_remove_all_from_config(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service
     ):
         """Should call remove_library_func with remove_all=True when delete_library_all=True."""
         import tomllib
@@ -243,21 +298,20 @@ authorization_token = "test_token_abc"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
-        # remove_library_func should be called once with remove_all=True
-        mock_remove_library_func.assert_called_once()
-        call_args = mock_remove_library_func.call_args
-        assert call_args.kwargs.get("remove_all") is True
+        # Client method should be called once with remove_all=True
+        mock_chatgpt_client.remove_library_images.assert_awaited_once()
+        _, kwargs = mock_chatgpt_client.remove_library_images.call_args
+        assert kwargs.get("remove_all") is True
 
     @pytest.mark.asyncio
     async def test_remove_library_images_noop_when_nothing_configured(
         self, tmp_path, monkeypatch, isolated_db,
         mock_chatgpt_client, mock_notion_client, mock_history_service,
-        mock_image_service, mock_remove_library_func
+        mock_image_service
     ):
-        """Should not call remove_library_func when no queries and remove_all is not set."""
+        """Should not call client.remove_library_images when nothing is configured."""
         import tomllib
         from chatgpt_to_notion.domain.models import AppConfig
         from chatgpt_to_notion.adapters.config_loader import _load_toml_config
@@ -299,11 +353,10 @@ authorization_token = "test_token_abc"
             notion_client=mock_notion_client,
             history_service=mock_history_service,
             image_service=mock_image_service,
-            remove_library_func=mock_remove_library_func,
         )
 
-        # remove_library_func should not be called
-        mock_remove_library_func.assert_not_called()
+        # Client method should not be called
+        mock_chatgpt_client.remove_library_images.assert_not_awaited()
 
 @pytest.mark.integration
 class TestDeleteConversation:

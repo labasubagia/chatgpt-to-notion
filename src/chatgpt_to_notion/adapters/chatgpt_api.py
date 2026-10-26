@@ -8,7 +8,7 @@ import aiohttp
 from tqdm.asyncio import tqdm
 
 from ..domain.models import ProviderContext, ResolvedConfig, RuntimeOptions
-from ..shared.http import raise_for_status_with_detail, retry_http
+from ..shared.http import get_http_timeout, raise_for_status_with_detail, retry_http
 from .config_loader import config_loader as default_config_loader
 
 BASE_URL = "https://chatgpt.com/backend-api"
@@ -261,30 +261,23 @@ class ChatGPTClientImpl:
 
         return total_deleted
 
+    async def remove_library_images(
+        self,
+        resolved: ResolvedConfig,
+        remove_all: bool = False,
+    ) -> None:
+        """Delete library images based on configured queries or all images."""
+        queries = resolved.delete_library_queries if not remove_all else None
+        if not remove_all and not queries:
+            remove_all = resolved.remove_all_library_images
+        if not remove_all and not queries:
+            return
 
-async def remove_library_images(
-    resolved: ResolvedConfig,
-    remove_all: bool = False,
-) -> None:
-    """Default implementation for remove_library_func protocol.
-
-    Deletes library images based on configured queries or all images.
-    """
-    from ..shared.http import get_http_timeout
-    from .config_loader import config_loader
-
-    queries = resolved.delete_library_queries if not remove_all else None
-    if not remove_all and not queries:
-        remove_all = resolved.remove_all_library_images
-    if not remove_all and not queries:
-        return
-
-    client = ChatGPTClientImpl(config_loader.provider_context(resolved=resolved))
-    async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
-        if remove_all:
-            # Delete all images
-            await client.delete_library_images_by_query(session)
-        else:
-            # Delete images matching each query
-            for query in queries or []:
-                await client.delete_library_images_by_query(session, query=query)
+        async with aiohttp.ClientSession(timeout=get_http_timeout()) as session:
+            if remove_all:
+                # Delete all images
+                await self.delete_library_images_by_query(session)
+            else:
+                # Delete images matching each query
+                for query in queries or []:
+                    await self.delete_library_images_by_query(session, query=query)
