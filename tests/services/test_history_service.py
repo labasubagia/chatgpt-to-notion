@@ -8,6 +8,8 @@ from chatgpt_to_notion.domain.models import ChatGPTImageGeneration, RuntimeOptio
 from chatgpt_to_notion.services import history_service
 from chatgpt_to_notion.adapters import sqlite_store
 
+pytestmark = pytest.mark.asyncio
+
 def _mock_resolved_config(account_name="test_account"):
     """Helper to create a mocked ResolvedConfig."""
     return ResolvedConfig(
@@ -58,12 +60,12 @@ def _make_mock_cm(response):
 
 class TestGetUploadedGenerationIds:
     """Tests for get_uploaded_generation_ids function."""
-    def test_empty_account_returns_empty_set(self, isolated_db):
+    async def test_empty_account_returns_empty_set(self, isolated_db):
         """Account with no uploaded generations returns empty set."""
-        result = history_service.get_uploaded_generation_ids("empty_account")
+        result = await history_service.get_uploaded_generation_ids("empty_account")
         assert result == set()
 
-    def test_account_with_uploaded_returns_ids(self, isolated_db):
+    async def test_account_with_uploaded_returns_ids(self, isolated_db):
         """Should return IDs of uploaded generations."""
         gen1 = ChatGPTImageGeneration(
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -77,21 +79,21 @@ class TestGetUploadedGenerationIds:
         gen2 = gen1.model_copy(update={"id": "gen_2"})
         sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
         sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
-        result = history_service.get_uploaded_generation_ids("test_account")
+        result = await history_service.get_uploaded_generation_ids("test_account")
         assert result == {"gen_1"}
 
 
 class TestMarkGenerationsUploaded:
     """Tests for mark_generations_uploaded function."""
-    def test_empty_account_noop(self, isolated_db):
+    async def test_empty_account_noop(self, isolated_db):
         """Empty account should not raise."""
-        history_service.mark_generations_uploaded("empty_account", ["gen_1"])
+        await history_service.mark_generations_uploaded("empty_account", ["gen_1"])
 
-    def test_empty_ids_noop(self, isolated_db):
+    async def test_empty_ids_noop(self, isolated_db):
         """Empty IDs list should not raise."""
-        history_service.mark_generations_uploaded("test_account", [])
+        await history_service.mark_generations_uploaded("test_account", [])
 
-    def test_normal_mark(self, isolated_db):
+    async def test_normal_mark(self, isolated_db):
         """Normal mark should update uploaded flag."""
         gen = ChatGPTImageGeneration(
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -103,7 +105,7 @@ class TestMarkGenerationsUploaded:
             prompt="Test",
         )
         sqlite_store.upsert_generations("test_account", [gen], isolated_db)
-        history_service.mark_generations_uploaded("test_account", ["gen_1"])
+        await history_service.mark_generations_uploaded("test_account", ["gen_1"])
         conn = sqlite_store._get_connection(isolated_db)
         row = conn.execute(
             "SELECT uploaded_at FROM image_generations WHERE id = ?",
@@ -112,7 +114,7 @@ class TestMarkGenerationsUploaded:
         conn.close()
         assert row["uploaded_at"] != ""
 
-    def test_mark_multiple_ids(self, isolated_db):
+    async def test_mark_multiple_ids(self, isolated_db):
         """Marking multiple IDs should update all."""
         gen1 = ChatGPTImageGeneration(
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -125,7 +127,7 @@ class TestMarkGenerationsUploaded:
         )
         gen2 = gen1.model_copy(update={"id": "gen_2"})
         sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
-        history_service.mark_generations_uploaded("test_account", ["gen_1", "gen_2"])
+        await history_service.mark_generations_uploaded("test_account", ["gen_1", "gen_2"])
         conn = sqlite_store._get_connection(isolated_db)
         rows = conn.execute(
             "SELECT id, uploaded_at FROM image_generations WHERE id IN (?, ?)",
@@ -137,12 +139,14 @@ class TestMarkGenerationsUploaded:
 
 class TestLoadImageGenerations:
     """Tests for load_image_generations function."""
-    def test_load_empty_db(self, isolated_db):
+    @pytest.mark.asyncio
+    async def test_load_empty_db(self, isolated_db):
         """Empty database returns empty list."""
-        result = history_service.load_image_generations("test_account")
+        result = await history_service.load_image_generations("test_account")
         assert result == []
 
-    def test_load_with_include_uploaded_false_excludes_uploaded(self, isolated_db):
+    @pytest.mark.asyncio
+    async def test_load_with_include_uploaded_false_excludes_uploaded(self, isolated_db):
         """include_uploaded=False should exclude uploaded generations."""
         gen1 = ChatGPTImageGeneration(
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -156,11 +160,12 @@ class TestLoadImageGenerations:
         gen2 = gen1.model_copy(update={"id": "gen_2"})
         sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
         sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
-        result = history_service.load_image_generations("test_account", include_uploaded=False)
+        result = await history_service.load_image_generations("test_account", include_uploaded=False)
         assert len(result) == 1
         assert result[0].id == "gen_2"
 
-    def test_load_with_include_uploaded_true_includes_all(self, isolated_db):
+    @pytest.mark.asyncio
+    async def test_load_with_include_uploaded_true_includes_all(self, isolated_db):
         """include_uploaded=True should include all generations."""
         gen1 = ChatGPTImageGeneration(
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -174,10 +179,11 @@ class TestLoadImageGenerations:
         gen2 = gen1.model_copy(update={"id": "gen_2"})
         sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
         sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
-        result = history_service.load_image_generations("test_account", include_uploaded=True)
+        result = await history_service.load_image_generations("test_account", include_uploaded=True)
         assert len(result) == 2
 
-    def test_load_with_keep_days_filters_old(self, isolated_db):
+    @pytest.mark.asyncio
+    async def test_load_with_keep_days_filters_old(self, isolated_db):
         """Old generations beyond keep_days should be excluded."""
         old_time = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
         new_time = datetime.now(timezone.utc).isoformat()
@@ -201,11 +207,12 @@ class TestLoadImageGenerations:
             prompt="New",
         )
         sqlite_store.upsert_generations("test_account", [old_gen, new_gen], isolated_db)
-        result = history_service.load_image_generations("test_account", keep_days=2)
+        result = await history_service.load_image_generations("test_account", keep_days=2)
         assert len(result) == 1
         assert result[0].id == "gen_new"
 
-    def test_load_with_timezone_conversion(self, isolated_db):
+    @pytest.mark.asyncio
+    async def test_load_with_timezone_conversion(self, isolated_db):
         """timezone_name should convert timestamps - just verify it runs without error."""
         from zoneinfo import ZoneInfo
         gen = ChatGPTImageGeneration(
@@ -218,10 +225,11 @@ class TestLoadImageGenerations:
             prompt="Test",
         )
         sqlite_store.upsert_generations("test_account", [gen], isolated_db)
-        result = history_service.load_image_generations("test_account", timezone_name="UTC")
+        result = await history_service.load_image_generations("test_account", timezone_name="UTC")
         assert len(result) == 1
 
-    def test_load_with_include_uploaded_filter(self, isolated_db):
+    @pytest.mark.asyncio
+    async def test_load_with_include_uploaded_filter(self, isolated_db):
         """include_uploaded=True should include uploaded, False should exclude."""
         gen1 = ChatGPTImageGeneration(
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -235,8 +243,8 @@ class TestLoadImageGenerations:
         gen2 = gen1.model_copy(update={"id": "gen_2"})
         sqlite_store.upsert_generations("test_account", [gen1, gen2], isolated_db)
         sqlite_store.mark_uploaded("test_account", {"gen_1"}, isolated_db)
-        result_true = history_service.load_image_generations("test_account", include_uploaded=True)
-        result_false = history_service.load_image_generations("test_account", include_uploaded=False)
+        result_true = await history_service.load_image_generations("test_account", include_uploaded=True)
+        result_false = await history_service.load_image_generations("test_account", include_uploaded=False)
         assert len(result_true) == 2
         assert len(result_false) == 1
 
