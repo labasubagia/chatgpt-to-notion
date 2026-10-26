@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Literal, Protocol
 
 import aiohttp
@@ -107,14 +107,19 @@ class HistoryServiceProtocol(Protocol):
     async def load_image_generations(
         self,
         account: str,
+        include_uploaded: bool = False,
+        keep_days: int | None = None,
+        timezone_name: str | None = None,
+        options: RuntimeOptions | None = None,
     ) -> list[ChatGPTImageGeneration]: ...
 
     async def fetch_generations_for_conversation(
         self,
         session: aiohttp.ClientSession,
-        conversation_id: str,
-        chatgpt_client: ChatGPTClient,
-        options: RuntimeOptions | None,
+        conv_id: str,
+        image_items: Sequence[dict[str, Any]],
+        headers: dict[str, str],
+        existing_ids: set[str],
     ) -> list[ChatGPTImageGeneration]: ...
 
     async def download_image(
@@ -122,12 +127,13 @@ class HistoryServiceProtocol(Protocol):
         session: aiohttp.ClientSession,
         url: str,
         file_path: str,
+        headers: dict[str, str] | None = None,
     ) -> None: ...
 
-    def get_uploaded_generation_ids(self, account: str) -> set[str]: ...
+    async def get_uploaded_generation_ids(self, account: str | None) -> set[str]: ...
 
     async def mark_generations_uploaded(
-        self, account: str, generation_ids: set[str]
+        self, account: str | None, generation_ids: set[str]
     ) -> None: ...
 
 

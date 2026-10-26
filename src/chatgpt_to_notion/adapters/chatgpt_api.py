@@ -360,11 +360,10 @@ async def remove_library_images(
             await delete_library_images_by_query(session, query=None, headers=headers)
         else:
             # Delete images matching each query
-            for query in queries:
+            for query in queries or []:
                 await delete_library_images_by_query(
                     session, query=query, headers=headers
                 )
-
 
 __all__ = [
     "get_headers",

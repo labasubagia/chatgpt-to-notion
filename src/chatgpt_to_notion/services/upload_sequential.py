@@ -64,17 +64,23 @@ async def upload_to_notion_sequential(
     A delay is added between conversations.
     """
     # Import concrete implementations for defaults
+    from typing import cast
+
     from ..adapters.chatgpt_api import ChatGPTClientImpl, remove_library_images
     from ..adapters.notion_api import NotionClientImpl
     from ..services import history_service as hs
     from ..services import image_service as img_svc
 
     # Use injected or default implementations
-    chatgpt_client = chatgpt_client or ChatGPTClientImpl(options)
-    notion_client = notion_client or NotionClientImpl(options)
-    history_service = history_service or hs
-    image_service = image_service or img_svc
-    remove_library_func = remove_library_func or remove_library_images
+    chatgpt_client_impl: ChatGPTClient = chatgpt_client or ChatGPTClientImpl(options)
+    notion_client_impl: NotionClient = cast(
+        NotionClient, notion_client or NotionClientImpl(options)
+    )
+    history_service_impl: HistoryServiceProtocol = history_service or hs
+    image_service_impl: ImageServiceProtocol = image_service or img_svc
+    remove_library_func_impl: RemoveLibraryFunc = (
+        remove_library_func or remove_library_images
+    )
 
     if not db_id:
         raise ValueError("db_id must not be empty")
@@ -85,11 +91,11 @@ async def upload_to_notion_sequential(
 
     sqlite_store.init_db()
 
-    uploaded_ids = await history_service.get_uploaded_generation_ids(account)
+    uploaded_ids = await history_service_impl.get_uploaded_generation_ids(account)
     counter = StageCounter("Processed")
 
     async with aiohttp.ClientSession(
-        headers=chatgpt_client.get_headers(), timeout=get_http_timeout()
+        headers=chatgpt_client_impl.get_headers(), timeout=get_http_timeout()
     ) as chatgpt_session:
         async with aiohttp.ClientSession(timeout=get_http_timeout()) as notion_session:
             # Build the per-conversation work list up front.
@@ -98,7 +104,7 @@ async def upload_to_notion_sequential(
             # each conversation's detail is fetched lazily inside the loop.
             conv_payloads: list[tuple[str, Any]]
             if from_history:
-                generations = await history_service.load_image_generations(
+                generations = await history_service_impl.load_image_generations(
                     account=account,
                     include_uploaded=check_notion_api,
                     keep_days=keep_days,
@@ -113,7 +119,7 @@ async def upload_to_notion_sequential(
                 conv_payloads = list(conversation_map.items())
                 existing_ids: set[str] = set()
             else:
-                data = await chatgpt_client.get_image_generations(
+                data = await chatgpt_client_impl.get_image_generations(
                     chatgpt_session,
                     limit=limit,
                 )
@@ -127,7 +133,7 @@ async def upload_to_notion_sequential(
             if not conv_payloads:
                 print("No generations found.")
                 if delete_library or delete_library_all:
-                    await remove_library_func(
+                    await remove_library_func_impl(
                         options, remove_all=delete_library_all
                     )
                 return
@@ -146,10 +152,10 @@ async def upload_to_notion_sequential(
                             pbar.write(f"⏭️  {file_name} skipped, already uploaded")
                         return True
 
-                    if await notion_client.is_page_exists_in_db(
+                    if await notion_client_impl.is_page_exists_in_db(
                         notion_session, db_id, file_name
                     ):
-                        await history_service.mark_generations_uploaded(
+                        await history_service_impl.mark_generations_uploaded(
                             account, {generation.id}
                         )
                         uploaded_ids.add(generation.id)
@@ -159,28 +165,28 @@ async def upload_to_notion_sequential(
 
                     file_path = Path(resolved_image_folder) / file_name
                     if not file_path.exists():
-                        await history_service.download_image(
+                        await history_service_impl.download_image(
                             chatgpt_session,
                             generation.url,
                             str(file_path),
-                            headers=chatgpt_client.get_headers(),
+                            headers=chatgpt_client_impl.get_headers(),
                         )
 
                     if add_prompt_to_image:
-                        image_service.add_prompt_to_image_single(
+                        image_service_impl.add_prompt_to_image_single(
                             generation,
                             str(resolved_image_folder),
                         )
 
                     if upload_to_notion:
-                        await notion_client.add_page_to_db(
+                        await notion_client_impl.add_page_to_db(
                             notion_session,
                             db_id,
                             str(file_path),
                             generation.prompt
                         )
 
-                    await history_service.mark_generations_uploaded(
+                    await history_service_impl.mark_generations_uploaded(
                         account, {generation.id}
                     )
                     uploaded_ids.add(generation.id)
@@ -214,12 +220,12 @@ async def upload_to_notion_sequential(
                     ChatGPTImageGeneration
                 ] = payload
                 else:
-                    func = history_service.fetch_generations_for_conversation
+                    func = history_service_impl.fetch_generations_for_conversation
                     new_generations = await func(
                         chatgpt_session,
                         conv_id,
                         payload,
-                        chatgpt_client.get_headers(),
+                        chatgpt_client_impl.get_headers(),
                         existing_ids,
                     )
                     if new_generations:
@@ -245,7 +251,7 @@ async def upload_to_notion_sequential(
                     # this run, so the conversation is eligible for deletion.
                     if delete_conversation and not from_history:
                         try:
-                            await chatgpt_client.delete_conversation(
+                            await chatgpt_client_impl.delete_conversation(
                                 chatgpt_session,
                                 conv_id
                             )
@@ -278,4 +284,4 @@ async def upload_to_notion_sequential(
     print()
 
     if delete_library or delete_library_all:
-        await remove_library_func(options, remove_all=delete_library_all)
+        await remove_library_func_impl(options, remove_all=delete_library_all)
